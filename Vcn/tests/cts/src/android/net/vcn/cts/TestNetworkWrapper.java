@@ -158,7 +158,6 @@ public class TestNetworkWrapper implements AutoCloseable {
                         .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
                         .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VCN_MANAGED)
                         .addCapability(NetworkCapabilities.NET_CAPABILITY_MMS)
-                        .addCapability(NetworkCapabilities.NET_CAPABILITY_DUN)
                         .addCapability(NetworkCapabilities.NET_CAPABILITY_FOTA)
                         .setNetworkSpecifier(new TestNetworkSpecifier(iface))
                         .setSubscriptionIds(subIds);
