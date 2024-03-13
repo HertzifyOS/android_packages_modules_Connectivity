@@ -28,6 +28,9 @@ import static android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED;
 import static android.net.NetworkCapabilities.TRANSPORT_CELLULAR;
 import static android.net.NetworkCapabilities.TRANSPORT_TEST;
 import static android.net.vcn.VcnGatewayConnectionConfig.VCN_GATEWAY_OPTION_ENABLE_DATA_STALL_RECOVERY_WITH_MOBILITY;
+import static android.net.vcn.VcnManager.VCN_STATUS_CODE_ACTIVE;
+import static android.net.vcn.VcnManager.VCN_STATUS_CODE_NOT_CONFIGURED;
+import static android.net.vcn.VcnManager.VCN_STATUS_CODE_SAFE_MODE;
 import static android.net.vcn.VcnUnderlyingNetworkTemplate.MATCH_ANY;
 import static android.net.vcn.VcnUnderlyingNetworkTemplate.MATCH_FORBIDDEN;
 import static android.net.vcn.VcnUnderlyingNetworkTemplate.MATCH_REQUIRED;
@@ -58,8 +61,10 @@ import android.net.LinkProperties;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.NetworkRequest;
+import android.net.vcn.Flags;
 import android.net.vcn.VcnCellUnderlyingNetworkTemplate;
 import android.net.vcn.VcnConfig;
+import android.net.vcn.VcnGatewayConnectionConfig;
 import android.net.vcn.VcnManager;
 import android.net.vcn.VcnNetworkPolicyResult;
 import android.net.vcn.VcnUnderlyingNetworkTemplate;
@@ -69,6 +74,10 @@ import android.net.vcn.cts.TestNetworkWrapper.VcnTestNetworkCallback.Capabilitie
 import android.os.ParcelUuid;
 import android.os.PersistableBundle;
 import android.os.SystemClock;
+import android.platform.test.annotations.RequiresFlagsEnabled;
+import android.platform.test.flag.junit.CheckFlagsRule;
+import android.platform.test.flag.junit.DeviceFlagsValueProvider;
+import android.telephony.CarrierConfigManager;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 import android.telephony.cts.util.SubscriptionGroupUtils;
@@ -80,6 +89,7 @@ import com.android.compatibility.common.util.CarrierPrivilegeUtils;
 
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -90,12 +100,17 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 @RunWith(AndroidJUnit4.class)
 public class VcnManagerTest extends VcnTestBase {
+    @Rule
+    public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
+
     private static final String TAG = VcnManagerTest.class.getSimpleName();
 
     private static final int TIMEOUT_MS = 500;
@@ -104,6 +119,8 @@ public class VcnManagerTest extends VcnTestBase {
     private static final Executor INLINE_EXECUTOR = Runnable::run;
 
     private static final int TEST_NETWORK_MTU = 1500;
+
+    private static final int VCN_STATUS_CODE_AWAIT_TIMEOUT = -1;
 
     private static final InetAddress LOCAL_ADDRESS =
             InetAddresses.parseNumericAddress("198.51.100.1");
@@ -118,6 +135,7 @@ public class VcnManagerTest extends VcnTestBase {
     private final SubscriptionManager mSubscriptionManager;
     private final TelephonyManager mTelephonyManager;
     private final ConnectivityManager mConnectivityManager;
+    private final CarrierConfigManager mCarrierConfigManager;
 
     public VcnManagerTest() {
         mContext = InstrumentationRegistry.getContext();
@@ -125,6 +143,7 @@ public class VcnManagerTest extends VcnTestBase {
         mSubscriptionManager = mContext.getSystemService(SubscriptionManager.class);
         mTelephonyManager = mContext.getSystemService(TelephonyManager.class);
         mConnectivityManager = mContext.getSystemService(ConnectivityManager.class);
+        mCarrierConfigManager = mContext.getSystemService(CarrierConfigManager.class);
     }
 
     @Before
@@ -460,30 +479,41 @@ public class VcnManagerTest extends VcnTestBase {
 
     /** Test implementation of VcnStatusCallback for verification purposes. */
     private static class TestVcnStatusCallback extends VcnManager.VcnStatusCallback {
-        private final CompletableFuture<Integer> mFutureOnStatusChanged =
-                new CompletableFuture<>();
-        private final CompletableFuture<GatewayConnectionError> mFutureOnGatewayConnectionError =
-                new CompletableFuture<>();
+        private final BlockingQueue<Integer> mOnStatusChangedHistory = new LinkedBlockingQueue<>();
+        private final BlockingQueue<GatewayConnectionError> mOnGatewayConnectionErrorHistory =
+                new LinkedBlockingQueue<>();
 
         @Override
         public void onStatusChanged(int statusCode) {
-            mFutureOnStatusChanged.complete(statusCode);
+            mOnStatusChangedHistory.offer(statusCode);
         }
 
         @Override
         public void onGatewayConnectionError(
                 @NonNull String gatewayConnectionName, int errorCode, @Nullable Throwable detail) {
-            mFutureOnGatewayConnectionError.complete(
+            mOnGatewayConnectionErrorHistory.offer(
                     new GatewayConnectionError(gatewayConnectionName, errorCode, detail));
         }
 
         public int awaitOnStatusChanged() throws Exception {
-            return mFutureOnStatusChanged.get(TIMEOUT_MS, TimeUnit.MILLISECONDS);
+            final Integer status = mOnStatusChangedHistory.poll(TIMEOUT_MS, TimeUnit.MILLISECONDS);
+
+            // Null means timeout
+            return status == null ? VCN_STATUS_CODE_AWAIT_TIMEOUT : status;
         }
 
         public GatewayConnectionError awaitOnGatewayConnectionError() throws Exception {
-            return mFutureOnGatewayConnectionError.get(TIMEOUT_MS, TimeUnit.MILLISECONDS);
+            return mOnGatewayConnectionErrorHistory.poll(TIMEOUT_MS, TimeUnit.MILLISECONDS);
         }
+    }
+
+    private void verifyVcnStatus(ParcelUuid subGrp, int expectedStatus) throws Exception {
+        final TestVcnStatusCallback callback = new TestVcnStatusCallback();
+        mVcnManager.registerVcnStatusCallback(subGrp, INLINE_EXECUTOR, callback);
+
+        assertEquals(expectedStatus, callback.awaitOnStatusChanged());
+
+        mVcnManager.unregisterVcnStatusCallback(callback);
     }
 
     /** Info class for organizing VcnStatusCallback#onGatewayConnectionError response data. */
@@ -1225,10 +1255,8 @@ public class VcnManagerTest extends VcnTestBase {
                 true /* expectedUseEncap */);
     }
 
-    @Test
-    public void testVcnSafemodeOnTestNetwork() throws Exception {
-        final int subId = verifyAndGetValidDataSubId();
-
+    private void verifyVcnSafeModeTimeoutOnTestNetwork(int subId, long timeoutMillis)
+            throws Exception {
         try (TestNetworkWrapper testNetworkWrapper =
                 createTestNetworkWrapper(true /* isMetered */, subId, LOCAL_ADDRESS)) {
             // Before the VCN starts, the test network should have NOT_VCN_MANAGED
@@ -1240,8 +1268,6 @@ public class VcnManagerTest extends VcnTestBase {
             verifyUnderlyingCellAndRunTest(subId, (subGrp, cellNetwork, cellNetworkCb) -> {
                 final VcnSetupResult vcnSetupResult =
                     setupAndGetVcnNetwork(subGrp, cellNetwork, cellNetworkCb, testNetworkWrapper);
-
-                // TODO(b/191801185): use VcnStatusCallbacks to verify safemode
 
                 // Once VCN starts, the test network should lose NOT_VCN_MANAGED
                 waitForExpectedUnderlyingNetworkWithCapabilities(
@@ -1256,14 +1282,110 @@ public class VcnManagerTest extends VcnTestBase {
                         testNetworkWrapper,
                         true /* expectNotVcnManaged */,
                         false /* expectNotMetered */,
-                        SAFEMODE_TIMEOUT_MILLIS);
+                        timeoutMillis);
 
                 // Verify that VCN Network is also lost in safemode
                 final Network lostVcnNetwork = cellNetworkCb.waitForLost();
                 assertEquals(vcnSetupResult.vcnNetwork, lostVcnNetwork);
 
+                verifyVcnStatus(subGrp, VCN_STATUS_CODE_SAFE_MODE);
+
                 mVcnManager.clearVcnConfig(subGrp);
             });
         }
+    }
+
+    private void setSafeModeTimeoutForCarrier(int subId, int timeoutSeconds) {
+        final PersistableBundle carrierConfig = new PersistableBundle();
+        carrierConfig.putInt(VcnManager.VCN_SAFE_MODE_TIMEOUT_SECONDS_KEY, timeoutSeconds);
+        mCarrierConfigManager.overrideConfig(subId, carrierConfig);
+    }
+
+    @Test
+    public void testVcnSafeModeOnTestNetwork_defaultTimeout() throws Exception {
+        final int subId = verifyAndGetValidDataSubId();
+        verifyVcnSafeModeTimeoutOnTestNetwork(subId, SAFEMODE_TIMEOUT_MILLIS);
+    }
+
+    @RequiresFlagsEnabled(Flags.FLAG_SAFE_MODE_TIMEOUT_CONFIG)
+    @Test
+    public void testVcnSafeModeOnTestNetwork_overrideTimeout() throws Exception {
+        final int subId = verifyAndGetValidDataSubId();
+        final int safeModeTimeoutSeconds = 5;
+        final int gracePeriod = 5;
+
+        final PersistableBundle oldCarrierConfig = mCarrierConfigManager.getConfigForSubId(subId);
+        setSafeModeTimeoutForCarrier(subId, safeModeTimeoutSeconds);
+
+        verifyVcnSafeModeTimeoutOnTestNetwork(
+                subId, TimeUnit.SECONDS.toMillis(safeModeTimeoutSeconds + gracePeriod));
+
+        mCarrierConfigManager.overrideConfig(subId, oldCarrierConfig);
+    }
+
+    private void verifyEnterSafeModeImmediately(VcnConfig vcnConfig, boolean isSafeModeExpected)
+            throws Exception {
+        final int subId = verifyAndGetValidDataSubId();
+        final TestVcnStatusCallback callback = new TestVcnStatusCallback();
+
+        // Override the safe mode timeout to be zero
+        final PersistableBundle oldCarrierConfig = mCarrierConfigManager.getConfigForSubId(subId);
+        setSafeModeTimeoutForCarrier(subId, 0);
+
+        try (TestNetworkWrapper testNetworkWrapper =
+                createTestNetworkWrapper(true /* isMetered */, subId, LOCAL_ADDRESS)) {
+            verifyUnderlyingCellAndRunTest(subId, (subGrp, cellNetwork, cellNetworkCb) -> {
+                mVcnManager.registerVcnStatusCallback(subGrp, INLINE_EXECUTOR, callback);
+                mVcnManager.setVcnConfig(subGrp, vcnConfig);
+
+                assertEquals(
+                        VCN_STATUS_CODE_NOT_CONFIGURED, callback.awaitOnStatusChanged());
+                assertEquals(VCN_STATUS_CODE_ACTIVE, callback.awaitOnStatusChanged());
+
+                if (isSafeModeExpected) {
+                    assertEquals(
+                            VCN_STATUS_CODE_SAFE_MODE, callback.awaitOnStatusChanged());
+                } else {
+                    assertEquals(
+                            VCN_STATUS_CODE_AWAIT_TIMEOUT, callback.awaitOnStatusChanged());
+                }
+
+                mVcnManager.clearVcnConfig(subGrp);
+                mVcnManager.unregisterVcnStatusCallback(callback);
+            });
+        }
+
+        // Reset Carrier Config
+        mCarrierConfigManager.overrideConfig(subId, oldCarrierConfig);
+    }
+
+    private VcnConfig newVcnConfig(boolean isSafeModeEnabled) {
+        final VcnGatewayConnectionConfig.Builder gatewayConfigBuilder =
+                VcnGatewayConnectionConfigTest.buildVcnGatewayConnectionConfigBase()
+                        .addExposedCapability(NetworkCapabilities.NET_CAPABILITY_MMS);
+
+        if (!isSafeModeEnabled) {
+            gatewayConfigBuilder.setSafeModeEnabled(false);
+        }
+        // Don't call setSafeModeEnabled since enabling safe mode should not be flag gated
+
+        return new VcnConfig.Builder(mContext)
+                .setIsTestModeProfile()
+                .addGatewayConnectionConfig(gatewayConfigBuilder.build())
+                .build();
+    }
+
+    @RequiresFlagsEnabled({Flags.FLAG_SAFE_MODE_TIMEOUT_CONFIG})
+    @Test
+    public void testEnterSafeModeImmediately_safeModeEnabled() throws Exception {
+        verifyEnterSafeModeImmediately(
+                newVcnConfig(true /* isSafeModeEnabled */), true /* isSafeModeExpected */);
+    }
+
+    @RequiresFlagsEnabled({Flags.FLAG_SAFE_MODE_CONFIG, Flags.FLAG_SAFE_MODE_TIMEOUT_CONFIG})
+    @Test
+    public void testEnterSafeModeImmediately_safeModeDisabled() throws Exception {
+        verifyEnterSafeModeImmediately(
+                newVcnConfig(false /* isSafeModeEnabled */), false /* isSafeModeExpected */);
     }
 }

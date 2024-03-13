@@ -29,11 +29,16 @@ import static org.junit.Assert.fail;
 
 import android.net.ipsec.ike.IkeSessionParams;
 import android.net.ipsec.ike.IkeTunnelConnectionParams;
+import android.net.vcn.Flags;
 import android.net.vcn.VcnGatewayConnectionConfig;
 import android.net.vcn.VcnUnderlyingNetworkTemplate;
+import android.platform.test.annotations.RequiresFlagsEnabled;
+import android.platform.test.flag.junit.CheckFlagsRule;
+import android.platform.test.flag.junit.DeviceFlagsValueProvider;
 
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -45,6 +50,9 @@ import java.util.concurrent.TimeUnit;
 
 @RunWith(AndroidJUnit4.class)
 public class VcnGatewayConnectionConfigTest extends VcnTestBase {
+    @Rule
+    public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
+
     private static final String VCN_GATEWAY_CONNECTION_NAME = "test-vcn-gateway-connection";
     private static final long[] RETRY_INTERNAL_MILLIS =
             new long[] {
@@ -181,5 +189,20 @@ public class VcnGatewayConnectionConfigTest extends VcnTestBase {
             fail("Expected exception due to invalid timeout range");
         } catch (IllegalArgumentException e) {
         }
+    }
+
+    @RequiresFlagsEnabled(Flags.FLAG_SAFE_MODE_CONFIG)
+    @Test
+    public void testBuilderSetSafeModeEnabled() {
+        final VcnGatewayConnectionConfig gatewayConnConfig =
+                buildVcnGatewayConnectionConfigBase().setSafeModeEnabled(false).build();
+        assertFalse(gatewayConnConfig.isSafeModeEnabled());
+    }
+
+    @RequiresFlagsEnabled(Flags.FLAG_SAFE_MODE_CONFIG)
+    @Test
+    public void testGetSafeModeEnabledDefault() {
+        final VcnGatewayConnectionConfig gatewayConnConfig = buildVcnGatewayConnectionConfig();
+        assertTrue(gatewayConnConfig.isSafeModeEnabled());
     }
 }
