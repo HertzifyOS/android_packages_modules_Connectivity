@@ -17,6 +17,9 @@
 package android.net.vcn.cts;
 
 import static android.content.pm.PackageManager.FEATURE_TELEPHONY;
+import static android.net.ConnectivitySettingsManager.CAPTIVE_PORTAL_MODE_PROMPT;
+import static android.net.ConnectivitySettingsManager.getCaptivePortalMode;
+import static android.net.ConnectivitySettingsManager.setCaptivePortalMode;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_NOT_VCN_MANAGED;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED;
@@ -95,6 +98,7 @@ public class VcnManagerTest extends VcnTestBase {
     private final SubscriptionManager mSubscriptionManager;
     private final TelephonyManager mTelephonyManager;
     private final ConnectivityManager mConnectivityManager;
+    private final int mOldCaptivePortalMode;
 
     private TestNetworkWrapper mTestNetworkWrapper;
 
@@ -104,6 +108,7 @@ public class VcnManagerTest extends VcnTestBase {
         mSubscriptionManager = mContext.getSystemService(SubscriptionManager.class);
         mTelephonyManager = mContext.getSystemService(TelephonyManager.class);
         mConnectivityManager = mContext.getSystemService(ConnectivityManager.class);
+        mOldCaptivePortalMode = getCaptivePortalMode(mContext, CAPTIVE_PORTAL_MODE_PROMPT);
     }
 
     @Before
@@ -111,6 +116,9 @@ public class VcnManagerTest extends VcnTestBase {
         assumeTrue(mContext.getPackageManager().hasSystemFeature(FEATURE_TELEPHONY));
 
         getInstrumentation().getUiAutomation().adoptShellPermissionIdentity();
+
+        // Ensure Internet probing check will be performed on VCN networks
+        setCaptivePortalMode(mContext, CAPTIVE_PORTAL_MODE_PROMPT);
     }
 
     @After
@@ -121,6 +129,7 @@ public class VcnManagerTest extends VcnTestBase {
                 mTestNetworkWrapper = null;
             }
         } finally {
+            setCaptivePortalMode(mContext, mOldCaptivePortalMode);
             getInstrumentation().getUiAutomation().dropShellPermissionIdentity();
         }
     }
