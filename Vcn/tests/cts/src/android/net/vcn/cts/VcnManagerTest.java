@@ -19,6 +19,9 @@ package android.net.vcn.cts;
 import static android.content.pm.PackageManager.FEATURE_TELEPHONY;
 import static android.ipsec.ike.cts.IkeTunUtils.PortPair;
 import static android.net.ConnectivityDiagnosticsManager.DataStallReport.DETECTION_METHOD_DNS_EVENTS;
+import static android.net.ConnectivitySettingsManager.CAPTIVE_PORTAL_MODE_PROMPT;
+import static android.net.ConnectivitySettingsManager.getCaptivePortalMode;
+import static android.net.ConnectivitySettingsManager.setCaptivePortalMode;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_CBS;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED;
@@ -136,6 +139,7 @@ public class VcnManagerTest extends VcnTestBase {
     private final TelephonyManager mTelephonyManager;
     private final ConnectivityManager mConnectivityManager;
     private final CarrierConfigManager mCarrierConfigManager;
+    private final int mOldCaptivePortalMode;
 
     public VcnManagerTest() {
         mContext = InstrumentationRegistry.getContext();
@@ -144,6 +148,8 @@ public class VcnManagerTest extends VcnTestBase {
         mTelephonyManager = mContext.getSystemService(TelephonyManager.class);
         mConnectivityManager = mContext.getSystemService(ConnectivityManager.class);
         mCarrierConfigManager = mContext.getSystemService(CarrierConfigManager.class);
+
+        mOldCaptivePortalMode = getCaptivePortalMode(mContext, CAPTIVE_PORTAL_MODE_PROMPT);
     }
 
     @Before
@@ -151,10 +157,14 @@ public class VcnManagerTest extends VcnTestBase {
         assumeTrue(mContext.getPackageManager().hasSystemFeature(FEATURE_TELEPHONY));
 
         getInstrumentation().getUiAutomation().adoptShellPermissionIdentity();
+
+        // Ensure Internet probing check will be performed on VCN networks
+        setCaptivePortalMode(mContext, CAPTIVE_PORTAL_MODE_PROMPT);
     }
 
     @After
     public void tearDown() throws Exception {
+        setCaptivePortalMode(mContext, mOldCaptivePortalMode);
         getInstrumentation().getUiAutomation().dropShellPermissionIdentity();
     }
 
