@@ -41,12 +41,13 @@ import static android.telephony.SubscriptionManager.INVALID_SUBSCRIPTION_ID;
 
 import static androidx.test.platform.app.InstrumentationRegistry.getInstrumentation;
 
+import static com.android.compatibility.common.util.SystemUtil.runShellCommand;
 import static com.android.compatibility.common.util.SystemUtil.runWithShellPermissionIdentity;
+import static com.android.compatibility.common.util.TestUtils.waitUntil;
 import static com.android.internal.util.HexDump.hexStringToByteArray;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -119,6 +120,8 @@ public class VcnManagerTest extends VcnTestBase {
     private static final int TIMEOUT_MS = 500;
     private static final long SAFEMODE_TIMEOUT_MILLIS = TimeUnit.SECONDS.toMillis(35);
 
+    private static final int ACTIVE_SUB_ID_TIMEOUT_SECONDS = 60;
+
     private static final Executor INLINE_EXECUTOR = Runnable::run;
 
     private static final int TEST_NETWORK_MTU = 1500;
@@ -162,6 +165,8 @@ public class VcnManagerTest extends VcnTestBase {
 
         // Ensure Internet probing check will be performed on VCN networks
         setCaptivePortalMode(mContext, CAPTIVE_PORTAL_MODE_PROMPT);
+
+        runShellCommand("cmd connectivity airplane-mode disable");
     }
 
     @After
@@ -195,13 +200,17 @@ public class VcnManagerTest extends VcnTestBase {
         return buildVcnConfigBase().setIsTestModeProfile().build();
     }
 
-    private int verifyAndGetValidDataSubId() {
-        final int dataSubId = SubscriptionManager.getDefaultDataSubscriptionId();
-        assertNotEquals(
+    private int verifyAndGetValidDataSubId() throws Exception {
+        // Wait for an active sub ID to mitigate the cuttlefish test issue where the CTS will
+        // start before a valid data subId is ready. In most cases this should return immediately
+        // without needing to wait.
+        waitUntil(
                 "There must be an active data subscription to complete CTS",
-                INVALID_SUBSCRIPTION_ID,
-                dataSubId);
-        return dataSubId;
+                ACTIVE_SUB_ID_TIMEOUT_SECONDS,
+                () ->
+                        SubscriptionManager.getDefaultDataSubscriptionId()
+                                != INVALID_SUBSCRIPTION_ID);
+        return SubscriptionManager.getDefaultDataSubscriptionId();
     }
 
     @Test(expected = SecurityException.class)
