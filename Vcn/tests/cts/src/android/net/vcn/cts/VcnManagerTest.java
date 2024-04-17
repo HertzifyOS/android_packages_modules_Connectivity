@@ -1297,8 +1297,7 @@ public class VcnManagerTest extends VcnTestBase {
                         timeoutMillis);
 
                 // Verify that VCN Network is also lost in safemode
-                final Network lostVcnNetwork = cellNetworkCb.waitForLost();
-                assertEquals(vcnSetupResult.vcnNetwork, lostVcnNetwork);
+                cellNetworkCb.waitForLostNetwork(vcnSetupResult.vcnNetwork);
 
                 verifyVcnStatus(subGrp, VCN_STATUS_CODE_SAFE_MODE);
 
