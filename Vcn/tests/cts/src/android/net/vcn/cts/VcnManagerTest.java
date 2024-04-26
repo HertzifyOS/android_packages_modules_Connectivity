@@ -16,6 +16,8 @@
 
 package android.net.vcn.cts;
 
+import static android.content.pm.PackageManager.FEATURE_TELEPHONY;
+import static android.content.pm.PackageManager.FEATURE_TELEPHONY_SUBSCRIPTION;
 import static android.ipsec.ike.cts.IkeTunUtils.PortPair;
 import static android.net.ConnectivityDiagnosticsManager.DataStallReport.DETECTION_METHOD_DNS_EVENTS;
 import static android.net.ConnectivitySettingsManager.CAPTIVE_PORTAL_MODE_PROMPT;
@@ -36,7 +38,6 @@ import static android.net.vcn.VcnManager.VCN_STATUS_CODE_SAFE_MODE;
 import static android.net.vcn.VcnUnderlyingNetworkTemplate.MATCH_ANY;
 import static android.net.vcn.VcnUnderlyingNetworkTemplate.MATCH_FORBIDDEN;
 import static android.net.vcn.VcnUnderlyingNetworkTemplate.MATCH_REQUIRED;
-import static android.net.vcn.cts.VcnSystemRequirementsTest.assumeNotNullVcnDependencies;
 import static android.telephony.SubscriptionManager.INVALID_SUBSCRIPTION_ID;
 
 import static androidx.test.platform.app.InstrumentationRegistry.getInstrumentation;
@@ -52,7 +53,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
-import static org.junit.Assume.assumeNotNull;
+import static org.junit.Assume.assumeTrue;
 
 import android.annotation.NonNull;
 import android.annotation.Nullable;
@@ -157,10 +158,23 @@ public class VcnManagerTest extends VcnTestBase {
 
     @Before
     public void setUp() throws Exception {
-        // This test assumes the device supports VCN and its dependent system services. Refer to
-        // VcnSystemRequirementsTest for comprehensive verification of VCN system requirements.
-        assumeNotNullVcnDependencies(mContext);
-        assumeNotNull(mVcnManager);
+        final boolean hasFeatureTelephony =
+                mContext.getPackageManager().hasSystemFeature(FEATURE_TELEPHONY);
+        final boolean hasFeatureTelSubscription =
+                mContext.getPackageManager().hasSystemFeature(FEATURE_TELEPHONY_SUBSCRIPTION);
+        final boolean hasTelephonyFlag = hasFeatureTelephony || hasFeatureTelSubscription;
+
+        // Before V, only devices with FEATURE_TELEPHONY are required to run the tests. Starting
+        // from V, tests are also required on following cases:
+        //
+        // Device that has a non-null VcnManager even if it has neither of FEATURE_TELEPHONY or
+        // FEATURE_TELEPHONY_SUBSCRIPTION.
+        //
+        // Device that has FEATURE_TELEPHONY_SUBSCRIPTION. This should not be a new requirement
+        // since before V devices with FEATURE_TELEPHONY_SUBSCRIPTION are already enforced to have
+        // FEATURE_TELEPHONY.
+        assumeTrue(hasTelephonyFlag || mVcnManager != null);
+
         getInstrumentation().getUiAutomation().adoptShellPermissionIdentity();
 
         // Ensure Internet probing check will be performed on VCN networks
