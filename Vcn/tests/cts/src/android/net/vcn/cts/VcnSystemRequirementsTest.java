@@ -57,15 +57,6 @@ public class VcnSystemRequirementsTest {
                 context.getSystemService(TelephonyManager.class));
     }
 
-    // Package private for use in VcnManagerTest
-    static void assumeNotNullVcnDependencies(Context context) {
-        try {
-            assertNotNullVcnDependencies(context);
-        } catch (AssertionError e) {
-            assumeTrue(e.toString(), false);
-        }
-    }
-
     /**
      * This test verifies that devices with vendor API greater than or equal to V, and which support
      * FEATURE_TELEPHONY_SUBSCRIPTION, must also implement VCN and its dependent system services.
@@ -78,19 +69,6 @@ public class VcnSystemRequirementsTest {
         assumeTrue(hasFeatureTelSubscription);
 
         assertNotNullVcnDependencies(mContext);
-        assertNotNull("VcnManager must be present on this device", mVcnManager);
-    }
-
-    /**
-     * For devices with vendor API lower than V, it is not mandatory to support VCN or VCN's
-     * dependent system services. However, if all VCN dependencies are present, the device must
-     * support VCN.
-     */
-    @Test
-    public void testVcndDependenciesOnDevicesBeforeV() throws Exception {
-        assumeTrue(getVsrApiLevel() < VENDOR_API_FOR_ANDROID_V);
-        assumeNotNullVcnDependencies(mContext);
-
         assertNotNull("VcnManager must be present on this device", mVcnManager);
     }
 }
