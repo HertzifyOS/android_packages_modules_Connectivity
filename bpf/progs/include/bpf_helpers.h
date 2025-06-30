@@ -184,6 +184,9 @@ static long (*bpf_map_update_elem_unsafe)(const void* map, const void* key,
         BPF_FUNC_map_update_elem;
 static long (*bpf_map_delete_elem_unsafe)(const void* map,
                                           const void* key) = (void*)BPF_FUNC_map_delete_elem;
+typedef long (*callback)(const void *map, const void* key, void *value, void *ctx);
+static long (*bpf_for_each_map_elem_unsafe)(const void* map, callback fn, void *ctx, __u64 flags) =
+    (void*)BPF_FUNC_for_each_map_elem;
 static long (*bpf_ringbuf_output_unsafe)(const void* ringbuf,
                                          const void* data, __u64 size, __u64 flags) = (void*)
         BPF_FUNC_ringbuf_output;
@@ -377,6 +380,14 @@ static long (*bpf_sk_storage_delete_unsafe) (const void* sk_storage,
                                                                                                  \
     static inline __always_inline __unused long bpf_##the_map##_delete_elem(const KeyType* k) {  \
         return bpf_map_delete_elem_unsafe(&the_map, k);                                          \
+    };                                                                                           \
+                                                                                                 \
+    typedef long (for_each_##the_map##_callback)(                                                \
+        const void *map, const KeyType *k, ValueType *v, void *ctx);                             \
+                                                                                                 \
+    static inline __always_inline __unused long bpf_for_each_##the_map##_elem(                   \
+            for_each_##the_map##_callback fn, void *ctx) {                                       \
+        return bpf_for_each_map_elem_unsafe(&the_map, (callback)fn, (void*)ctx, 0);              \
     };
 
 #ifndef BPF_OBJ_NAME
