@@ -16,7 +16,6 @@
 
 package com.android.server.connectivity.mdns;
 
-import static com.android.server.connectivity.mdns.MdnsConstants.EMPTY_NETWORK_CAPABILITIES;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_LOCAL_NETWORK;
 import static android.net.NetworkCapabilities.TRANSPORT_CELLULAR;
 import static android.net.NetworkCapabilities.TRANSPORT_THREAD;
@@ -24,6 +23,7 @@ import static android.net.NetworkCapabilities.TRANSPORT_VPN;
 import static android.net.NetworkCapabilities.TRANSPORT_WIFI;
 
 import static com.android.net.module.util.HandlerUtils.ensureRunningOnHandlerThread;
+import static com.android.server.connectivity.mdns.MdnsConstants.EMPTY_NETWORK_CAPABILITIES;
 import static com.android.server.connectivity.mdns.util.MdnsUtils.isNetworkMatched;
 
 import android.annotation.NonNull;
@@ -57,7 +57,6 @@ import com.android.net.module.util.BitUtils;
 import com.android.net.module.util.CollectionUtils;
 import com.android.net.module.util.LinkPropertiesUtils.CompareResult;
 import com.android.net.module.util.SharedLog;
-import com.android.server.connectivity.mdns.MdnsFeatureFlags;
 
 import java.io.IOException;
 import java.net.NetworkInterface;
@@ -798,6 +797,21 @@ public class MdnsSocketProvider {
          */
         default void onAddressesChanged(@NonNull SocketKey socketKey,
                 @NonNull MdnsInterfaceSocket socket, @NonNull List<LinkAddress> addresses) {}
+
+        /**
+         * Notify that no socket was created for the SocketKey, or Network
+         *
+         * This indicates that a socket creation request on a particular network interface did not
+         * succeed because it did not support the mDNS capability.
+         */
+        default void onNoSocketCreated(@NonNull SocketKey socketKey) {}
+
+        /**
+         * Notify that a network with no active sockets was lost
+         *
+         * This indicates that a network with no active socket was lost.
+         */
+        default void onNetworkWithNoSocketDestroyed(@NonNull SocketKey socketKey) {}
     }
 
     /**
