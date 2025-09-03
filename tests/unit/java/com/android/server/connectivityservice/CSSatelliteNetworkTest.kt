@@ -43,7 +43,7 @@ import android.os.Process
 import android.os.UserHandle
 import android.util.ArraySet
 import com.android.net.module.util.CollectionUtils
-import com.android.server.ConnectivityService.PREFERENCE_ORDER_SATELLITE_FALLBACK
+import com.android.server.ConnectivityService.PREFERENCE_ORDER_APP_OPT_IN
 import com.android.testutils.DevSdkIgnoreRule
 import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo
 import com.android.testutils.DevSdkIgnoreRunner
@@ -130,7 +130,7 @@ class CSSatelliteNetworkTest : CSTest() {
         val config1 = NativeUidRangeConfig(
             satelliteNetId,
             uidRanges1,
-            PREFERENCE_ORDER_SATELLITE_FALLBACK
+            PREFERENCE_ORDER_APP_OPT_IN
         )
         updateSatelliteNetworkFallbackUids(uids, emptySet())
         netdInOrder.verify(netd).networkAddUidRangesParcel(config1)
@@ -142,7 +142,7 @@ class CSSatelliteNetworkTest : CSTest() {
         val config2 = NativeUidRangeConfig(
             satelliteNetId,
             uidRanges2,
-            PREFERENCE_ORDER_SATELLITE_FALLBACK
+            PREFERENCE_ORDER_APP_OPT_IN
         )
         updateSatelliteNetworkFallbackUids(uids, emptySet())
         netdInOrder.verify(netd).networkRemoveUidRangesParcel(config1)
@@ -199,7 +199,7 @@ class CSSatelliteNetworkTest : CSTest() {
                 NativeUidRangeConfig(
                     satelliteAgent.network.netId,
                     toUidRangeStableParcels(uidRangesForUids(uids)),
-                    PREFERENCE_ORDER_SATELLITE_FALLBACK
+                    PREFERENCE_ORDER_APP_OPT_IN
                 )
             )
         }
@@ -218,7 +218,7 @@ class CSSatelliteNetworkTest : CSTest() {
                     NativeUidRangeConfig(
                             satelliteAgent.network.netId,
                             toUidRangeStableParcels(uidRangesForUids(uids)),
-                            PREFERENCE_ORDER_SATELLITE_FALLBACK
+                            PREFERENCE_ORDER_APP_OPT_IN
                     )
             )
         }
@@ -353,7 +353,7 @@ class CSSatelliteNetworkTest : CSTest() {
         assertEquals(1, nris.size.toLong())
         assertTrue(nri.isMultilayerRequest)
         assertEquals(nri.uids, uidRangesForUids(uids))
-        assertEquals(PREFERENCE_ORDER_SATELLITE_FALLBACK, nri.mPreferenceOrder)
+        assertEquals(PREFERENCE_ORDER_APP_OPT_IN, nri.mPreferenceOrder)
     }
 
     private fun updateSatelliteNetworkFallbackUids(messagingUids: Set<Int>, optinUids: Set<Int>) {
