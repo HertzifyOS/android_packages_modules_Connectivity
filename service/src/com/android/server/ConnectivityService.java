@@ -384,6 +384,7 @@ import com.android.networkstack.apishim.BroadcastOptionsShimImpl;
 import com.android.networkstack.apishim.ConstantsShim;
 import com.android.networkstack.apishim.common.BroadcastOptionsShim;
 import com.android.networkstack.apishim.common.UnsupportedApiLevelException;
+import com.android.server.connectivity.AppOptInDefaultNetworkPolicy;
 import com.android.server.connectivity.ApplicationSelfCertifiedNetworkCapabilities;
 import com.android.server.connectivity.AutodestructReference;
 import com.android.server.connectivity.AutomaticOnOffKeepaliveTracker;
@@ -1756,10 +1757,12 @@ public class ConnectivityService extends IConnectivityManager.Stub
         @Nullable
         public AppOptInDefaultNetworkController makeAppOptInDefaultNetworkController(
                 @NonNull final Context context,
-                BiConsumer<Set<Integer>, Set<Integer>> updateSatelliteNetworkFallbackUidCallback,
+                Consumer<List<AppOptInDefaultNetworkPolicy>>
+                        handleUpdateAppOptInDefaultNetworkPoliciesCallback,
                 @NonNull final Handler connectivityServiceInternalHandler) {
             return new AppOptInDefaultNetworkController(context,
-                    updateSatelliteNetworkFallbackUidCallback, connectivityServiceInternalHandler);
+                    handleUpdateAppOptInDefaultNetworkPoliciesCallback,
+                    connectivityServiceInternalHandler);
         }
 
         /**
@@ -2200,7 +2203,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
                 && mDeps
                 .isFeatureNotChickenedOut(mContext, ALLOW_SATALLITE_NETWORK_FALLBACK)) {
             mAppOptInDefaultNetworkController = mDeps.makeAppOptInDefaultNetworkController(
-                    mContext, this::updateSatelliteNetworkPreferenceUids, mHandler);
+                    mContext, this::handleUpdateAppOptInDefaultNetworkPolicies, mHandler);
         } else {
             mAppOptInDefaultNetworkController = null;
         }
@@ -2479,24 +2482,6 @@ public class ConnectivityService extends IConnectivityManager.Stub
             @NonNull final ProxyInfo proxyInfo) {
         Message.obtain(mHandler, EVENT_PAC_PROXY_HAS_CHANGED,
                 new Pair<>(network, proxyInfo)).sendToTarget();
-    }
-
-    /**
-     * Called when satellite network fallback uids from the {@link AppOptInDefaultNetworkController}
-     * cache was updated based on {@link
-     * android.app.role.OnRoleHoldersChangedListener#onRoleHoldersChanged(String, UserHandle)}
-     * and self-certified applications, to create multilayer request with preference order
-     * {@link #PREFERENCE_ORDER_APP_OPT_IN}.
-     */
-    private void updateSatelliteNetworkPreferenceUids(
-            @NonNull final Set<Integer> messagingRoleUids,
-            @NonNull final Set<Integer> optinUids
-    ) {
-        if (CollectionUtils.containsAny(messagingRoleUids, optinUids)) {
-            throw new IllegalArgumentException("There can be no overlap between the "
-                    + "messagingRoleUids and the optinUids for satellite");
-        }
-        handleSetSatelliteNetworkPreference(messagingRoleUids, optinUids);
     }
 
     private void handleAlwaysOnNetworkRequest(
@@ -15165,12 +15150,41 @@ public class ConnectivityService extends IConnectivityManager.Stub
         return createNrisForPreferenceOrder(uids, requests, preferenceOrder);
     }
 
-    ArraySet<NetworkRequestInfo> createMultiLayerNrisFromSatelliteNetworkFallbackUids(
-            @NonNull final Set<Integer> messagingRoleUids,
-            @NonNull final Set<Integer> optinUids
-    ) {
-        // The messaging role UIDs should use any Internet-providing satellite network as
-        // a fallback, even if it is restricted.
+    /**
+     * Creates a set of NetworkRequestInfo objects from a list of arbitrated policies.
+     * This is the central, generic method for building requests based on policies from the
+     * AppOptInDefaultNetworkController.
+     *
+     * @param policies The list of arbitrated policies.
+     * @return An ArraySet of NetworkRequestInfo objects to be applied.
+     */
+    @VisibleForTesting
+    ArraySet<NetworkRequestInfo> createNrisFromAppOptInPolicies(
+            @NonNull List<AppOptInDefaultNetworkPolicy> policies) {
+        final ArraySet<NetworkRequestInfo> allNris = new ArraySet<>();
+        for (AppOptInDefaultNetworkPolicy policy : policies) {
+            final List<NetworkRequest> mlRequests = new ArrayList<>();
+
+            // System default network
+            mlRequests.add(createDefaultInternetRequestForTransport(
+                    TYPE_NONE, NetworkRequest.Type.TRACK_DEFAULT));
+
+            // Fallback Networks
+            if (policy.isSatelliteRoleSms()) {
+                mlRequests.add(getSatelliteRoleSmsRequest());
+            }
+
+            if (policy.isSatelliteOptIn()) {
+                mlRequests.add(getSatelliteOptInRequest());
+            }
+
+            allNris.addAll(createNrisForPreferenceOrder(policy.uids(), mlRequests,
+                    PREFERENCE_ORDER_APP_OPT_IN));
+        }
+        return allNris;
+    }
+
+    private NetworkRequest getSatelliteRoleSmsRequest() {
         final NetworkCapabilities messagingCap = new NetworkCapabilities.Builder()
                 .addCapability(NET_CAPABILITY_INTERNET)
                 .addCapability(NET_CAPABILITY_NOT_VCN_MANAGED)
@@ -15178,20 +15192,17 @@ public class ConnectivityService extends IConnectivityManager.Stub
                 .removeCapability(NET_CAPABILITY_NOT_BANDWIDTH_CONSTRAINED)
                 .addTransportType(NetworkCapabilities.TRANSPORT_SATELLITE)
                 .build();
-        final ArraySet<NetworkRequestInfo> requests = createNrisForFallbackDefault(
-                messagingRoleUids, messagingCap, PREFERENCE_ORDER_APP_OPT_IN);
+        return createNetworkRequest(NetworkRequest.Type.REQUEST, messagingCap);
+    }
 
-        // The apps that have opt-in should use any Internet-providing satellite network
-        // as a fallback, but not if it is restricted.
+    private NetworkRequest getSatelliteOptInRequest() {
         final NetworkCapabilities optinCap = new NetworkCapabilities.Builder()
                 .addCapability(NET_CAPABILITY_INTERNET)
                 .addCapability(NET_CAPABILITY_NOT_VCN_MANAGED)
                 .removeCapability(NET_CAPABILITY_NOT_BANDWIDTH_CONSTRAINED)
                 .addTransportType(NetworkCapabilities.TRANSPORT_SATELLITE)
                 .build();
-        requests.addAll(createNrisForFallbackDefault(
-                optinUids, optinCap, PREFERENCE_ORDER_APP_OPT_IN));
-        return requests;
+        return createNetworkRequest(NetworkRequest.Type.REQUEST, optinCap);
     }
 
     private Set<Integer> getMobileDataPreferredUids() {
@@ -15212,14 +15223,17 @@ public class ConnectivityService extends IConnectivityManager.Stub
         rematchAllNetworksAndRequests();
     }
 
-    private void handleSetSatelliteNetworkPreference(
-            @NonNull final Set<Integer> messagingRoleUids,
-            @NonNull final Set<Integer> optinUids
-    ) {
+    /**
+     * The callback method that receives the list of arbitrated network policies
+     * from the AppOptInDefaultNetworkController.
+     */
+    private void handleUpdateAppOptInDefaultNetworkPolicies(
+            @NonNull List<AppOptInDefaultNetworkPolicy> policies) {
+        ensureRunningOnConnectivityServiceThread();
+        if (DBG) Log.i(TAG, "handleUpdateAppOptInDefaultNetworkPolicies received: "
+                + policies);
         removeDefaultNetworkRequestsForPreference(PREFERENCE_ORDER_APP_OPT_IN);
-        addPerAppDefaultNetworkRequests(
-                createMultiLayerNrisFromSatelliteNetworkFallbackUids(messagingRoleUids, optinUids)
-        );
+        addPerAppDefaultNetworkRequests(createNrisFromAppOptInPolicies(policies));
         // Finally, rematch.
         rematchAllNetworksAndRequests();
     }

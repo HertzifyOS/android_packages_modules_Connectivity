@@ -408,6 +408,7 @@ import com.android.server.ConnectivityService.ConnectivityDiagnosticsCallbackInf
 import com.android.server.ConnectivityService.NetworkRequestInfo;
 import com.android.server.ConnectivityServiceTest.ConnectivityServiceDependencies.DestroySocketsWrapper;
 import com.android.server.ConnectivityServiceTest.ConnectivityServiceDependencies.ReportedInterfaces;
+import com.android.server.connectivity.AppOptInDefaultNetworkPolicy;
 import com.android.server.connectivity.ApplicationSelfCertifiedNetworkCapabilities;
 import com.android.server.connectivity.AutomaticOnOffKeepaliveTracker;
 import com.android.server.connectivity.CarrierPrivilegeAuthenticator;
@@ -2115,7 +2116,7 @@ public class ConnectivityServiceTest {
         @Override
         public AppOptInDefaultNetworkController makeAppOptInDefaultNetworkController(
                 @NonNull final Context context,
-                BiConsumer<Set<Integer>, Set<Integer>> updateSatelliteNetworkFallbackUidCallback,
+                Consumer<List<AppOptInDefaultNetworkPolicy>> updateAppOptInDefaultNetworkPolicies,
                 @NonNull final Handler connectivityServiceInternalHandler) {
             return mAppOptInDefaultNetworkController;
         }

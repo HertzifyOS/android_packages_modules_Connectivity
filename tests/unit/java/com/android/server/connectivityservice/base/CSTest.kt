@@ -92,6 +92,7 @@ import com.android.server.connectivity.PermissionMonitor
 import com.android.server.connectivity.ProxyTracker
 import com.android.server.connectivity.QuicConnectionCloser
 import com.android.server.connectivity.AppOptInDefaultNetworkController
+import com.android.server.connectivity.AppOptInDefaultNetworkPolicy
 import com.android.testutils.ContentResolverWithFakeSettingsProvider
 import com.android.testutils.visibleOnHandlerThread
 import com.android.testutils.waitForIdle
@@ -372,13 +373,14 @@ open class CSTest {
                 listener: BiConsumer<Int, Int>,
                 handler: Handler
         ) = if (SdkLevel.isAtLeastT()) mock<CarrierPrivilegeAuthenticator>() else null
-        var satelliteNetworkFallbackUidUpdate = BiConsumer<Set<Int>, Set<Int>> {_, _ -> }
+        var appOptInDefaultNetworkPoliciesUpdate =
+                Consumer<List<AppOptInDefaultNetworkPolicy>> { _ -> }
         override fun makeAppOptInDefaultNetworkController(
-            context: Context,
-            updateSatelliteNetworkFallackUid: BiConsumer<Set<Int>, Set<Int>>,
-            csHandlerThread: Handler
+                context: Context,
+                updateAppOptInDefaultNetworkPolicies: Consumer<List<AppOptInDefaultNetworkPolicy>>,
+                csHandlerThread: Handler
         ): AppOptInDefaultNetworkController? {
-            satelliteNetworkFallbackUidUpdate = updateSatelliteNetworkFallackUid
+            appOptInDefaultNetworkPoliciesUpdate = updateAppOptInDefaultNetworkPolicies
             return appOptInDefaultNetworkController
         }
 
