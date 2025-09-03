@@ -574,6 +574,9 @@ public class NsdService extends INsdManager.Stub {
                 // Errors are already logged if null
                 return;
             }
+            // Ensure the picker always knows about the interface index. This is reset before
+            // sending callbacks to apps.
+            nsdServiceInfo.setInterfaceIndex(serviceInfo.getInterfaceIndex());
             try {
                 if (eventCode == NsdManager.SERVICE_FOUND) {
                     mServiceReceiver.onServiceFound(nsdServiceInfo);
@@ -639,11 +642,17 @@ public class NsdService extends INsdManager.Stub {
             mAccessRepository.addAllowedService(mClientInfo.mUid, service.getServiceName(),
                     serviceTypeNoDot);
             mClientInfo.log("Service selected for request " + mClientRequestId + ": " + service);
+            final int ifIndex = service.getInterfaceIndex();
+            if (service.getNetwork() != null) {
+                // As documented in NsdServiceInfo#getInterfaceIndex, the interface index is only
+                // sent back to apps when the network is null
+                service.setInterfaceIndex(0);
+            }
             // Metrics are already recorded when the service was discovered; only call the
             // client callbacks without recording metrics.
             // TODO: add metric for service selected
             if (mIsServiceInfoCallback) {
-                mClientInfo.tryNotifyServiceUpdated(mClientRequestId, service);
+                mClientInfo.tryNotifyServiceUpdated(mClientRequestId, service, ifIndex, request);
             } else {
                 mClientInfo.tryNotifyServiceFound(mClientRequestId, service);
             }
@@ -2251,7 +2260,7 @@ public class NsdService extends INsdManager.Stub {
             setServiceNetworkForCallback(clientInfo.mResolvedService,
                     netId, info.interfaceIdx);
             clientInfo.onResolveServiceSucceeded(
-                    clientRequestId, clientInfo.mResolvedService, request);
+                    clientRequestId, clientInfo.mResolvedService, info.interfaceIdx, request);
         } else {
             clientInfo.onResolveServiceFailed(clientRequestId,
                     NsdManager.FAILURE_INTERNAL_ERROR, true /* isLegacy */,
@@ -2423,7 +2432,8 @@ public class NsdService extends INsdManager.Stub {
         if (addresses.size() != 0) {
             info.setHostAddresses(addresses);
             request.setServiceFromCache(event.mIsServiceFromCache);
-            clientInfo.onResolveServiceSucceeded(clientRequestId, info, request);
+            clientInfo.onResolveServiceSucceeded(clientRequestId, info,
+                    serviceInfo.getInterfaceIndex(), request);
         } else {
             // No address. Notify resolution failure.
             clientInfo.onResolveServiceFailed(clientRequestId,
@@ -2461,7 +2471,8 @@ public class NsdService extends INsdManager.Stub {
         info.setHostname(getHostname(serviceInfo));
         final List<InetAddress> addresses = getInetAddresses(serviceInfo);
         info.setHostAddresses(addresses);
-        clientInfo.onServiceUpdated(clientRequestId, info, request);
+        clientInfo.onServiceUpdated(clientRequestId, info, serviceInfo.getInterfaceIndex(),
+                request);
         // Set the ServiceFromCache flag only if the service is actually being
         // retrieved from the cache. This flag should not be overridden by later
         // service updates, which may not be cached.
@@ -4320,7 +4331,7 @@ public class NsdService extends INsdManager.Stub {
             }
         }
 
-        void onResolveServiceSucceeded(int listenerKey, NsdServiceInfo info,
+        void onResolveServiceSucceeded(int listenerKey, NsdServiceInfo info, int ifIndex,
                 ClientRequest request) {
             mMetrics.reportServiceResolved(
                     isLegacyClientRequest(request),
@@ -4329,6 +4340,7 @@ public class NsdService extends INsdManager.Stub {
                     request.isServiceFromCache(),
                     request.getSentQueryCount());
             maybeFinishDataDelivery(request);
+            maybeAllowLocalNetAccess(ifIndex, info, request);
             try {
                 mCb.onResolveServiceSucceeded(listenerKey, info);
             } catch (RemoteException e) {
@@ -4386,12 +4398,15 @@ public class NsdService extends INsdManager.Stub {
             mMetrics.reportServiceInfoCallbackRegistered(transactionId);
         }
 
-        void onServiceUpdated(int listenerKey, NsdServiceInfo info, ClientRequest request) {
+        void onServiceUpdated(int listenerKey, NsdServiceInfo info, int ifIndex,
+                ClientRequest request) {
             request.onServiceFound(info.getServiceName());
-            tryNotifyServiceUpdated(listenerKey, info);
+            tryNotifyServiceUpdated(listenerKey, info, ifIndex, request);
         }
 
-        void tryNotifyServiceUpdated(int listenerKey, NsdServiceInfo info) {
+        void tryNotifyServiceUpdated(int listenerKey, NsdServiceInfo info, int ifIndex,
+                ClientRequest request) {
+            maybeAllowLocalNetAccess(ifIndex, info, request);
             try {
                 mCb.onServiceUpdated(listenerKey, info);
             } catch (RemoteException e) {
@@ -4431,6 +4446,13 @@ public class NsdService extends INsdManager.Stub {
         void maybeFinishDataDelivery(@NonNull ClientRequest request) {
             if (request.usingLocalNetworkPermission()) {
                 finishDataDelivery(mUid, mPid);
+            }
+        }
+
+        void maybeAllowLocalNetAccess(int ifIndex, NsdServiceInfo info, ClientRequest request) {
+            if (isAtLeastB() && mEnablePicker && !request.usingLocalNetworkPermission()) {
+                mContext.getSystemService(ConnectivityManager.class)
+                        .allowLocalNetAccess(mUid, ifIndex, info.getHostAddresses());
             }
         }
     }
