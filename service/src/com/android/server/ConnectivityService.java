@@ -170,7 +170,6 @@ import static com.android.server.connectivity.ConnectivityFlags.INGRESS_TO_VPN_A
 import static com.android.server.connectivity.ConnectivityFlags.NAMESPACE_TETHERING_BOOT;
 import static com.android.server.connectivity.ConnectivityFlags.QUEUE_CALLBACKS_FOR_FROZEN_APPS;
 import static com.android.server.connectivity.ConnectivityFlags.QUEUE_NETWORK_AGENT_EVENTS_AFTER_B;
-import static com.android.server.connectivity.ConnectivityFlags.REQUEST_RESTRICTED_WIFI;
 import static com.android.server.connectivity.ConnectivityFlags.SATISFIED_BY_LOCAL_NETWORK_METRICS;
 import static com.android.server.connectivity.ConnectivityFlags.USE_SATELLITE_REPORTED_SUSPENDED_AND_ROAMING;
 import static com.android.server.connectivity.ConnectivityFlags.WIFI_DATA_INACTIVITY_TIMEOUT;
@@ -2165,8 +2164,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
         mTelephonyManager = (TelephonyManager) mContext.getSystemService(Context.TELEPHONY_SERVICE);
         mAppOpsManager = (AppOpsManager) mContext.getSystemService(Context.APP_OPS_SERVICE);
         mLocationPermissionChecker = mDeps.makeLocationPermissionChecker(mContext);
-        mRequestRestrictedWifiEnabled = mDeps.isAtLeastU()
-                && mDeps.isFeatureNotChickenedOut(context, REQUEST_RESTRICTED_WIFI);
+        mRequestRestrictedWifiEnabled = mDeps.isAtLeastU();
         mBackgroundFirewallChainEnabled = mDeps.isAtLeastV() && mDeps.isFeatureNotChickenedOut(
                 context, ConnectivityFlags.BACKGROUND_FIREWALL_CHAIN);
         mUseDeclaredMethodsForCallbacksEnabled =

@@ -186,7 +186,6 @@ open class CSTest {
     // permissions using static contexts.
     val enabledFeatures = HashMap<String, Boolean>().also {
         it[ConnectivityFlags.NO_REMATCH_ALL_REQUESTS_ON_REGISTER] = true
-        it[ConnectivityFlags.REQUEST_RESTRICTED_WIFI] = true
         it[ConnectivityService.KEY_DESTROY_FROZEN_SOCKETS_VERSION] = true
         it[ConnectivityService.ALLOW_SYSUI_CONNECTIVITY_REPORTS] = true
         it[ConnectivityService.ALLOW_SATALLITE_NETWORK_FALLBACK] = true
@@ -361,8 +360,13 @@ open class CSTest {
         ) =
             (cr as ContentResolverWithFakeSettingsProvider).registerContentObserver(uri, observer)
 
-        override fun registerContentObserverAsUser(cr: ContentResolver, uri: Uri,
-            notifyForDescendants: Boolean, observer: ContentObserver, userHandle: UserHandle) =
+        override fun registerContentObserverAsUser(
+            cr: ContentResolver,
+            uri: Uri,
+            notifyForDescendants: Boolean,
+            observer: ContentObserver,
+            userHandle: UserHandle
+        ) =
             context.getContentResolver().registerContentObserverAsUser(uri, observer, userHandle)
 
         override fun makeCarrierPrivilegeAuthenticator(
