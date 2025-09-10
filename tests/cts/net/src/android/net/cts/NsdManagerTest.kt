@@ -634,10 +634,10 @@ class NsdManagerTest {
         val si = makeTestServiceInfo()
         val registrationRecord = NsdRegistrationRecord()
         val registeredInfo = registerService(registrationRecord, si)
+        val discoveryRecord = NsdDiscoveryRecord()
         tryTest {
             val resolveRecord = NsdResolveRecord()
 
-            val discoveryRecord = NsdDiscoveryRecord()
             nsdManager.discoverServices(serviceType, NsdManager.PROTOCOL_DNS_SD, discoveryRecord)
 
             val foundInfo1 = discoveryRecord.waitForServiceDiscovered(
@@ -661,8 +661,9 @@ class NsdManagerTest {
             }
             // TODO: check that MDNS packets are sent only on testNetwork1.
         } cleanupStep {
-            nsdManager.unregisterService(registrationRecord)
+            nsdManager.stopServiceDiscovery(discoveryRecord)
         } cleanup {
+            nsdManager.unregisterService(registrationRecord)
             registrationRecord.expectCallback<ServiceUnregistered>()
         }
     }
@@ -701,8 +702,12 @@ class NsdManagerTest {
                     serviceName, serviceType, testNetwork1.network)
             assertEquals(testNetwork1.network, foundInfo3.network)
         } cleanupStep {
+            nsdManager.stopServiceDiscovery(discoveryRecord)
             nsdManager.stopServiceDiscovery(discoveryRecord2)
+            nsdManager.stopServiceDiscovery(discoveryRecord3)
+            discoveryRecord.expectCallback<DiscoveryStopped>()
             discoveryRecord2.expectCallback<DiscoveryStopped>()
+            discoveryRecord3.expectCallback<DiscoveryStopped>()
         } cleanup {
             nsdManager.unregisterService(registrationRecord)
         }
@@ -721,10 +726,10 @@ class NsdManagerTest {
         val registrationRecord = NsdRegistrationRecord()
         nsdManager.registerService(si, NsdManager.PROTOCOL_DNS_SD, registrationRecord)
         registrationRecord.expectCallback<ServiceRegistered>(REGISTRATION_TIMEOUT_MS)
+        val discoveryRecord = NsdDiscoveryRecord()
 
         tryTest {
             // Discover that service name.
-            val discoveryRecord = NsdDiscoveryRecord()
             nsdManager.discoverServices(
                 serviceType, NsdManager.PROTOCOL_DNS_SD, discoveryRecord
             )
@@ -737,8 +742,10 @@ class NsdManagerTest {
             val resolvedCb = resolveRecord.expectCallback<ServiceResolved>()
             assertEquals(foundInfo.serviceName, resolvedCb.serviceInfo.serviceName)
         } cleanupStep {
-            nsdManager.unregisterService(registrationRecord)
+            nsdManager.stopServiceDiscovery(discoveryRecord)
+            discoveryRecord.expectCallback<DiscoveryStopped>()
         } cleanup {
+            nsdManager.unregisterService(registrationRecord)
             registrationRecord.expectCallback<ServiceUnregistered>()
         }
     }
@@ -918,6 +925,99 @@ class NsdManagerTest {
         } cleanup {
             nsdManager.unregisterService(record1)
             record1.expectCallback<ServiceUnregistered>()
+        }
+    }
+
+    private fun checkSelectiveMdnsResponseOffloadServiceInfo(
+        serviceName: String,
+        serviceType: String,
+        subtypes: List<String>,
+        hostName: String,
+        serviceInfo: OffloadServiceInfo,
+    ) {
+        val expected = OffloadServiceInfo(
+            OffloadServiceInfo.Key(serviceName, serviceType),
+            subtypes,
+            hostName,
+            null /* offloadPayload */,
+            0 /* priority */,
+            OffloadEngine.OFFLOAD_TYPE_FILTER_REPLIES.toLong()
+        )
+        assertEquals(expected, serviceInfo)
+    }
+
+    @Test
+    fun testNsdManager_registerOffloadEngine_discoveryAndResolution() {
+        val isSelectiveMdnsResponseOffloadEnabled = runAsShell(READ_DEVICE_CONFIG) {
+            Flags.nsdSelectiveMdnsResponseOffload()
+        }
+        assumeTrue(isSelectiveMdnsResponseOffloadEnabled)
+
+        val discoveryRecord = NsdDiscoveryRecord()
+        val resolveRecord = NsdResolveRecord()
+        val offloadEngine = TestNsdOffloadEngine()
+        val si = makeTestServiceInfo(testNetwork1.network)
+
+        tryTest {
+            // Start discovery before the OffloadEngine is registered.
+            val discoveryRequest = DiscoveryRequest.Builder(serviceType)
+                .setSubtype("_subtype")
+                .setNetwork(testNetwork1.network)
+                .build()
+            nsdManager.discoverServices(discoveryRequest, { it.run() }, discoveryRecord)
+            discoveryRecord.expectCallback<DiscoveryStarted>()
+
+            runAsShell(NETWORK_SETTINGS) {
+                nsdManager.registerOffloadEngine(testNetwork1.iface.interfaceName,
+                    OffloadEngine.OFFLOAD_TYPE_FILTER_REPLIES.toLong(),
+                    0L, /* offloadCapability */
+                    { it.run() }, offloadEngine)
+            }
+
+            // Check discovery info is offloaded.
+            val discoveryInfoEvent =
+                offloadEngine.expectCallback<TestNsdOffloadEngine.OffloadEvent.AddOrUpdateEvent>()
+            checkSelectiveMdnsResponseOffloadServiceInfo(
+                "" /* serviceName */,
+                "$serviceType.local" /* serviceType */,
+                listOf("subtype") /* subTypes */,
+                "" /* hostName */,
+                discoveryInfoEvent.info
+            )
+
+            // Start resolution after the OffloadEngine is registered.
+            nsdManager.resolveService(si, { it.run() }, resolveRecord)
+
+            // Check resolution info is offloaded.
+            val resolutionInfoEvent =
+                offloadEngine.expectCallback<TestNsdOffloadEngine.OffloadEvent.AddOrUpdateEvent>()
+            checkSelectiveMdnsResponseOffloadServiceInfo(
+                si.serviceName /* serviceName */,
+                "$serviceType.local" /* serviceType */,
+                listOf() /* subTypes */,
+                "" /* hostName */,
+                resolutionInfoEvent.info
+            )
+
+            // Stop resolution and check info is removed.
+            nsdManager.stopServiceResolution(resolveRecord)
+            resolveRecord.expectCallback<ResolutionStopped>()
+            val removeResolutionInfoEvent =
+                offloadEngine.expectCallback<TestNsdOffloadEngine.OffloadEvent.RemoveEvent>()
+            checkSelectiveMdnsResponseOffloadServiceInfo(
+                si.serviceName /* serviceName */,
+                "$serviceType.local" /* serviceType */,
+                listOf() /* subTypes */,
+                "" /* hostName */,
+                removeResolutionInfoEvent.info
+            )
+        } cleanupStep {
+            runAsShell(NETWORK_SETTINGS) {
+                nsdManager.unregisterOffloadEngine(offloadEngine)
+            }
+        } cleanup {
+            nsdManager.stopServiceDiscovery(discoveryRecord)
+            discoveryRecord.expectCallback<DiscoveryStopped>()
         }
     }
 
