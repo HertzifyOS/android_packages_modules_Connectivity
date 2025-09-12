@@ -65,7 +65,9 @@ cc_aconfig_library {
     name: "libtetheringflags",
     aconfig_declarations: "tethering.readonly.flags",
     mode: "force-read-only",
-    shared: { enabled: false },
+    shared: {
+        enabled: false,
+    },
     min_sdk_version: "30",
     apex_available: [
         "com.android.tethering",
@@ -119,6 +121,15 @@ java_aconfig_library {
     name: "com.android.net.thread.flags-aconfig-java",
     aconfig_declarations: "com.android.net.thread.flags-aconfig",
     defaults: ["framework-minus-apex-aconfig-java-defaults"],
+    min_sdk_version: "30",
+    apex_available: [
+        "com.android.tethering",
+    ],
+}
+
+cc_aconfig_library {
+    name: "libthreadflags",
+    aconfig_declarations: "com.android.net.thread.flags-aconfig",
     min_sdk_version: "30",
     apex_available: [
         "com.android.tethering",
