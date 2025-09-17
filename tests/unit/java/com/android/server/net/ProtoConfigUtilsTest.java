@@ -36,6 +36,7 @@ import com.android.server.network.configstore.proto.NetworkConfigStoreProto.Ethe
 import com.android.server.network.configstore.proto.NetworkConfigStoreProto.LinkAddressProto;
 import com.android.server.network.configstore.proto.NetworkConfigStoreProto.ManualProxyConfigProto;
 import com.android.server.network.configstore.proto.NetworkConfigStoreProto.MeteredOverrideProto;
+import com.android.server.network.configstore.proto.NetworkConfigStoreProto.PacUrlConfigProto;
 import com.android.server.network.configstore.proto.NetworkConfigStoreProto.StaticIpv4ConfigurationProto;
 import com.android.testutils.DevSdkIgnoreRule;
 import com.android.testutils.DevSdkIgnoreRunner;
@@ -291,5 +292,56 @@ public class ProtoConfigUtilsTest {
         assertThrows("ManualProxyConfigProto must not be null.",
                 NullPointerException.class,
                 () -> ProtoConfigUtils.convertManualProxyProtoToProxyInfo(null));
+    }
+
+    @Test
+    public void testConvertProxyInfoToPacProxyProto() {
+        final PacUrlConfigProto proto =
+                ProtoConfigUtils.convertProxyInfoToPacProxyProto(PAC_PROXY_INFO);
+
+        assertNotNull(proto);
+        Assert.assertEquals(PAC_URL, proto.getPacUrl());
+    }
+
+    @Test
+    public void testConvertProxyInfoToPacProxyProto_nullInput() {
+        assertThrows("ProxyInfo must not be null.",
+                NullPointerException.class,
+                () -> ProtoConfigUtils.convertProxyInfoToPacProxyProto(null));
+    }
+
+    @Test
+    public void testConvertProxyInfoToPacProxyProto_nullPacUrl() {
+        final ProxyInfo proxyInfoWithNullPac = ProxyInfo.buildDirectProxy(PROXY_HOST, PROXY_PORT);
+        assertThrows("PAC URL is null or empty",
+                IllegalArgumentException.class,
+                () -> ProtoConfigUtils.convertProxyInfoToPacProxyProto(proxyInfoWithNullPac));
+    }
+
+    @Test
+    public void testConvertProxyInfoToPacProxyProto_emptyPacUrl() {
+        final ProxyInfo proxyInfoWithEmptyPac = ProxyInfo.buildPacProxy(Uri.EMPTY);
+        assertThrows("PAC URL is null or empty",
+                IllegalArgumentException.class,
+                () -> ProtoConfigUtils.convertProxyInfoToPacProxyProto(proxyInfoWithEmptyPac));
+    }
+
+    @Test
+    public void testConvertPacProxyProtoToProxyInfo() {
+        final PacUrlConfigProto proto = PacUrlConfigProto.newBuilder()
+                .setPacUrl(PAC_URL)
+                .build();
+
+        final ProxyInfo proxyInfo = ProtoConfigUtils.convertPacProxyProtoToProxyInfo(proto);
+
+        assertNotNull(proxyInfo);
+        assertEquals(PAC_PROXY_INFO, proxyInfo);
+    }
+
+    @Test
+    public void testConvertPacProxyProtoToProxyInfo_nullInput() {
+        assertThrows("PacUrlConfigProto must not be null.",
+                NullPointerException.class,
+                () -> ProtoConfigUtils.convertPacProxyProtoToProxyInfo(null));
     }
 }

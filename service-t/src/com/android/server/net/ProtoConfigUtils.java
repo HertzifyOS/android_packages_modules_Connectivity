@@ -25,6 +25,7 @@ import android.net.LinkAddress;
 import android.net.MacAddress;
 import android.net.ProxyInfo;
 import android.net.StaticIpConfiguration;
+import android.net.Uri;
 import android.text.TextUtils;
 import android.util.Log;
 
@@ -32,6 +33,7 @@ import com.android.server.network.configstore.proto.NetworkConfigStoreProto.Ethe
 import com.android.server.network.configstore.proto.NetworkConfigStoreProto.LinkAddressProto;
 import com.android.server.network.configstore.proto.NetworkConfigStoreProto.ManualProxyConfigProto;
 import com.android.server.network.configstore.proto.NetworkConfigStoreProto.MeteredOverrideProto;
+import com.android.server.network.configstore.proto.NetworkConfigStoreProto.PacUrlConfigProto;
 import com.android.server.network.configstore.proto.NetworkConfigStoreProto.StaticIpv4ConfigurationProto;
 
 import java.net.Inet4Address;
@@ -246,5 +248,27 @@ public class ProtoConfigUtils {
                 manualProxy.getHost(),
                 manualProxy.getPort(),
                 manualProxy.getExclusionHostsList());
+    }
+
+    /**
+     * Converts a {@link ProxyInfo} object to a corresponding {@link PacUrlConfigProto} object.
+     *
+     * @throws IllegalArgumentException if the {@code proxyInfo} does not contain a valid PAC URL.
+     */
+    public static PacUrlConfigProto convertProxyInfoToPacProxyProto(ProxyInfo proxyInfo) {
+        requireNonNull(proxyInfo, "ProxyInfo must not be null.");
+        final Uri url = proxyInfo.getPacFileUrl();
+        if (url == null || Uri.EMPTY.equals(url)) {
+            throw new IllegalArgumentException("PAC URL is null or empty");
+        }
+        return PacUrlConfigProto.newBuilder().setPacUrl(url.toString()).build();
+    }
+
+    /**
+     * Converts a {@link PacUrlConfigProto} object to a corresponding {@link ProxyInfo} object.
+     */
+    public static ProxyInfo convertPacProxyProtoToProxyInfo(PacUrlConfigProto pacProxy) {
+        requireNonNull(pacProxy, "PacUrlConfigProto must not be null.");
+        return ProxyInfo.buildPacProxy(Uri.parse(pacProxy.getPacUrl()));
     }
 }
