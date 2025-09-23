@@ -2244,7 +2244,6 @@ public class ConnectivityServiceTest {
                 case ConnectivityFlags.INGRESS_TO_VPN_ADDRESS_FILTERING:
                 case ConnectivityFlags.BACKGROUND_FIREWALL_CHAIN:
                 case ConnectivityFlags.DELAY_DESTROY_SOCKETS:
-                case ConnectivityFlags.REQUEST_RESTRICTED_WIFI:
                 case ConnectivityFlags.USE_DECLARED_METHODS_FOR_CALLBACKS:
                 case ConnectivityFlags.QUEUE_CALLBACKS_FOR_FROZEN_APPS:
                 case ConnectivityFlags.QUEUE_NETWORK_AGENT_EVENTS_AFTER_B:
