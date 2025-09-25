@@ -91,7 +91,7 @@ import com.android.server.connectivity.NetworkRequestStateStatsMetrics
 import com.android.server.connectivity.PermissionMonitor
 import com.android.server.connectivity.ProxyTracker
 import com.android.server.connectivity.QuicConnectionCloser
-import com.android.server.connectivity.SatelliteAccessController
+import com.android.server.connectivity.AppOptInDefaultNetworkController
 import com.android.testutils.ContentResolverWithFakeSettingsProvider
 import com.android.testutils.visibleOnHandlerThread
 import com.android.testutils.waitForIdle
@@ -253,7 +253,7 @@ open class CSTest {
     val bluetoothManager = mock<BluetoothManager>()
 
     val multicastRoutingCoordinatorService = mock<MulticastRoutingCoordinatorService>()
-    val satelliteAccessController = mock<SatelliteAccessController>()
+    val appOptInDefaultNetworkController = mock<AppOptInDefaultNetworkController>()
     val satelliteCoarseUsageMetricsCollector = mock<SatelliteCoarseUsageMetricsCollector>()
     val defaultNetworkRematchMetrics = mock<DefaultNetworkRematchMetrics>()
     val satisfiedByLocalNetworkMetrics = mock<SatisfiedByLocalNetworkMetrics>()
@@ -377,13 +377,13 @@ open class CSTest {
                 handler: Handler
         ) = if (SdkLevel.isAtLeastT()) mock<CarrierPrivilegeAuthenticator>() else null
         var satelliteNetworkFallbackUidUpdate = BiConsumer<Set<Int>, Set<Int>> {_, _ -> }
-        override fun makeSatelliteAccessController(
+        override fun makeAppOptInDefaultNetworkController(
             context: Context,
             updateSatelliteNetworkFallackUid: BiConsumer<Set<Int>, Set<Int>>,
             csHandlerThread: Handler
-        ): SatelliteAccessController? {
+        ): AppOptInDefaultNetworkController? {
             satelliteNetworkFallbackUidUpdate = updateSatelliteNetworkFallackUid
-            return satelliteAccessController
+            return appOptInDefaultNetworkController
         }
 
         override fun makeSatelliteCoarseUsageMetricsCollector(

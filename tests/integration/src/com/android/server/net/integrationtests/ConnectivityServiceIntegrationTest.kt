@@ -67,7 +67,7 @@ import com.android.server.connectivity.MockableSystemProperties
 import com.android.server.connectivity.MultinetworkPolicyTracker
 import com.android.server.connectivity.PermissionMonitor
 import com.android.server.connectivity.ProxyTracker
-import com.android.server.connectivity.SatelliteAccessController
+import com.android.server.connectivity.AppOptInDefaultNetworkController
 import com.android.testutils.DevSdkIgnoreRunner
 import com.android.testutils.DeviceInfoUtils
 import com.android.testutils.TestableNetworkCallback
@@ -303,12 +303,12 @@ class ConnectivityServiceIntegrationTest {
             )
         }
 
-        override fun makeSatelliteAccessController(
+        override fun makeAppOptInDefaultNetworkController(
             context: Context,
             updateSatellitePreferredUid: BiConsumer<Set<Int>, Set<Int>>,
             connectivityServiceInternalHandler: Handler
-        ): SatelliteAccessController? = mock(
-            SatelliteAccessController::class.java
+        ): AppOptInDefaultNetworkController? = mock(
+            AppOptInDefaultNetworkController::class.java
         )
 
         override fun makeL2capNetworkProvider(context: Context) = null

@@ -23,7 +23,7 @@ import android.net.NetworkCapabilities.TRANSPORT_CELLULAR
 import android.net.NetworkCapabilities.TRANSPORT_WIFI
 import android.net.UidRange
 import android.os.Build
-import com.android.server.ConnectivityService.PREFERENCE_ORDER_SATELLITE_FALLBACK
+import com.android.server.ConnectivityService.PREFERENCE_ORDER_APP_OPT_IN
 import com.android.server.ConnectivityStatsLog.DEFAULT_NETWORK_REMATCH__REMATCH_REASON__RMR_NETWORK_DISCONNECTED
 import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo
 import com.android.testutils.DevSdkIgnoreRunner
@@ -131,7 +131,7 @@ class CSDefaultNetworkRematchMetricsTest : CSTest() {
     ) {
         inOrder.verify(defaultNetworkRematchMetrics).addEvent(
                 argThat {
-                    it.preferenceOrderForNetd == PREFERENCE_ORDER_SATELLITE_FALLBACK &&
+                    it.preferenceOrderForNetd == PREFERENCE_ORDER_APP_OPT_IN &&
                             it.uids.contains(UidRange(expectedUid, expectedUid))
                 },
                 argThat { it?.network == oldNetwork },

@@ -59,8 +59,8 @@ import javax.annotation.CheckReturnValue;
  * Note that this class is not thread safe and should only be accessed on the handler
  * thread, except {@link #start()}.
  */
-public class SatelliteAccessController {
-    private static final String TAG = SatelliteAccessController.class.getSimpleName();
+public class AppOptInDefaultNetworkController {
+    private static final String TAG = AppOptInDefaultNetworkController.class.getSimpleName();
     // Shamelessly copied from telephony/satellite/SatelliteManager.java.
     // TODO: Import from SatelliteManager when it is available.
     @VisibleForTesting
@@ -115,7 +115,7 @@ public class SatelliteAccessController {
         }
     }
 
-    public SatelliteAccessController(@NonNull final Context c,
+    public AppOptInDefaultNetworkController(@NonNull final Context c,
             BiConsumer<Set<Integer>, Set<Integer>> callback,
             @NonNull final Handler connectivityServiceInternalHandler) {
         this(c, new Dependencies(c), callback, connectivityServiceInternalHandler);
@@ -147,7 +147,7 @@ public class SatelliteAccessController {
     }
 
     @VisibleForTesting
-    SatelliteAccessController(@NonNull final Context c, @NonNull final Dependencies deps,
+    AppOptInDefaultNetworkController(@NonNull final Context c, @NonNull final Dependencies deps,
             BiConsumer<Set<Integer>, Set<Integer>> callback,
             @NonNull final Handler connectivityServiceInternalHandler) {
         mContext = c;
@@ -484,7 +484,7 @@ public class SatelliteAccessController {
     /** Dump info to dumpsys */
     public void dump(@NonNull IndentingPrintWriter pw) {
         HandlerUtils.ensureRunningOnHandlerThread(mConnectivityServiceHandler);
-        pw.println("SatelliteAccessController:");
+        pw.println("AppOptInDefaultNetworkController:");
         pw.increaseIndent();
         pw.println("SupportConstrainedDataSatelliteOptIn: "
                 + mSupportConstrainedDataSatelliteOptIn);

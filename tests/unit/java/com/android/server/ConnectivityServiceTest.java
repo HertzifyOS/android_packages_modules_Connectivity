@@ -426,7 +426,7 @@ import com.android.server.connectivity.PermissionMonitor;
 import com.android.server.connectivity.ProxyTracker;
 import com.android.server.connectivity.QosCallbackTracker;
 import com.android.server.connectivity.QuicConnectionCloser;
-import com.android.server.connectivity.SatelliteAccessController;
+import com.android.server.connectivity.AppOptInDefaultNetworkController;
 import com.android.server.connectivity.TcpKeepaliveController;
 import com.android.server.connectivity.UidRangeUtils;
 import com.android.server.net.NetworkPinner;
@@ -654,7 +654,8 @@ public class ConnectivityServiceTest {
     @Mock DestroySocketsWrapper mDestroySocketsWrapper;
     @Mock SubscriptionManager mSubscriptionManager;
     @Mock KeepaliveTracker.Dependencies mMockKeepaliveTrackerDependencies;
-    @Mock SatelliteAccessController mSatelliteAccessController;
+    @Mock
+    AppOptInDefaultNetworkController mAppOptInDefaultNetworkController;
     @Mock SatelliteCoarseUsageMetricsCollector mSatelliteCoarseUsageMetricsCollector;
     @Mock DefaultNetworkRematchMetrics mDefaultNetworkRematchMetrics;
     @Mock SatisfiedByLocalNetworkMetrics mSatisfiedByLocalNetworkMetrics;
@@ -2112,11 +2113,11 @@ public class ConnectivityServiceTest {
         }
 
         @Override
-        public SatelliteAccessController makeSatelliteAccessController(
+        public AppOptInDefaultNetworkController makeAppOptInDefaultNetworkController(
                 @NonNull final Context context,
                 BiConsumer<Set<Integer>, Set<Integer>> updateSatelliteNetworkFallbackUidCallback,
                 @NonNull final Handler connectivityServiceInternalHandler) {
-            return mSatelliteAccessController;
+            return mAppOptInDefaultNetworkController;
         }
 
         @Override
