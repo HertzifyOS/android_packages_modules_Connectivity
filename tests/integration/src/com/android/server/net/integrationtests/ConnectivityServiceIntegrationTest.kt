@@ -68,6 +68,7 @@ import com.android.server.connectivity.MultinetworkPolicyTracker
 import com.android.server.connectivity.PermissionMonitor
 import com.android.server.connectivity.ProxyTracker
 import com.android.server.connectivity.AppOptInDefaultNetworkController
+import com.android.server.connectivity.AppOptInDefaultNetworkPolicy
 import com.android.testutils.DevSdkIgnoreRunner
 import com.android.testutils.DeviceInfoUtils
 import com.android.testutils.TestableNetworkCallback
@@ -96,6 +97,7 @@ import org.mockito.Mockito.eq
 import org.mockito.Mockito.mock
 import org.mockito.MockitoAnnotations
 import org.mockito.Spy
+import java.util.function.Consumer
 
 const val SERVICE_BIND_TIMEOUT_MS = 5_000L
 const val TEST_TIMEOUT_MS = 10_000L
@@ -304,9 +306,9 @@ class ConnectivityServiceIntegrationTest {
         }
 
         override fun makeAppOptInDefaultNetworkController(
-            context: Context,
-            updateSatellitePreferredUid: BiConsumer<Set<Int>, Set<Int>>,
-            connectivityServiceInternalHandler: Handler
+                context: Context,
+                updateAppOptInDefaultNetworkPolicies: Consumer<List<AppOptInDefaultNetworkPolicy>>,
+                connectivityServiceInternalHandler: Handler
         ): AppOptInDefaultNetworkController? = mock(
             AppOptInDefaultNetworkController::class.java
         )
