@@ -778,7 +778,12 @@ static __always_inline inline int inet_socket_create(struct bpf_sock* sk,
                                                      const struct kver_uint kver) {
     if (KVER_IS_AT_LEAST(kver, 5, 10, 0)) {
         SkStorageValue *v = bpf_sk_storage_get(sk, 0, BPF_SK_STORAGE_GET_F_CREATE);
-        if (v) v->cookie = bpf_get_sk_cookie(sk);
+        if (v) {
+            v->cookie = bpf_get_sk_cookie(sk);
+            uint64_t gid_uid = bpf_get_current_uid_gid();
+            v->uid = gid_uid;
+            v->gid = (gid_uid >> 32);
+        }
     }
     return (get_app_permissions() & BPF_PERMISSION_INTERNET) ? BPF_ALLOW : BPF_DISALLOW;
 }
