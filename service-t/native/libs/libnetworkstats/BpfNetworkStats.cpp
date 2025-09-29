@@ -41,7 +41,8 @@ namespace bpf {
 using base::Result;
 
 BpfMapRW<uint32_t, IfaceValue>& getIfaceIndexNameMap() {
-    static BpfMapRW<uint32_t, IfaceValue> ifaceIndexNameMap(IFACE_INDEX_NAME_MAP_PATH);
+    constexpr bool exclusive = true;
+    static BpfMapRW<uint32_t, IfaceValue> ifaceIndexNameMap(IFACE_INDEX_NAME_MAP_PATH, exclusive);
     return ifaceIndexNameMap;
 }
 
