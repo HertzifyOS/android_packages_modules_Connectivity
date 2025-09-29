@@ -73,7 +73,7 @@ static inline const IfaceValue& updateCache(unsigned i, const IfaceValue &v) {
     return v;
 }
 
-Result<IfaceValue> ifindex2name(const uint32_t ifindex) {
+static Result<IfaceValue> ifindex2name(const uint32_t ifindex) {
     if (ifindex < cacheSize) {
 #ifdef CACHE_IS_ATOMIC
         IfaceValue c = cache[ifindex].load(std::memory_order_relaxed);
