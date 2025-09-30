@@ -204,7 +204,10 @@ enum UidOwnerMatchType : uint32_t {
 };
 // LINT.ThenChange(../framework/src/android/net/BpfNetMapsConstants.java)
 
+// TODO(b/436242702): change BPF_PERMISSION_UPDATE_DEVICE_STATS to "1 << 1"
 enum BpfPermissionMatch : uint8_t {
+    BPF_PERMISSION_NONE = 0,
+    BPF_PERMISSION_ACCESS_LOCAL_NETWORK = 1,
     BPF_PERMISSION_INTERNET = 1 << 2,
     BPF_PERMISSION_UPDATE_DEVICE_STATS = 1 << 3,
 };
@@ -252,6 +255,21 @@ typedef struct {
   __be16 remote_port;
 } LocalNetAccessKey;
 STRUCT_SIZE(LocalNetAccessKey, 4 + 4 + 16 + 2 + 2);  // 28
+
+// Each UID costs 3 bits (3 permissions ACCESS_LOCAL_NETWORK / INTERNET /
+// UPDATE_DEVICE_STATS)
+// One int64 can store up to 21 UIDs (3 * 21 = 63 bits per int64)
+#define PERMISSION_COUNT 3
+#define UIDS_PER_INT64 21
+#define CHUNK_INT64_COUNT 128
+// One chunk can store 128 * 21 = 2688 UIDs using 128 int64
+#define CHUNK_UID_COUNT 2688
+#define UID_PERMISSION_MASK 7
+
+typedef struct {
+    uint64_t block[CHUNK_INT64_COUNT];
+} UidPermissionChunk;
+STRUCT_SIZE(UidPermissionChunk, 8 * CHUNK_INT64_COUNT); // 8 * 128 = 1024
 
 // Entry in the configuration map that stores which UID rules are enabled.
 #define UID_RULES_CONFIGURATION_KEY 0
