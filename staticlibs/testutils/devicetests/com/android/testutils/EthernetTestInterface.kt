@@ -25,14 +25,11 @@ import android.net.EthernetManager.STATE_LINK_UP
 import android.net.IpConfiguration
 import android.os.Handler
 import android.os.HandlerThread
-import android.util.Log
 import com.android.net.module.util.ArrayTrackRecord
 import com.android.testutils.EthernetTestInterface.EthernetStateListener.Event.InterfaceStateChanged
 import java.net.NetworkInterface
-import kotlin.concurrent.Volatile
 import kotlin.test.assertNotNull
 
-private const val TAG = "EthernetTestInterface"
 private const val TIMEOUT_MS = 5_000L
 
 /**
@@ -87,7 +84,7 @@ class EthernetTestInterface(
     val packetReader = PollPacketReader(handler, testIface.fileDescriptor.fileDescriptor, mtu)
     private val listener = EthernetStateListener(name)
     private val em = context.getSystemService(EthernetManager::class.java)!!
-    @Volatile private var cleanedUp = false
+    private var cleanedUp = false
 
     init{
         em.addInterfaceStateListener(handler::post, listener)
@@ -121,11 +118,5 @@ class EthernetTestInterface(
             em.setIncludeTestInterfaces(false)
         }
         em.removeInterfaceStateListener(listener)
-    }
-
-    protected fun finalize() {
-        if (!cleanedUp) {
-            Log.wtf(TAG, "destroy() was not called for interface $name.")
-        }
     }
 }
