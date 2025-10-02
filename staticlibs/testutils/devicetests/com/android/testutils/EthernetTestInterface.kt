@@ -119,7 +119,6 @@ class EthernetTestInterface(
     protected fun finalize() {
         if (!cleanedUp) {
             Log.wtf(TAG, "destroy() was not called for interface $name.")
-            destroy()
         }
     }
 }
