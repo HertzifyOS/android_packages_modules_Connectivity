@@ -25,6 +25,7 @@ import android.net.EthernetManager.STATE_LINK_UP
 import android.net.IpConfiguration
 import android.net.TestNetworkInterface
 import android.os.Handler
+import android.os.HandlerThread
 import android.util.Log
 import com.android.net.module.util.ArrayTrackRecord
 import com.android.testutils.EthernetTestInterface.EthernetStateListener.Event.InterfaceStateChanged
@@ -43,7 +44,6 @@ private const val TIMEOUT_MS = 5_000L
  */
 class EthernetTestInterface(
     private val context: Context,
-    private val handler: Handler,
     val testIface: TestNetworkInterface
 ) {
     private class EthernetStateListener(private val trackedIface: String) : InterfaceStateListener {
@@ -75,6 +75,9 @@ class EthernetTestInterface(
         }
     }
 
+    private val handlerThread = HandlerThread(testIface.interfaceName).apply { start() }
+    private val handler = Handler(handlerThread.looper)
+
     val name get() = testIface.interfaceName
     val mtu: Int
         get() {
@@ -103,6 +106,9 @@ class EthernetTestInterface(
         handler.post { packetReader.stop() }
         handler.waitForIdle(TIMEOUT_MS)
         listener.eventuallyExpect(STATE_ABSENT)
+
+        handlerThread.quitSafely()
+        handlerThread.join()
 
         // setIncludeTestInterfaces() posts on the handler and does not run synchronously. However,
         // there should be no need for a synchronization mechanism here. If the next test is
