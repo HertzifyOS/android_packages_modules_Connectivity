@@ -24,7 +24,8 @@ import android.net.nsd.NsdManager
 import android.os.Build
 import android.platform.test.annotations.AppModeFull
 import androidx.test.filters.SmallTest
-import com.android.testutils.AutoCloseTestInterfaceRule
+import com.android.testutils.AutoCloseTestResourcesRule
+import com.android.testutils.AutoCloseableTestNetworkInterface
 import com.android.testutils.ConnectivityModuleTest
 import com.android.testutils.DevSdkIgnoreRule
 import com.android.testutils.DevSdkIgnoreRunner
@@ -53,24 +54,29 @@ class NsdManagerDownstreamTetheringTest : EthernetTetheringTestBase() {
     private val nsdManager by lazy { context.getSystemService(NsdManager::class.java)!! }
     private val serviceType = "_nmt%09d._tcp".format(Random().nextInt(1_000_000_000))
 
-    private lateinit var downstreamIface: EthernetTestInterface
     private var tetheringEventCallback: MyTetheringEventCallback? = null
 
+    private val downstreamIface = run {
+        val iface = AutoCloseableTestNetworkInterface.createTap(context)
+        EthernetTestInterface(context, iface)
+    }
+
     @get:Rule
-    val testInterfaceRule = AutoCloseTestInterfaceRule(context)
+    val testResourcesRule = AutoCloseTestResourcesRule().apply {
+        add(downstreamIface)
+    }
 
     @Before
     override fun setUp() {
         super.setUp()
-        val iface = testInterfaceRule.createTapInterface()
-        downstreamIface = EthernetTestInterface(context, iface)
     }
 
     @After
     override fun tearDown() {
-        if (::downstreamIface.isInitialized) {
-            downstreamIface.destroy()
-        }
+        // TODO: fix the test so the explicit close() can be removed.
+        // Note that EthernetTestInterface.close() is idempotent,
+        downstreamIface.close()
+
         maybeUnregisterTetheringEventCallback(tetheringEventCallback)
         super.tearDown()
     }

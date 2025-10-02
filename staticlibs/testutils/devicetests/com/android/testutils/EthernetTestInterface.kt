@@ -23,7 +23,6 @@ import android.net.EthernetManager.InterfaceStateListener
 import android.net.EthernetManager.STATE_ABSENT
 import android.net.EthernetManager.STATE_LINK_UP
 import android.net.IpConfiguration
-import android.net.TestNetworkInterface
 import android.os.Handler
 import android.os.HandlerThread
 import android.util.Log
@@ -44,8 +43,8 @@ private const val TIMEOUT_MS = 5_000L
  */
 class EthernetTestInterface(
     private val context: Context,
-    val testIface: TestNetworkInterface
-) {
+    val testIface: AutoCloseableTestNetworkInterface
+) : AutoCloseable {
     private class EthernetStateListener(private val trackedIface: String) : InterfaceStateListener {
         val events = ArrayTrackRecord<Event>().newReadHead()
 
@@ -101,11 +100,12 @@ class EthernetTestInterface(
         handler.waitForIdle(TIMEOUT_MS)
     }
 
-    fun destroy() {
+    override fun close() {
         if (cleanedUp) return
         cleanedUp = true
 
-        // packetReader.stop() closes the test interface.
+        // packetReader.stop() closes the test interface, so there is no need to explicitly call
+        // testIface.close().
         handler.post { packetReader.stop() }
         handler.waitForIdle(TIMEOUT_MS)
         listener.eventuallyExpect(STATE_ABSENT)
