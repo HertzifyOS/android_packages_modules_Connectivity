@@ -133,6 +133,17 @@ typedef struct {
 } LoopbackAccessEvent;
 STRUCT_SIZE(LoopbackAccessEvent, 4 + 4 + 4);
 
+typedef struct {
+    uint32_t ce_count;
+    uint16_t mss;
+    uint8_t  ce_inited;
+    uint8_t  byte_inited;
+    uint64_t ceb;
+    uint64_t e0b;
+    uint64_t e1b;
+} L4SStorage;
+STRUCT_SIZE(L4SStorage, 4 + 2 + 1 + 1 + 8 + 8 + 8);
+
 #define STATS_MAP_SIZE 5000
 #define CONFIGURATION_MAP_SIZE 2
 
@@ -214,25 +225,16 @@ ASSERT_STRING_EQUAL(XT_BPF_DENYLIST_PROG_PATH,  BPF_NETD_PATH "prog_netd_skfilte
 #define LOOPBACK_ACCESS_METRICS_ENABLED_MAP_NETD_PATH                                         \
     BPF_NETD_PATH "map_netd_loopback_access_metrics_enabled_map"
 
-#define L4S_INGRESS_ETHER_PROG_PATH   BPF_NETD_PATH "prog_netd_schedcls_ingress_accecn_eth"
+#define L4S_INGRESS_PROG_PATH   BPF_NETD_PATH "prog_netd_ingress_accecn_common"
 #define L4S_EGRESS_ETHER_PROG_PATH    BPF_NETD_PATH "prog_netd_schedcls_egress_accecn_eth"
-#define L4S_INGRESS_RAWIP_PROG_PATH   BPF_NETD_PATH "prog_netd_schedcls_ingress_accecn_rawip"
 #define L4S_EGRESS_RAWIP_PROG_PATH    BPF_NETD_PATH "prog_netd_schedcls_egress_accecn_rawip"
 #define L4S_OPTIONS_SOCKOPS_PROG_PATH BPF_NETD_PATH "prog_netd_sockops_accecn_option"
 
-#define L4S_ACCECN_CE_MAP_PATH        BPF_NETD_PATH "map_netd_l4s_accecn_ce_map"
-#define L4S_ACCECN_BYTE_MAP_PATH      BPF_NETD_PATH "map_netd_l4s_accecn_byte_map"
-#define L4S_ACCECN_MSS_MAP_PATH       BPF_NETD_PATH "map_netd_l4s_accecn_mss_map"
+#define L4S_CONN_COUNTER_MAP_PATH        BPF_NETD_PATH "map_netd_l4s_conn_counter"
+#define L4S_SK_STORAGE_MAP_PATH      BPF_NETD_PATH "map_netd_sk_l4s_storage"
 #define L4S_ACCECN_ENABLED_MAP_PATH   BPF_NETD_PATH "map_netd_l4s_accecn_enabled_map"
 
 #endif // __cplusplus
-
-typedef struct {
-    uint64_t ceb;
-    uint64_t e0b;
-    uint64_t e1b;
-} EcnByteCounters;
-STRUCT_SIZE(EcnByteCounters, 3 * 8);  // 24
 
 // LINT.IfChange(match_type)
 enum UidOwnerMatchType : uint32_t {
