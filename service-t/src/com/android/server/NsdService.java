@@ -24,9 +24,11 @@ import static android.net.ConnectivityManager.NETID_UNSET;
 import static android.net.NetworkCapabilities.TRANSPORT_VPN;
 import static android.net.NetworkCapabilities.TRANSPORT_WIFI;
 import static android.net.NetworkStack.PERMISSION_MAINLINE_NETWORK_STACK;
+import static android.net.connectivity.ConnectivityCompatChanges.RESTRICT_LOCAL_NETWORK;
 import static android.net.nsd.AdvertisingRequest.FLAG_OFFLOAD_ONLY;
 import static android.net.nsd.AdvertisingRequest.FLAG_SKIP_PROBING;
 import static android.net.nsd.AdvertisingRequest.FLAG_SKIP_SUBTYPE_ANNOUNCEMENTS;
+import static android.net.nsd.NsdManager.FAILURE_INTERNAL_ERROR;
 import static android.net.nsd.NsdManager.FAILURE_PERMISSION_DENIED;
 import static android.net.nsd.NsdManager.MDNS_DISCOVERY_MANAGER_EVENT;
 import static android.net.nsd.NsdManager.MDNS_SERVICE_EVENT;
@@ -53,6 +55,7 @@ import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.annotation.RequiresApi;
 import android.app.ActivityManager;
+import android.app.compat.CompatChanges;
 import android.content.AttributionSource;
 import android.content.Context;
 import android.content.Intent;
@@ -559,18 +562,43 @@ public class NsdService extends INsdManager.Stub {
     }
 
     /**
+     *
+     * @param uid The UID of the calling app
+     * @return The permission for local network access, or empty string if the feature is disabled
+     */
+    private String getLocalNetworkPermission(int uid) {
+        if (SdkLevel.isAtLeastB() && accessLocalNetworkPermissionEnabled()) {
+            return Manifest.permission.ACCESS_LOCAL_NETWORK;
+        } else if (BpfNetMaps.isAtLeast25Q2()
+                && com.android.tethering.mainline.beta.Flags.lnpDeveloperOptIn()
+                && CompatChanges.isChangeEnabled(RESTRICT_LOCAL_NETWORK, uid)) {
+            return Manifest.permission.NEARBY_WIFI_DEVICES;
+        }
+        return "";
+    }
+
+    /**
+     *
+     * @return The error code for local network permission failures
+     */
+    private int getLocalNetworkPermissionError() {
+        return accessLocalNetworkPermissionEnabled() ? FAILURE_PERMISSION_DENIED
+                : FAILURE_INTERNAL_ERROR;
+    }
+
+    /**
      * @param uid The UID of the calling process
      * @param pid The PID of the calling process
      * @return The permission status for data delivery
      */
     private int checkDataDeliveryPermissions(int uid, int pid) {
         AttributionSource attributionSource = getAttributionSource(uid, pid);
-        if (SdkLevel.isAtLeastB() && accessLocalNetworkPermissionEnabled()
-                && attributionSource != null) {
-            return mPermissionManager.checkPermissionForStartDataDelivery(
-                    Manifest.permission.ACCESS_LOCAL_NETWORK, attributionSource, null);
+        String localNetPermission = getLocalNetworkPermission(uid);
+        if (attributionSource == null || localNetPermission.isEmpty()) {
+            return PERMISSION_GRANTED;
         }
-        return PERMISSION_GRANTED;
+        return mPermissionManager.checkPermissionForStartDataDelivery(
+                localNetPermission, attributionSource, null);
     }
 
     /**
@@ -579,11 +607,11 @@ public class NsdService extends INsdManager.Stub {
      */
     private void finishDataDelivery(int uid, int pid) {
         AttributionSource attributionSource = getAttributionSource(uid, pid);
-        if (SdkLevel.isAtLeastB() && accessLocalNetworkPermissionEnabled()
-                && attributionSource != null) {
-            mPermissionManager.finishDataDelivery(Manifest.permission.ACCESS_LOCAL_NETWORK,
-                    attributionSource);
+        String localNetPermission = getLocalNetworkPermission(uid);
+        if (attributionSource == null || localNetPermission.isEmpty()) {
+            return;
         }
+        mPermissionManager.finishDataDelivery(localNetPermission, attributionSource);
     }
 
     /**
@@ -3327,7 +3355,7 @@ public class NsdService extends INsdManager.Stub {
             // Don't finish data delivery, because delivery never started if permission checks
             // failed.
             try {
-                mCb.onDiscoverServicesFailed(listenerKey, FAILURE_PERMISSION_DENIED);
+                mCb.onDiscoverServicesFailed(listenerKey, getLocalNetworkPermissionError());
             } catch (RemoteException e) {
                 Log.e(TAG, "Error calling onDiscoverServicesFailed", e);
             }
@@ -3448,7 +3476,7 @@ public class NsdService extends INsdManager.Stub {
             // Don't finish data delivery, because delivery never started if permission checks
             // failed.
             try {
-                mCb.onResolveServiceFailed(listenerKey, FAILURE_PERMISSION_DENIED);
+                mCb.onResolveServiceFailed(listenerKey, getLocalNetworkPermissionError());
             } catch (RemoteException e) {
                 Log.e(TAG, "Error calling onResolveServiceFailed", e);
             }
@@ -3506,7 +3534,8 @@ public class NsdService extends INsdManager.Stub {
             // Don't finish data delivery, because delivery never started if permission checks
             // failed.
             try {
-                mCb.onServiceInfoCallbackRegistrationFailed(listenerKey, FAILURE_PERMISSION_DENIED);
+                mCb.onServiceInfoCallbackRegistrationFailed(listenerKey,
+                        getLocalNetworkPermissionError());
             } catch (RemoteException e) {
                 Log.e(TAG, "Error calling onServiceInfoCallbackRegistrationFailed", e);
             }

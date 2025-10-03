@@ -17,6 +17,7 @@
 package com.android.server;
 
 import static android.Manifest.permission.ACCESS_LOCAL_NETWORK;
+import static android.Manifest.permission.NEARBY_WIFI_DEVICES;
 import static android.Manifest.permission.DEVICE_POWER;
 import static android.Manifest.permission.NETWORK_SETTINGS;
 import static android.Manifest.permission.NETWORK_STACK;
@@ -33,6 +34,7 @@ import static android.net.NetworkCapabilities.TRANSPORT_VPN;
 import static android.net.NetworkCapabilities.TRANSPORT_WIFI;
 import static android.net.NetworkStack.PERMISSION_MAINLINE_NETWORK_STACK;
 import static android.net.connectivity.ConnectivityCompatChanges.ENABLE_PLATFORM_MDNS_BACKEND;
+import static android.net.connectivity.ConnectivityCompatChanges.RESTRICT_LOCAL_NETWORK;
 import static android.net.connectivity.ConnectivityCompatChanges.RUN_NATIVE_NSD_ONLY_IF_LEGACY_APPS_T_AND_LATER;
 import static android.net.nsd.NsdManager.FAILURE_BAD_PARAMETERS;
 import static android.net.nsd.NsdManager.FAILURE_INTERNAL_ERROR;
@@ -118,6 +120,7 @@ import android.os.Message;
 import android.os.Process;
 import android.os.RemoteException;
 import android.permission.PermissionManager;
+import android.platform.test.annotations.RequiresFlagsDisabled;
 import android.platform.test.annotations.RequiresFlagsEnabled;
 import android.platform.test.flag.junit.CheckFlagsRule;
 import android.platform.test.flag.junit.DeviceFlagsValueProvider;
@@ -1030,6 +1033,7 @@ public class NsdServiceTest {
     }
 
     @Test
+    @DisableCompatChanges(RESTRICT_LOCAL_NETWORK)
     public void testRegisterAndUnregisterServiceInfoCallback() {
         final NsdManager client = connectClient(mService);
         final NsdServiceInfo request = new NsdServiceInfo(SERVICE_NAME, SERVICE_TYPE);
@@ -1118,6 +1122,7 @@ public class NsdServiceTest {
     }
 
     @Test
+    @DisableCompatChanges(RESTRICT_LOCAL_NETWORK)
     public void testRegisterServiceCallbackFailed() {
         final NsdManager client = connectClient(mService);
         final String invalidServiceType = "a_service";
@@ -1142,6 +1147,7 @@ public class NsdServiceTest {
     }
 
     @Test
+    @DisableCompatChanges(RESTRICT_LOCAL_NETWORK)
     @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     @RequiresFlagsEnabled(FLAG_ACCESS_LOCAL_NETWORK_PERMISSION_ENABLED)
     public void testRegisterServiceInfoCallback_MissingLocalNetworkPermission_Fails() {
@@ -1166,6 +1172,7 @@ public class NsdServiceTest {
     }
 
     @Test
+    @DisableCompatChanges(RESTRICT_LOCAL_NETWORK)
     @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     @RequiresFlagsEnabled(FLAG_ACCESS_LOCAL_NETWORK_PERMISSION_ENABLED)
     public void testRegisterServiceInfoCallback_HasLocalNetworkPermission_Succeeds() {
@@ -1279,6 +1286,7 @@ public class NsdServiceTest {
     }
 
     @Test
+    @DisableCompatChanges(RESTRICT_LOCAL_NETWORK)
     public void testDiscoveryWithMdnsDiscoveryManager() {
         setMdnsDiscoveryManagerEnabled();
 
@@ -1358,6 +1366,7 @@ public class NsdServiceTest {
     }
 
     @Test
+    @DisableCompatChanges(RESTRICT_LOCAL_NETWORK)
     public void testDiscoveryWithMdnsDiscoveryManager_FailedWithInvalidServiceType() {
         setMdnsDiscoveryManagerEnabled();
 
@@ -1393,6 +1402,31 @@ public class NsdServiceTest {
     }
 
     @Test
+    @EnableCompatChanges(RESTRICT_LOCAL_NETWORK)
+    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    @RequiresFlagsDisabled(FLAG_ACCESS_LOCAL_NETWORK_PERMISSION_ENABLED)
+    public void testLocalNetworkDevOptIn_permissionCheckFails_returnsInternalError() {
+        setMdnsDiscoveryManagerEnabled();
+        final AttributionSource attributionSource = getAttributionSource();
+        doReturn(PermissionManager.PERMISSION_SOFT_DENIED).when(
+                mPermissionManager).checkPermissionForStartDataDelivery(
+                NEARBY_WIFI_DEVICES, attributionSource, null);
+
+        final NsdManager client = connectClient(mService);
+        final DiscoveryListener discListener = mock(DiscoveryListener.class);
+        final Network network = new Network(999);
+
+
+        client.discoverServices(SERVICE_TYPE, PROTOCOL, network, r -> r.run(), discListener);
+        waitForIdle();
+        verify(discListener, timeout(TIMEOUT_MS)).onStartDiscoveryFailed(SERVICE_TYPE,
+                FAILURE_INTERNAL_ERROR);
+        verify(mPermissionManager, never()).finishDataDelivery(NEARBY_WIFI_DEVICES,
+                attributionSource);
+    }
+
+    @Test
+    @DisableCompatChanges(RESTRICT_LOCAL_NETWORK)
     @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     @RequiresFlagsEnabled(FLAG_ACCESS_LOCAL_NETWORK_PERMISSION_ENABLED)
     public void testDiscoveryWithMdnsDiscoveryManager_MissingLocalNetworkPermission_Fails() {
@@ -1416,6 +1450,7 @@ public class NsdServiceTest {
     }
 
     @Test
+    @DisableCompatChanges(RESTRICT_LOCAL_NETWORK)
     @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     @RequiresFlagsEnabled(FLAG_ACCESS_LOCAL_NETWORK_PERMISSION_ENABLED)
     public void testDiscoveryWithMdnsDiscoveryManager_HasLocalNetworkPermission_Succeeds() {
@@ -1504,6 +1539,7 @@ public class NsdServiceTest {
     }
 
     @Test
+    @DisableCompatChanges(RESTRICT_LOCAL_NETWORK)
     public void testResolutionWithMdnsDiscoveryManager() throws UnknownHostException {
         setMdnsDiscoveryManagerEnabled();
 
@@ -1575,6 +1611,7 @@ public class NsdServiceTest {
     }
 
     @Test
+    @DisableCompatChanges(RESTRICT_LOCAL_NETWORK)
     @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     @RequiresFlagsEnabled(FLAG_ACCESS_LOCAL_NETWORK_PERMISSION_ENABLED)
     public void testResolutionWithMdnsDiscoveryManager_MissingLocalNetworkPermission_Fails()
@@ -1600,6 +1637,7 @@ public class NsdServiceTest {
     }
 
     @Test
+    @DisableCompatChanges(RESTRICT_LOCAL_NETWORK)
     @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     @RequiresFlagsEnabled(FLAG_ACCESS_LOCAL_NETWORK_PERMISSION_ENABLED)
     public void testResolutionWithMdnsDiscoveryManager_HasLocalNetworkPermission_Succeeds()
@@ -1742,6 +1780,7 @@ public class NsdServiceTest {
     }
 
     @Test
+    @DisableCompatChanges(RESTRICT_LOCAL_NETWORK)
     public void testAdvertiseWithMdnsAdvertiser() {
         setMdnsAdvertiserEnabled();
 
@@ -1794,6 +1833,7 @@ public class NsdServiceTest {
     }
 
     @Test
+    @DisableCompatChanges(RESTRICT_LOCAL_NETWORK)
     public void testAdvertiseWithMdnsAdvertiser_FailedWithInvalidServiceType() {
         setMdnsAdvertiserEnabled();
 
@@ -1822,6 +1862,7 @@ public class NsdServiceTest {
     }
 
     @Test
+    @DisableCompatChanges(RESTRICT_LOCAL_NETWORK)
     public void testAdvertiseWithMdnsAdvertiser_LongServiceName() {
         setMdnsAdvertiserEnabled();
 
@@ -1863,12 +1904,14 @@ public class NsdServiceTest {
     }
 
     @Test
+    @DisableCompatChanges(RESTRICT_LOCAL_NETWORK)
     public void testAdvertiseCustomTtl_validTtl_success() {
         runValidTtlAdvertisingTest(30L);
         runValidTtlAdvertisingTest(10 * 3600L);
     }
 
     @Test
+    @DisableCompatChanges(RESTRICT_LOCAL_NETWORK)
     public void testAdvertiseCustomTtl_ttlSmallerThan30SecondsButClientIsSystemServer_success() {
         when(mDeps.getCallingUid()).thenReturn(Process.SYSTEM_UID);
 
@@ -1876,6 +1919,7 @@ public class NsdServiceTest {
     }
 
     @Test
+    @DisableCompatChanges(RESTRICT_LOCAL_NETWORK)
     public void testAdvertiseCustomTtl_ttlLargerThan10HoursButClientIsSystemServer_success() {
         when(mDeps.getCallingUid()).thenReturn(Process.SYSTEM_UID);
 
@@ -1918,6 +1962,7 @@ public class NsdServiceTest {
     }
 
     @Test
+    @DisableCompatChanges(RESTRICT_LOCAL_NETWORK)
     @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     @RequiresFlagsEnabled(FLAG_ACCESS_LOCAL_NETWORK_PERMISSION_ENABLED)
     public void testRegisterService_MissingLocalNetworkPermission_Fails() {
@@ -1950,6 +1995,7 @@ public class NsdServiceTest {
     }
 
     @Test
+    @DisableCompatChanges(RESTRICT_LOCAL_NETWORK)
     @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     @RequiresFlagsEnabled(FLAG_ACCESS_LOCAL_NETWORK_PERMISSION_ENABLED)
     public void testRegisterService_HasLocalNetworkPermission_Succeeds() {
@@ -1997,6 +2043,7 @@ public class NsdServiceTest {
     }
 
     @Test
+    @DisableCompatChanges(RESTRICT_LOCAL_NETWORK)
     public void testAdvertiseCustomTtl_invalidTtl_FailsWithBadParameters() {
         setMdnsAdvertiserEnabled();
         final long invalidTtlSeconds = 29L;
@@ -2020,6 +2067,7 @@ public class NsdServiceTest {
     }
 
     @Test
+    @DisableCompatChanges(RESTRICT_LOCAL_NETWORK)
     public void testAdvertiseOffloadOnly_FailsForNonTv() {
         setMdnsAdvertiserEnabled();
         doReturn(false).when(mPackageManager).hasSystemFeature(FEATURE_LEANBACK);
@@ -2043,6 +2091,7 @@ public class NsdServiceTest {
     }
 
     @Test
+    @DisableCompatChanges(RESTRICT_LOCAL_NETWORK)
     public void testAdvertiseOffloadOnly_SupportForTvRunningAndroidB() {
         assumeTrue(Build.VERSION_CODES.BAKLAVA == Build.VERSION.SDK_INT);
         setMdnsAdvertiserEnabled();
@@ -2070,6 +2119,7 @@ public class NsdServiceTest {
     }
 
     @Test
+    @DisableCompatChanges(RESTRICT_LOCAL_NETWORK)
     public void testStopServiceResolutionWithMdnsDiscoveryManager() {
         setMdnsDiscoveryManagerEnabled();
 

@@ -17,6 +17,7 @@ package android.net.cts
 
 import android.Manifest.permission.ACCESS_LOCAL_NETWORK
 import android.Manifest.permission.MANAGE_TEST_NETWORKS
+import android.Manifest.permission.NEARBY_WIFI_DEVICES
 import android.Manifest.permission.NETWORK_SETTINGS
 import android.Manifest.permission.READ_DEVICE_CONFIG
 import android.app.compat.CompatChanges
@@ -51,6 +52,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.platform.test.annotations.AppModeFull
+import android.platform.test.annotations.RequiresFlagsDisabled
 import android.platform.test.annotations.RequiresFlagsEnabled
 import android.platform.test.flag.junit.DeviceFlagsValueProvider
 import android.provider.DeviceConfig.NAMESPACE_TETHERING
@@ -590,6 +592,26 @@ class NsdManagerTest {
         )
         val failedCb = discoveryRecord.expectCallback<StartDiscoveryFailed>()
         assertEquals(NsdManager.FAILURE_PERMISSION_DENIED, failedCb.errorCode)
+    }
+
+    @Test
+    @CtsNetTestCasesLocalNetNoPermissions
+    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    @RequiresFlagsDisabled(FLAG_ACCESS_LOCAL_NETWORK_PERMISSION_ENABLED)
+    fun testLocalNetworkDevOptIn_permissionCheckFails_returnsInternalError() {
+        val perm = context.checkSelfPermission(NEARBY_WIFI_DEVICES)
+        assertEquals(PackageManager.PERMISSION_DENIED, perm)
+
+        val discoveryRecord = NsdDiscoveryRecord()
+        nsdManager.discoverServices(
+            serviceType,
+            NsdManager.PROTOCOL_DNS_SD,
+            testNetwork1.network,
+            Executor { it.run() },
+            discoveryRecord
+        )
+        val failedCb = discoveryRecord.expectCallback<StartDiscoveryFailed>()
+        assertEquals(NsdManager.FAILURE_INTERNAL_ERROR, failedCb.errorCode)
     }
 
     private fun checkAddressScopeId(iface: TestNetworkInterface, address: List<InetAddress>) {
