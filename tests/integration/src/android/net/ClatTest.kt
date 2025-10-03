@@ -21,7 +21,6 @@ import android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET
 import android.net.NetworkCapabilities.NET_CAPABILITY_TRUSTED
 import android.net.NetworkCapabilities.TRANSPORT_ETHERNET
 import android.net.NetworkCapabilities.TRANSPORT_TEST
-import android.net.TestNetworkManager.TestInterfaceRequest
 import android.os.Build
 import android.platform.test.annotations.AppModeFull
 import android.system.Os
@@ -30,7 +29,8 @@ import android.system.OsConstants.IPPROTO_UDP
 import android.system.OsConstants.SOCK_DGRAM
 import androidx.test.platform.app.InstrumentationRegistry
 import com.android.net.module.util.ProcfsParsingUtils
-import com.android.testutils.AutoCloseTestInterfaceRule
+import com.android.testutils.AutoCloseTestResourcesRule
+import com.android.testutils.AutoCloseableTestNetworkInterface
 import com.android.testutils.DataPkt
 import com.android.testutils.DevSdkIgnoreRule
 import com.android.testutils.DevSdkIgnoreRunner
@@ -85,14 +85,14 @@ class ClatTest {
     private lateinit var network: Network
     private var socket: FileDescriptor? = null
 
-    @get:Rule
-    val testInterfaceRule = AutoCloseTestInterfaceRule(context)
+    private val iface = run {
+        val tap = AutoCloseableTestNetworkInterface.createTap(context)
+        EthernetTestInterface(context, tap)
+    }
 
-    private val iface: EthernetTestInterface
-    init {
-        val req = TestInterfaceRequest.Builder().setTap().build()
-        val tap = testInterfaceRule.createTestInterface(req)
-        iface = EthernetTestInterface(context, tap)
+    @get:Rule
+    val testResourcesRule = AutoCloseTestResourcesRule().apply {
+        add(iface)
     }
 
     private val localMac = iface.testIface.macAddress!!
@@ -142,8 +142,6 @@ class ClatTest {
         for (cb in registeredCallbacks) {
             cm.unregisterNetworkCallback(cb)
         }
-        // TODO: AutoCloseTestInterfaceRule should destroy associated EthernetTestInterface.
-        iface.destroy()
     }
 
     fun LinkProperties.getInet4Address(): Inet4Address {

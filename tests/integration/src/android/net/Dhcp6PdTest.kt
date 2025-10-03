@@ -21,15 +21,19 @@ import android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET
 import android.net.NetworkCapabilities.NET_CAPABILITY_TRUSTED
 import android.net.NetworkCapabilities.TRANSPORT_ETHERNET
 import android.net.NetworkCapabilities.TRANSPORT_TEST
-import android.net.TestNetworkManager.TestInterfaceRequest
 import android.os.Build
 import android.platform.test.annotations.AppModeFull
+import android.platform.test.annotations.RequiresFlagsEnabled
+import android.platform.test.flag.junit.DeviceFlagsValueProvider
 import android.provider.DeviceConfig.NAMESPACE_CONNECTIVITY
 import androidx.test.platform.app.InstrumentationRegistry
+import com.android.net.module.util.dhcp6.Dhcp6AddrRegInformPacket
 import com.android.net.module.util.dhcp6.Dhcp6Packet
 import com.android.net.module.util.dhcp6.Dhcp6RebindPacket
 import com.android.net.module.util.dhcp6.Dhcp6SolicitPacket
-import com.android.testutils.AutoCloseTestInterfaceRule
+import com.android.networkstack.mainline.beta.Flags
+import com.android.testutils.AutoCloseTestResourcesRule
+import com.android.testutils.AutoCloseableTestNetworkInterface
 import com.android.testutils.DevSdkIgnoreRule
 import com.android.testutils.DevSdkIgnoreRunner
 import com.android.testutils.DeviceConfigRule
@@ -95,28 +99,30 @@ class Dhcp6PdTest {
         }
     }
 
+    private val iface = run {
+        val tap = AutoCloseableTestNetworkInterface.createTap(context)
+        EthernetTestInterface(context, tap)
+    }
+
     @get:Rule(order = 1)
     val deviceConfigRule = DeviceConfigRule().apply {
         setConfig(NAMESPACE_CONNECTIVITY, DHCP6_PFLAG_CONFIG, "1")
     }
 
     @get:Rule(order = 2)
-    val testInterfaceRule = AutoCloseTestInterfaceRule(context)
-
-    private val iface: EthernetTestInterface
-    init {
-        val req = TestInterfaceRequest.Builder().setTap().build()
-        val tap = testInterfaceRule.createTestInterface(req)
-        iface = EthernetTestInterface(context, tap)
+    val testResourcesRule = AutoCloseTestResourcesRule().apply {
+        add(iface)
     }
+
+    @get:Rule(order = 3)
+    val checkFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule()
+
     private val localMac = iface.testIface.macAddress!!
     private val ndResponder = NdResponder(iface.packetReader).apply { start() }
 
     @After
     fun tearDown() {
         cm.unregisterNetworkCallback(networkCallback)
-        // TODO: AutoCloseTestInterfaceRule should destroy associated EthernetTestInterface.
-        iface.destroy()
     }
 
     private fun eventuallyExpectPacket(predicate: (ByteArray) -> Boolean): ByteArray {
@@ -315,5 +321,15 @@ class Dhcp6PdTest {
         networkCallback.expect<Available>()
         // Ensure that no Solicit was sent.
         assertNoDhcp6Packet()
+    }
+
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_DHCPV6_ADDRESS_REGISTRATION)
+    fun testAddrReg_startedByOFlag() {
+        val ra = RaPkt(flags = "O")
+            .addPioOption(prefix = "2001:db8:1::/64", flags = "LA")
+            .addRdnssOption(dns = "2001:4860::8888")
+        ndResponder.addRouterEntry(ROUTER_MAC, ROUTER_V6, ra)
+        expectDhcp6Packet<Dhcp6AddrRegInformPacket>()
     }
 }
