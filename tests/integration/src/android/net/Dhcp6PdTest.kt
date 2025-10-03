@@ -23,11 +23,15 @@ import android.net.NetworkCapabilities.TRANSPORT_ETHERNET
 import android.net.NetworkCapabilities.TRANSPORT_TEST
 import android.os.Build
 import android.platform.test.annotations.AppModeFull
+import android.platform.test.annotations.RequiresFlagsEnabled
+import android.platform.test.flag.junit.DeviceFlagsValueProvider
 import android.provider.DeviceConfig.NAMESPACE_CONNECTIVITY
 import androidx.test.platform.app.InstrumentationRegistry
+import com.android.net.module.util.dhcp6.Dhcp6AddrRegInformPacket
 import com.android.net.module.util.dhcp6.Dhcp6Packet
 import com.android.net.module.util.dhcp6.Dhcp6RebindPacket
 import com.android.net.module.util.dhcp6.Dhcp6SolicitPacket
+import com.android.networkstack.mainline.beta.Flags
 import com.android.testutils.AutoCloseTestResourcesRule
 import com.android.testutils.AutoCloseableTestNetworkInterface
 import com.android.testutils.DevSdkIgnoreRule
@@ -109,6 +113,9 @@ class Dhcp6PdTest {
     val testResourcesRule = AutoCloseTestResourcesRule().apply {
         add(iface)
     }
+
+    @get:Rule(order = 3)
+    val checkFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule()
 
     private val localMac = iface.testIface.macAddress!!
     private val ndResponder = NdResponder(iface.packetReader).apply { start() }
@@ -314,5 +321,15 @@ class Dhcp6PdTest {
         networkCallback.expect<Available>()
         // Ensure that no Solicit was sent.
         assertNoDhcp6Packet()
+    }
+
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_DHCPV6_ADDRESS_REGISTRATION)
+    fun testAddrReg_startedByOFlag() {
+        val ra = RaPkt(flags = "O")
+            .addPioOption(prefix = "2001:db8:1::/64", flags = "LA")
+            .addRdnssOption(dns = "2001:4860::8888")
+        ndResponder.addRouterEntry(ROUTER_MAC, ROUTER_V6, ra)
+        expectDhcp6Packet<Dhcp6AddrRegInformPacket>()
     }
 }
