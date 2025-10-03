@@ -23,8 +23,6 @@ import android.net.NetworkCapabilities.TRANSPORT_ETHERNET
 import android.net.NetworkCapabilities.TRANSPORT_TEST
 import android.net.TestNetworkManager.TestInterfaceRequest
 import android.os.Build
-import android.os.Handler
-import android.os.HandlerThread
 import android.platform.test.annotations.AppModeFull
 import android.provider.DeviceConfig.NAMESPACE_CONNECTIVITY
 import androidx.test.platform.app.InstrumentationRegistry
@@ -85,8 +83,6 @@ private val RA_WITH_PFLAG = RaPkt()
 class Dhcp6PdTest {
     private val context = InstrumentationRegistry.getInstrumentation().context
     private val cm = context.getSystemService(ConnectivityManager::class.java)!!
-    private val handlerThread = HandlerThread("$TAG thread").apply { start() }
-    private val handler = Handler(handlerThread.looper)
     private val networkCallback = TestableNetworkCallback().also {
         runAsShell(CHANGE_NETWORK_STATE) {
             val request = NetworkRequest.Builder()
@@ -95,7 +91,7 @@ class Dhcp6PdTest {
                     .removeCapability(NET_CAPABILITY_INTERNET)
                     .removeCapability(NET_CAPABILITY_TRUSTED)
                     .build()
-            cm.requestNetwork(request, it, handler)
+            cm.requestNetwork(request, it)
         }
     }
 
@@ -111,7 +107,7 @@ class Dhcp6PdTest {
     init {
         val req = TestInterfaceRequest.Builder().setTap().build()
         val tap = testInterfaceRule.createTestInterface(req)
-        iface = EthernetTestInterface(context, handler, tap)
+        iface = EthernetTestInterface(context, tap)
     }
     private val localMac = iface.testIface.macAddress!!
     private val ndResponder = NdResponder(iface.packetReader).apply { start() }
@@ -121,8 +117,6 @@ class Dhcp6PdTest {
         cm.unregisterNetworkCallback(networkCallback)
         // TODO: AutoCloseTestInterfaceRule should destroy associated EthernetTestInterface.
         iface.destroy()
-        handlerThread.quitSafely()
-        handlerThread.join()
     }
 
     private fun eventuallyExpectPacket(predicate: (ByteArray) -> Boolean): ByteArray {

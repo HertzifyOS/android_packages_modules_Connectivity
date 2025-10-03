@@ -23,8 +23,6 @@ import android.net.NetworkCapabilities.TRANSPORT_ETHERNET
 import android.net.NetworkCapabilities.TRANSPORT_TEST
 import android.net.TestNetworkManager.TestInterfaceRequest
 import android.os.Build
-import android.os.Handler
-import android.os.HandlerThread
 import android.platform.test.annotations.AppModeFull
 import android.system.Os
 import android.system.OsConstants.AF_INET
@@ -80,8 +78,6 @@ private val ROUTER_V6 = InetAddress.getByName("fe80::0102:03ff:fe04:0506") as In
 class ClatTest {
     private val context = InstrumentationRegistry.getInstrumentation().context
     private val cm = context.getSystemService(ConnectivityManager::class.java)!!
-    private val handlerThread = HandlerThread("$TAG thread").apply { start() }
-    private val handler = Handler(handlerThread.looper)
     private val registeredCallbacks = ArrayList<TestableNetworkCallback>()
 
     // Cannot be initialized before setUp as eventuallyExpect<LinkPropertiesChanged>() can fail.
@@ -96,7 +92,7 @@ class ClatTest {
     init {
         val req = TestInterfaceRequest.Builder().setTap().build()
         val tap = testInterfaceRule.createTestInterface(req)
-        iface = EthernetTestInterface(context, handler, tap)
+        iface = EthernetTestInterface(context, tap)
     }
 
     private val localMac = iface.testIface.macAddress!!
@@ -116,7 +112,7 @@ class ClatTest {
     private fun requestNetwork(request: NetworkRequest): TestableNetworkCallback {
         val cb = TestableNetworkCallback()
         runAsShell(CHANGE_NETWORK_STATE) {
-            cm.requestNetwork(request, cb, handler)
+            cm.requestNetwork(request, cb)
             registeredCallbacks.add(cb)
         }
         return cb
@@ -148,8 +144,6 @@ class ClatTest {
         }
         // TODO: AutoCloseTestInterfaceRule should destroy associated EthernetTestInterface.
         iface.destroy()
-        handlerThread.quitSafely()
-        handlerThread.join()
     }
 
     fun LinkProperties.getInet4Address(): Inet4Address {

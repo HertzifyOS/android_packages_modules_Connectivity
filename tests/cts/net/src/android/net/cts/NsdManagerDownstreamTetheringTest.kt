@@ -22,8 +22,6 @@ import android.net.TetheringManager.TETHERING_ETHERNET
 import android.net.TetheringManager.TetheringRequest
 import android.net.nsd.NsdManager
 import android.os.Build
-import android.os.Handler
-import android.os.HandlerThread
 import android.platform.test.annotations.AppModeFull
 import androidx.test.filters.SmallTest
 import com.android.testutils.AutoCloseTestInterfaceRule
@@ -55,8 +53,6 @@ class NsdManagerDownstreamTetheringTest : EthernetTetheringTestBase() {
     private val nsdManager by lazy { context.getSystemService(NsdManager::class.java)!! }
     private val serviceType = "_nmt%09d._tcp".format(Random().nextInt(1_000_000_000))
 
-    private val handlerThread = HandlerThread("$TAG thread").apply { start() }
-    private val handler = Handler(handlerThread.looper)
     private lateinit var downstreamIface: EthernetTestInterface
     private var tetheringEventCallback: MyTetheringEventCallback? = null
 
@@ -67,7 +63,7 @@ class NsdManagerDownstreamTetheringTest : EthernetTetheringTestBase() {
     override fun setUp() {
         super.setUp()
         val iface = testInterfaceRule.createTapInterface()
-        downstreamIface = EthernetTestInterface(context, handler, iface)
+        downstreamIface = EthernetTestInterface(context, iface)
     }
 
     @After
@@ -75,8 +71,6 @@ class NsdManagerDownstreamTetheringTest : EthernetTetheringTestBase() {
         if (::downstreamIface.isInitialized) {
             downstreamIface.destroy()
         }
-        handlerThread.quitSafely()
-        handlerThread.join()
         maybeUnregisterTetheringEventCallback(tetheringEventCallback)
         super.tearDown()
     }
