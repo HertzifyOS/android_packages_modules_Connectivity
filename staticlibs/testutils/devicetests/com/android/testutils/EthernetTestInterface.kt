@@ -102,6 +102,9 @@ class EthernetTestInterface(
     }
 
     fun destroy() {
+        if (cleanedUp) return
+        cleanedUp = true
+
         // packetReader.stop() closes the test interface.
         handler.post { packetReader.stop() }
         handler.waitForIdle(TIMEOUT_MS)
@@ -118,8 +121,6 @@ class EthernetTestInterface(
             em.setIncludeTestInterfaces(false)
         }
         em.removeInterfaceStateListener(listener)
-
-        cleanedUp = true
     }
 
     protected fun finalize() {
