@@ -115,8 +115,6 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
-import android.os.Looper;
-import android.os.Message;
 import android.os.Process;
 import android.os.RemoteException;
 import android.permission.PermissionManager;
@@ -231,7 +229,9 @@ public class NsdServiceTest {
     SocketRequestMonitor mSocketRequestMonitor;
     OnUidImportanceListener mUidImportanceListener;
     HandlerThread mThread;
-    TestHandler mHandler;
+    // A handler for running test code on the test thread. This is not the same Handler as used by
+    // NsdService, but it uses the same looper.
+    Handler mHandler;
     NsdService mService;
     OffloadCallback mOffloadCallback;
 
@@ -250,7 +250,7 @@ public class NsdServiceTest {
         MockitoAnnotations.initMocks(this);
         mThread = new HandlerThread("mock-service-handler");
         mThread.start();
-        mHandler = new TestHandler(mThread.getLooper());
+        mHandler = new Handler(mThread.getLooper());
         when(mContext.getContentResolver()).thenReturn(mResolver);
         when(mContext.getSystemService(PermissionManager.class)).thenReturn(mPermissionManager);
         mockService(mContext, MDnsManager.class, MDnsManager.MDNS_SERVICE, mMockMDnsM);
@@ -2441,7 +2441,8 @@ public class NsdServiceTest {
 
     @Test
     public void testNullINsdManagerCallback() {
-        final NsdService service = new NsdService(mContext, mHandler, CLEANUP_DELAY_MS, mDeps) {
+        final NsdService service = new NsdService(
+                mContext, mThread.getLooper(), CLEANUP_DELAY_MS, mDeps) {
             @Override
             public INsdServiceConnector connect(INsdManagerCallback baseCb,
                     boolean runNewMdnsBackend) {
@@ -2600,7 +2601,8 @@ public class NsdServiceTest {
     }
 
     NsdService makeService() {
-        final NsdService service = new NsdService(mContext, mHandler, CLEANUP_DELAY_MS, mDeps) {
+        final NsdService service = new NsdService(
+                mContext, mThread.getLooper(), CLEANUP_DELAY_MS, mDeps) {
             @Override
             public INsdServiceConnector connect(INsdManagerCallback baseCb,
                     boolean runNewMdnsBackend) {
@@ -2657,19 +2659,5 @@ public class NsdServiceTest {
         final int testUid = android.os.Process.myUid();
         final int testPid = android.os.Process.myPid();
         return new AttributionSource.Builder(testUid).setPid(testPid).build();
-    }
-
-    public static class TestHandler extends Handler {
-        public Message lastMessage;
-
-        TestHandler(Looper looper) {
-            super(looper);
-        }
-
-        @Override
-        public void handleMessage(Message msg) {
-            lastMessage = obtainMessage();
-            lastMessage.copyFrom(msg);
-        }
     }
 }
