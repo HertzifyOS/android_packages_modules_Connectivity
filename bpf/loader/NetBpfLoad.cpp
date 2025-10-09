@@ -1389,7 +1389,7 @@ static bool loadAllObjects() {
     if (!loadObject(BPFROOT "offload.o")) return false;
     if (!loadObject(BPFROOT "test.o", libbpf)) return false;
     if (!loadObject(BPFROOT "clatd.o", libbpf)) return false;
-    if (!loadObject(BPFROOT "dscpPolicy.o", libbpf)) return false;
+    if (!loadObject(BPFROOT "dscpPolicy.o", true)) return false;
     if (!loadObject(BPFROOT "netd.o", libbpf)) return false;
     return true;
 }
