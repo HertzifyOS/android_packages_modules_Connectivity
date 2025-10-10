@@ -211,7 +211,6 @@ import android.net.ConnectivityManager;
 import android.net.ConnectivityManager.BlockedReason;
 import android.net.ConnectivityManager.NetworkCallback;
 import android.net.ConnectivityManager.RestrictBackgroundStatus;
-import android.net.NetworkCapabilities.RedactionHelper;
 import android.net.ConnectivitySettingsManager;
 import android.net.DataStallReportParcelable;
 import android.net.DnsResolverServiceManager;
@@ -247,6 +246,7 @@ import android.net.NetworkAgent;
 import android.net.NetworkAgentConfig;
 import android.net.NetworkAndAgentRegistryParcelable;
 import android.net.NetworkCapabilities;
+import android.net.NetworkCapabilities.RedactionHelper;
 import android.net.NetworkInfo;
 import android.net.NetworkInfo.DetailedState;
 import android.net.NetworkMonitorManager;
@@ -383,6 +383,7 @@ import com.android.networkstack.apishim.BroadcastOptionsShimImpl;
 import com.android.networkstack.apishim.ConstantsShim;
 import com.android.networkstack.apishim.common.BroadcastOptionsShim;
 import com.android.networkstack.apishim.common.UnsupportedApiLevelException;
+import com.android.server.connectivity.AppOptInDefaultNetworkController;
 import com.android.server.connectivity.AppOptInDefaultNetworkPolicy;
 import com.android.server.connectivity.ApplicationSelfCertifiedNetworkCapabilities;
 import com.android.server.connectivity.AutodestructReference;
@@ -419,7 +420,6 @@ import com.android.server.connectivity.ProfileNetworkPreferenceInfo;
 import com.android.server.connectivity.ProxyTracker;
 import com.android.server.connectivity.QosCallbackTracker;
 import com.android.server.connectivity.QuicConnectionCloser;
-import com.android.server.connectivity.AppOptInDefaultNetworkController;
 import com.android.server.connectivity.UidRangeUtils;
 import com.android.server.connectivity.VpnNetworkPreferenceInfo;
 import com.android.server.connectivity.wear.CompanionDeviceManagerProxyService;
@@ -10604,7 +10604,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
             @NonNull final LinkProperties oldLp) {
 
         // The maps are available only after 25Q2 release
-        if (!BpfNetMaps.isAtLeast25Q2()) {
+        if (!mDeps.isAtLeastB()) {
             return;
         }
 
@@ -10711,7 +10711,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
      */
     private void addLocalAddressesToBpfMap(final String iface, final List<IpPrefix> prefixes,
                                            @Nullable final LinkProperties lp) {
-        if (!BpfNetMaps.isAtLeast25Q2()) return;
+        if (!mDeps.isAtLeastB()) return;
 
         for (IpPrefix prefix : prefixes) {
             // Add local dnses allow rule To BpfMap before adding the block rule for prefix
@@ -10741,7 +10741,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
      */
     private void removeLocalAddressesFromBpfMap(final String iface, final List<IpPrefix> prefixes,
                                                 @Nullable final LinkProperties lp) {
-        if (!BpfNetMaps.isAtLeast25Q2()) return;
+        if (!mDeps.isAtLeastB()) return;
 
         for (IpPrefix prefix : prefixes) {
             // The reasoning for prefix length is explained in addLocalAddressesToBpfMap()
@@ -10763,7 +10763,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
      */
     private void addLocalDnsesToBpfMap(final String iface, IpPrefix prefix,
             @Nullable final LinkProperties lp) {
-        if (!BpfNetMaps.isAtLeast25Q2() || lp == null) return;
+        if (!mDeps.isAtLeastB() || lp == null) return;
 
         for (InetAddress dnsServer : lp.getDnsServers()) {
             // Adds dns allow rule to LocalNetAccessMap for both TCP and UDP protocol at port 53,
@@ -10787,7 +10787,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
      */
     private void removeLocalDnsesFromBpfMap(final String iface, IpPrefix prefix,
             @Nullable final LinkProperties lp) {
-        if (!BpfNetMaps.isAtLeast25Q2() || lp == null) return;
+        if (!mDeps.isAtLeastB() || lp == null) return;
 
         for (InetAddress dnsServer : lp.getDnsServers()) {
             // Removes dns allow rule from LocalNetAccessMap for both TCP and UDP protocol
