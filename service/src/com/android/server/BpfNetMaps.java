@@ -29,6 +29,7 @@ import static android.net.BpfNetMapsConstants.L4S_ENABLED_MAP_PATH;
 import static android.net.BpfNetMapsConstants.LOCAL_NET_ACCESS_MAP_PATH;
 import static android.net.BpfNetMapsConstants.LOCAL_NET_BLOCKED_UID_MAP_PATH;
 import static android.net.BpfNetMapsConstants.LOCKDOWN_VPN_MATCH;
+import static android.net.BpfNetMapsConstants.PERMISSION_PROPAGATION_ENABLED_MAP_PATH;
 import static android.net.BpfNetMapsConstants.UID_MIGRATION_ENABLED_MAP_PATH;
 import static android.net.BpfNetMapsConstants.UID_OWNER_MAP_PATH;
 import static android.net.BpfNetMapsConstants.UID_PERMISSION_MAP_PATH;
@@ -167,6 +168,7 @@ public class BpfNetMaps {
     private static IBpfMap<S64, CookieTagMapValue> sCookieTagMap = null;
     // TODO: Add BOOL class and replace U8?
     private static IBpfMap<S32, U8> sDataSaverEnabledMap = null;
+    private static BpfBoolean sPermissionPropagationEnabledBpfBoolean = null;
     private static BpfBoolean sUidMigrationEnabledBpfBoolean = null;
     private static IBpfMap<IngressDiscardKey, IngressDiscardValue> sIngressDiscardMap = null;
 
@@ -254,6 +256,15 @@ public class BpfNetMaps {
     public static void setUidMigrationEnabledBpfBooleanForTest(
             BpfBoolean uidMigrationEnabledBpfBoolean) {
         sUidMigrationEnabledBpfBoolean = uidMigrationEnabledBpfBoolean;
+    }
+
+    /**
+     * Set permissionPropagationEnabledBpfBoolean for test.
+     */
+    @VisibleForTesting
+    public static void setPermissionPropagationEnabledBpfBooleanForTest(
+            BpfBoolean permissionPropagationEnabledBpfBoolean) {
+        sPermissionPropagationEnabledBpfBoolean = permissionPropagationEnabledBpfBoolean;
     }
 
     /**
@@ -390,6 +401,16 @@ public class BpfNetMaps {
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.BAKLAVA)
+    private static BpfBoolean getPermissionPropagationEnabledBpfBoolean() {
+        try {
+            return new BpfBoolean(
+                    PERMISSION_PROPAGATION_ENABLED_MAP_PATH, true);
+        } catch (ErrnoException e) {
+            throw new IllegalStateException("Cannot open permission propagation enabled map", e);
+        }
+    }
+
     @RequiresApi(Build.VERSION_CODES.CUR_DEVELOPMENT)
     private static IBpfMap<LocalNetAccessKey, Bool> getLocalNetAccessMap() {
         try {
@@ -503,6 +524,24 @@ public class BpfNetMaps {
             sUidMigrationEnabledBpfBoolean.set(sPermissionMapUidMigrationEnabled);
         } catch (ErrnoException e) {
             throw new IllegalStateException("Failed to set uid migration enabled map", e);
+        }
+
+        // Local network permission will be supported from Android C+, update this when
+        // isAtLeastC() is available.
+        if (SdkLevel.isAtLeastB()) {
+            if (sPermissionPropagationEnabledBpfBoolean == null) {
+                sPermissionPropagationEnabledBpfBoolean =
+                        getPermissionPropagationEnabledBpfBoolean();
+            }
+            try {
+                // Enable new permission propagation API when uid migration is enabled
+                sPermissionPropagationEnabledBpfBoolean.set(
+                    sPermissionMapUidMigrationEnabled
+                            && deps.isAccessLocalNetworkPermissionEnabled());
+            } catch (ErrnoException e) {
+                throw new IllegalStateException("Failed to set permission propagation enabled map",
+                        e);
+            }
         }
 
         if (sUidPermissionChunkMap == null) {
@@ -1823,6 +1862,16 @@ public class BpfNetMaps {
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.BAKLAVA)
+    private void dumpPermissionPropagationConfig(final IndentingPrintWriter pw) {
+        try {
+            final boolean enabled = sPermissionPropagationEnabledBpfBoolean.get();
+            pw.println("sPermissionPropagationEnabledMap: " + enabled);
+        } catch (ErrnoException e) {
+            pw.println("Failed to read permission propagation configuration: " + e);
+        }
+    }
+
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     private void dumpUidMigrationConfig(final IndentingPrintWriter pw) {
         try {
@@ -1910,6 +1959,11 @@ public class BpfNetMaps {
             }
             dumpDataSaverConfig(pw);
             dumpUidMigrationConfig(pw);
+            // Local network permission will be supported from Android C+, update this when
+            // isAtLeastC() is available.
+            if (SdkLevel.isAtLeastB()) {
+                dumpPermissionPropagationConfig(pw);
+            }
             dumpUidPermissionChunkMap(pw);
             pw.decreaseIndent();
         }
