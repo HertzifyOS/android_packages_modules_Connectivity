@@ -41,6 +41,7 @@ import static android.net.ConnectivityManager.BLOCKED_METERED_REASON_MASK;
 import static android.net.ConnectivityManager.BLOCKED_REASON_NONE;
 import static android.net.ConnectivityManager.FIREWALL_RULE_ALLOW;
 import static android.net.ConnectivityManager.FIREWALL_RULE_DENY;
+import static android.permission.flags.Flags.accessLocalNetworkPermissionEnabled;
 import static android.system.OsConstants.EINVAL;
 import static android.system.OsConstants.ENODEV;
 import static android.system.OsConstants.ENOENT;
@@ -187,6 +188,13 @@ public class BpfNetMaps {
      */
     public boolean isUidMigrationEnabled() {
         return sPermissionMapUidMigrationEnabled;
+    }
+
+    /**
+     * Enable new permission propagation API when uid migration is enabled
+     */
+    public boolean isPermissionPropagationEnabled() {
+        return sPermissionMapUidMigrationEnabled && mDeps.isAccessLocalNetworkPermissionEnabled();
     }
 
     /**
@@ -579,6 +587,19 @@ public class BpfNetMaps {
         public boolean isL4SSupported() {
             final File file = new File(L4S_ENABLED_MAP_PATH);
             return file.exists();
+        }
+
+        /**
+         * WARNING: DO NOT CALL THIS METHOD DIRECTLY FROM ANY CODE PATH other than lnp
+         * permission propagation. Wrapper around accessLocalNetworkPermissionEnabled() so
+         * that it can be mocked in unit test.
+         *
+         * @see android.permission.flags.Flags#accessLocalNetworkPermissionEnabled()
+         */
+        public boolean isAccessLocalNetworkPermissionEnabled() {
+            // Local network permission will be supported from Android C+, update this when
+            // isAtLeastC() is available.
+            return SdkLevel.isAtLeastB() && accessLocalNetworkPermissionEnabled();
         }
     }
 
