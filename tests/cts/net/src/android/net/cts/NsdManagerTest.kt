@@ -1068,10 +1068,123 @@ class NsdManagerTest {
                 "" /* hostName */,
                 removeResolutionInfoEvent.info
             )
+
+            // Stop discovery and check info is removed.
+            nsdManager.stopServiceDiscovery(discoveryRecord)
+            discoveryRecord.expectCallback<DiscoveryStopped>()
+            val removeDiscoveryInfoEvent =
+                offloadEngine.expectCallback<TestNsdOffloadEngine.OffloadEvent.RemoveEvent>()
+            checkSelectiveMdnsResponseOffloadServiceInfo(
+                "" /* serviceName */,
+                "$serviceType.local" /* serviceType */,
+                listOf("subtype") /* subTypes */,
+                "" /* hostName */,
+                removeDiscoveryInfoEvent.info
+            )
+        } cleanup {
+            runAsShell(NETWORK_SETTINGS) {
+                nsdManager.unregisterOffloadEngine(offloadEngine)
+            }
+        }
+    }
+
+    @Test
+    fun testNsdManager_registerOffloadEngine_discoveryAndResolution_SocketDestroyed() {
+        val isSelectiveMdnsResponseOffloadEnabled = runAsShell(READ_DEVICE_CONFIG) {
+            Flags.nsdSelectiveMdnsResponseOffload()
+        }
+        assumeTrue(isSelectiveMdnsResponseOffloadEnabled)
+
+        val discoveryRecord = NsdDiscoveryRecord()
+        val resolveRecord = NsdResolveRecord()
+        val offloadEngine = TestNsdOffloadEngine()
+        val si = makeTestServiceInfo(testNetwork1.network)
+
+        tryTest {
+            // Register an OffloadEngine
+            runAsShell(NETWORK_SETTINGS) {
+                nsdManager.registerOffloadEngine(testNetwork1.iface.interfaceName,
+                    OffloadEngine.OFFLOAD_TYPE_FILTER_REPLIES.toLong(),
+                    0L, /* offloadCapability */
+                    { it.run() }, offloadEngine)
+            }
+
+            // Start a discovery
+            val discoveryRequest = DiscoveryRequest.Builder(serviceType)
+                .setSubtype("_subtype")
+                .setNetwork(testNetwork1.network)
+                .build()
+            nsdManager.discoverServices(discoveryRequest, { it.run() }, discoveryRecord)
+            discoveryRecord.expectCallback<DiscoveryStarted>()
+
+            // Check discovery info is offloaded.
+            val discoveryInfoEvent =
+                offloadEngine.expectCallback<TestNsdOffloadEngine.OffloadEvent.AddOrUpdateEvent>()
+            checkSelectiveMdnsResponseOffloadServiceInfo(
+                "" /* serviceName */,
+                "$serviceType.local" /* serviceType */,
+                listOf("subtype") /* subTypes */,
+                "" /* hostName */,
+                discoveryInfoEvent.info
+            )
+
+            // Start a resolution.
+            nsdManager.resolveService(si, { it.run() }, resolveRecord)
+
+            // Check resolution info is offloaded.
+            val resolutionInfoEvent =
+                offloadEngine.expectCallback<TestNsdOffloadEngine.OffloadEvent.AddOrUpdateEvent>()
+            checkSelectiveMdnsResponseOffloadServiceInfo(
+                si.serviceName /* serviceName */,
+                "$serviceType.local" /* serviceType */,
+                listOf() /* subTypes */,
+                "" /* hostName */,
+                resolutionInfoEvent.info
+            )
+
+            // Disconnect testNetwork1
+            runAsShell(MANAGE_TEST_NETWORKS) {
+                testNetwork1.close(cm)
+            }
+
+            // Check that remove offload callbacks are received for both resolution and discovery.
+            // The order is not guaranteed.
+            val removeEvent1 =
+                offloadEngine.expectCallback<TestNsdOffloadEngine.OffloadEvent.RemoveEvent>()
+            val removeEvent2 =
+                offloadEngine.expectCallback<TestNsdOffloadEngine.OffloadEvent.RemoveEvent>()
+
+            val (resolutionEvent, discoveryEvent) =
+                if (removeEvent1.info.key.serviceName == si.serviceName) {
+                    assertEquals("", removeEvent2.info.key.serviceName)
+                    Pair(removeEvent1, removeEvent2)
+                } else {
+                    assertEquals(si.serviceName, removeEvent2.info.key.serviceName)
+                    assertEquals("", removeEvent1.info.key.serviceName)
+                    Pair(removeEvent2, removeEvent1)
+                }
+
+            checkSelectiveMdnsResponseOffloadServiceInfo(
+                si.serviceName /* serviceName */,
+                "$serviceType.local" /* serviceType */,
+                listOf() /* subTypes */,
+                "" /* hostName */,
+                resolutionEvent.info
+            )
+            checkSelectiveMdnsResponseOffloadServiceInfo(
+                "" /* serviceName */,
+                "$serviceType.local" /* serviceType */,
+                listOf("subtype") /* subTypes */,
+                "" /* hostName */,
+                discoveryEvent.info
+            )
         } cleanupStep {
             runAsShell(NETWORK_SETTINGS) {
                 nsdManager.unregisterOffloadEngine(offloadEngine)
             }
+        } cleanupStep {
+            nsdManager.stopServiceResolution(resolveRecord)
+            resolveRecord.expectCallback<ResolutionStopped>()
         } cleanup {
             nsdManager.stopServiceDiscovery(discoveryRecord)
             discoveryRecord.expectCallback<DiscoveryStopped>()
