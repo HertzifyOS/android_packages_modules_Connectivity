@@ -351,6 +351,9 @@ class ApfIntegrationTest {
         // running APF on automotive as the device has almost infinite battery power.
         assumeFalse("Skip test: automotive device", pm.hasSystemFeature(FEATURE_AUTOMOTIVE))
 
+        // TODO(b/450670091): Run APF tests on desktop devices once the feature is ready.
+        assumeFalse("Skip test: desktop device", pm.hasSystemFeature(FEATURE_PC))
+
         networkCallback = TestableNetworkCallback()
         cm.requestNetwork(
                 NetworkRequest.Builder()
