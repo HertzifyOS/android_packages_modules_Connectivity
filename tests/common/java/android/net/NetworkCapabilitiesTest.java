@@ -38,6 +38,7 @@ import static android.net.NetworkCapabilities.NET_CAPABILITY_OEM_PRIVATE;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_PARTIAL_CONNECTIVITY;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_PRIORITIZE_BANDWIDTH;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_PRIORITIZE_LATENCY;
+import static android.net.NetworkCapabilities.NET_CAPABILITY_PRIORITIZE_UNIFIED_COMMUNICATIONS;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_RCS;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_SUPL;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_TRUSTED;
@@ -51,6 +52,8 @@ import static android.net.NetworkCapabilities.NET_ENTERPRISE_ID_5;
 import static android.net.NetworkCapabilities.REDACT_FOR_ACCESS_FINE_LOCATION;
 import static android.net.NetworkCapabilities.REDACT_FOR_LOCAL_MAC_ADDRESS;
 import static android.net.NetworkCapabilities.REDACT_FOR_NETWORK_SETTINGS;
+import static android.net.NetworkCapabilities.REDACT_FOR_THREAD_NETWORK_PRIVILEGED;
+import static android.net.NetworkCapabilities.REDACT_NONE;
 import static android.net.NetworkCapabilities.SIGNAL_STRENGTH_UNSPECIFIED;
 import static android.net.NetworkCapabilities.TRANSPORT_CELLULAR;
 import static android.net.NetworkCapabilities.TRANSPORT_ETHERNET;
@@ -63,9 +66,11 @@ import static android.net.NetworkCapabilities.TRANSPORT_WIFI;
 import static android.net.NetworkCapabilities.TRANSPORT_WIFI_AWARE;
 import static android.os.Process.INVALID_UID;
 
+import static com.android.modules.utils.build.SdkLevel.isAtLeastB;
 import static com.android.modules.utils.build.SdkLevel.isAtLeastS;
 import static com.android.modules.utils.build.SdkLevel.isAtLeastT;
 import static com.android.modules.utils.build.SdkLevel.isAtLeastV;
+import static com.android.net.thread.platform.flags.Flags.FLAG_THREAD_MOBILE_ENABLED;
 import static com.android.testutils.MiscAsserts.assertEmpty;
 import static com.android.testutils.MiscAsserts.assertThrows;
 import static com.android.testutils.ParcelUtils.assertParcelingIsLossless;
@@ -74,11 +79,15 @@ import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.junit.Assume.assumeFalse;
 import static org.junit.Assume.assumeTrue;
 
+import android.annotation.Nullable;
+import android.net.NetworkCapabilities.RedactionHelper;
 import android.net.wifi.aware.DiscoverySession;
 import android.net.wifi.aware.PeerHandle;
 import android.net.wifi.aware.WifiAwareNetworkSpecifier;
@@ -99,6 +108,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -409,13 +419,15 @@ public class NetworkCapabilitiesTest {
         assertParcelingIsLossless(cap);
     }
 
-    private static NetworkCapabilities createNetworkCapabilitiesWithTransportInfo() {
+    private static NetworkCapabilities createNetworkCapabilitiesWithTransportInfoAndSpecifier() {
         return new NetworkCapabilities()
                 .addCapability(NET_CAPABILITY_INTERNET)
                 .addCapability(NET_CAPABILITY_EIMS)
                 .addCapability(NET_CAPABILITY_NOT_METERED)
+                .addTransportType(TRANSPORT_THREAD)
                 .setSSID(TEST_SSID)
                 .setTransportInfo(new TestTransportInfo())
+                .setNetworkSpecifier(new RedactableNetworkSpecifier())
                 .setRequestorPackageName("com.android.test")
                 .setRequestorUid(9304);
     }
@@ -424,7 +436,8 @@ public class NetworkCapabilitiesTest {
     public void testNetworkCapabilitiesCopyWithNoRedactions() {
         assumeTrue(isAtLeastS());
 
-        final NetworkCapabilities netCap = createNetworkCapabilitiesWithTransportInfo();
+        final NetworkCapabilities netCap =
+                createNetworkCapabilitiesWithTransportInfoAndSpecifier();
         final NetworkCapabilities netCapWithNoRedactions =
                 new NetworkCapabilities(netCap, NetworkCapabilities.REDACT_NONE);
         TestTransportInfo testTransportInfo =
@@ -432,13 +445,18 @@ public class NetworkCapabilitiesTest {
         assertFalse(testTransportInfo.locationRedacted);
         assertFalse(testTransportInfo.localMacAddressRedacted);
         assertFalse(testTransportInfo.settingsRedacted);
+        RedactableNetworkSpecifier testNetworkSpecifier =
+                (RedactableNetworkSpecifier) netCapWithNoRedactions.getNetworkSpecifier();
+        assertFalse(testNetworkSpecifier.locationRedacted);
+        assertFalse(testNetworkSpecifier.threadNetworkRedacted);
     }
 
     @Test
     public void testNetworkCapabilitiesCopyWithoutLocationSensitiveFields() {
         assumeTrue(isAtLeastS());
 
-        final NetworkCapabilities netCap = createNetworkCapabilitiesWithTransportInfo();
+        final NetworkCapabilities netCap =
+                createNetworkCapabilitiesWithTransportInfoAndSpecifier();
         final NetworkCapabilities netCapWithNoRedactions =
                 new NetworkCapabilities(netCap, REDACT_FOR_ACCESS_FINE_LOCATION);
         TestTransportInfo testTransportInfo =
@@ -446,6 +464,24 @@ public class NetworkCapabilitiesTest {
         assertTrue(testTransportInfo.locationRedacted);
         assertFalse(testTransportInfo.localMacAddressRedacted);
         assertFalse(testTransportInfo.settingsRedacted);
+        RedactableNetworkSpecifier testNetworkSpecifier =
+                (RedactableNetworkSpecifier) netCapWithNoRedactions.getNetworkSpecifier();
+        assertTrue(testNetworkSpecifier.locationRedacted);
+        assertFalse(testNetworkSpecifier.threadNetworkRedacted);
+    }
+
+    @Test
+    public void testGetApplicableRedactions() {
+        assumeTrue(isAtLeastS());
+
+        final NetworkCapabilities netCap =
+                createNetworkCapabilitiesWithTransportInfoAndSpecifier();
+        final long redactions = netCap.getApplicableRedactions();
+
+        assertEquals(
+                REDACT_FOR_ACCESS_FINE_LOCATION | REDACT_FOR_LOCAL_MAC_ADDRESS
+                        | REDACT_FOR_NETWORK_SETTINGS | REDACT_FOR_THREAD_NETWORK_PRIVILEGED,
+                redactions);
     }
 
     @Test
@@ -1235,6 +1271,44 @@ public class NetworkCapabilitiesTest {
         }
     }
 
+    /**
+     * Redactable NetworkSpecifier subclass for verifying redaction mechanism.
+     */
+    private static final class RedactableNetworkSpecifier extends NetworkSpecifier {
+        final boolean locationRedacted;
+        final boolean threadNetworkRedacted;
+
+        RedactableNetworkSpecifier() {
+            locationRedacted = false;
+            threadNetworkRedacted = false;
+        }
+
+        RedactableNetworkSpecifier(boolean locationRedacted, boolean threadNetworkRedacted) {
+            this.locationRedacted = locationRedacted;
+            this.threadNetworkRedacted = threadNetworkRedacted;
+        }
+
+        @Override
+        public long getApplicableRedactions() {
+            return REDACT_FOR_ACCESS_FINE_LOCATION | REDACT_FOR_THREAD_NETWORK_PRIVILEGED;
+        }
+
+        @Override
+        @Nullable
+        public NetworkSpecifier redact(long redactions) {
+            return new RedactableNetworkSpecifier(
+                    (redactions & REDACT_FOR_ACCESS_FINE_LOCATION) != 0,
+                    (redactions & REDACT_FOR_THREAD_NETWORK_PRIVILEGED) != 0);
+        }
+    }
+
+    /**
+     * Unredactable NetworkSpecifier subclass for verifying redaction mechanism.
+     */
+    private static final class UnredactableNetworkSpecifier extends NetworkSpecifier {
+        // not overriding the getApplicableRedactions() and redact(long) methods
+    }
+
     @Test
     public void testBuilder() {
         final int ownerUid = 1001;
@@ -1620,5 +1694,72 @@ public class NetworkCapabilitiesTest {
             // A request without TRANSPORT_THREAD matches nothing.
             assertFalse(wifiRequestNc.satisfiedByNetworkCapabilities(localWifiNc));
         }
+    }
+
+    @Test
+    public void testRedactionHelper() throws Exception {
+        final UnredactableNetworkSpecifier unredactableSpecifier =
+                new UnredactableNetworkSpecifier();
+        final RedactableNetworkSpecifier redactableSpecifier = new RedactableNetworkSpecifier();
+
+        assertEquals(REDACT_NONE,
+                RedactionHelper.getSpecifierApplicableRedactions(unredactableSpecifier));
+        assertEquals(unredactableSpecifier,
+                RedactionHelper.getSpecifierRedactResult(
+                        unredactableSpecifier, REDACT_FOR_ACCESS_FINE_LOCATION));
+        assertEquals(REDACT_FOR_ACCESS_FINE_LOCATION | REDACT_FOR_THREAD_NETWORK_PRIVILEGED,
+                RedactionHelper.getSpecifierApplicableRedactions(redactableSpecifier));
+        // Call getSpecifierApplicableRedactions() twice to make sure the cache works
+        assertEquals(REDACT_FOR_ACCESS_FINE_LOCATION | REDACT_FOR_THREAD_NETWORK_PRIVILEGED,
+                RedactionHelper.getSpecifierApplicableRedactions(redactableSpecifier));
+        final RedactableNetworkSpecifier redactedSpecifier =
+                (RedactableNetworkSpecifier) RedactionHelper.getSpecifierRedactResult(
+                        redactableSpecifier,
+                        REDACT_FOR_ACCESS_FINE_LOCATION | REDACT_FOR_THREAD_NETWORK_PRIVILEGED);
+        assertTrue(redactedSpecifier.locationRedacted);
+        assertTrue(redactedSpecifier.threadNetworkRedacted);
+        // Call getSpecifierRedactResult twice to make sure the cache works
+        final RedactableNetworkSpecifier redactedSpecifier2 =
+                (RedactableNetworkSpecifier) RedactionHelper.getSpecifierRedactResult(
+                        redactableSpecifier,
+                        REDACT_FOR_ACCESS_FINE_LOCATION | REDACT_FOR_THREAD_NETWORK_PRIVILEGED);
+        assertTrue(redactedSpecifier2.locationRedacted);
+        assertTrue(redactedSpecifier2.threadNetworkRedacted);
+    }
+
+    @Test
+    public void testHasCapability_PrioritizeUnifiedCommunications() {
+        NetworkCapabilities nc = new NetworkCapabilities();
+        assertFalse(nc.hasCapability(NET_CAPABILITY_PRIORITIZE_UNIFIED_COMMUNICATIONS));
+
+        nc.addCapability(NET_CAPABILITY_PRIORITIZE_UNIFIED_COMMUNICATIONS);
+        assertTrue(nc.hasCapability(NET_CAPABILITY_PRIORITIZE_UNIFIED_COMMUNICATIONS));
+
+        nc.removeCapability(NET_CAPABILITY_PRIORITIZE_UNIFIED_COMMUNICATIONS);
+        assertFalse(nc.hasCapability(NET_CAPABILITY_PRIORITIZE_UNIFIED_COMMUNICATIONS));
+    }
+
+    @Test
+    public void testMarkCapabilitiesRestricted_PrioritizeUnifiedCommunications() {
+        NetworkCapabilities netCap = new NetworkCapabilities();
+        netCap.addCapability(NET_CAPABILITY_PRIORITIZE_UNIFIED_COMMUNICATIONS);
+        netCap.addCapability(NET_CAPABILITY_NOT_METERED);
+        netCap.maybeMarkCapabilitiesRestricted();
+        assertTrue(netCap.hasCapability(NET_CAPABILITY_NOT_RESTRICTED));
+
+        netCap = new NetworkCapabilities();
+        netCap.addCapability(NET_CAPABILITY_PRIORITIZE_UNIFIED_COMMUNICATIONS);
+        netCap.removeCapability(NET_CAPABILITY_NOT_METERED);
+        netCap.maybeMarkCapabilitiesRestricted();
+        assertTrue(netCap.hasCapability(NET_CAPABILITY_NOT_RESTRICTED));
+    }
+
+    @Test
+    public void testToString_PrioritizeUnifiedCommunications() {
+        NetworkCapabilities netCap = new NetworkCapabilities();
+        netCap.addCapability(NET_CAPABILITY_PRIORITIZE_UNIFIED_COMMUNICATIONS);
+
+        // The toString() method dynamically looks up capability names.
+        assertTrue(netCap.toString().contains("PRIORITIZE_UNIFIED_COMMUNICATIONS"));
     }
 }

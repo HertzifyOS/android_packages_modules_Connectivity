@@ -177,10 +177,14 @@ public final class ThreadNetworkControllerServiceTest {
     private static final String TEST_VENDOR_OUI = "AC-DE-48";
     private static final byte[] TEST_VENDOR_OUI_BYTES = new byte[] {(byte) 0xAC, (byte) 0xDE, 0x48};
     private static final String TEST_VENDOR_NAME = "test vendor";
+    private static final String TEST_VENDOR_SW_VERSION = "test-sw-version";
     private static final String TEST_MODEL_NAME = "test model";
     private static final LinkAddress TEST_NAT64_CIDR = new LinkAddress("192.168.255.0/24");
+    private static final int THREAD_NETWORK_PROVIDER_ID = 1;
 
     @Mock private MockableSystemProperties mMockSystemProperties;
+    @Mock private ThreadNetworkFactory mMockNetworkFactory;
+    @Mock private NetworkProvider mMockNetworkProvider;
     @Mock private ConnectivityManager mMockConnectivityManager;
     @Mock private RoutingCoordinatorManager mMockRoutingCoordinatorManager;
     @Mock private NetworkAgent mMockNetworkAgent;
@@ -233,8 +237,12 @@ public final class ThreadNetworkControllerServiceTest {
 
         mTestLooper = new TestLooper();
         final Handler handler = new Handler(mTestLooper.getLooper());
-        NetworkProvider networkProvider =
-                new NetworkProvider(mContext, mTestLooper.getLooper(), "ThreadNetworkProvider");
+
+        when(mMockNetworkFactory.getProvider()).thenReturn(mMockNetworkProvider);
+        doNothing().when(mMockNetworkFactory).register();
+
+        when(mMockConnectivityManager.registerNetworkProvider(any(NetworkProvider.class)))
+                .thenReturn(THREAD_NETWORK_PROVIDER_ID);
 
         when(mMockRoutingCoordinatorManager.requestDownstreamAddress(any()))
                 .thenReturn(TEST_NAT64_CIDR);
@@ -255,6 +263,8 @@ public final class ThreadNetworkControllerServiceTest {
                 .thenReturn(true);
         when(mResources.getString(eq(R.string.config_thread_vendor_name)))
                 .thenReturn(TEST_VENDOR_NAME);
+        when(mResources.getString(eq(R.string.config_thread_vendor_sw_version)))
+                .thenReturn(TEST_VENDOR_SW_VERSION);
         when(mResources.getString(eq(R.string.config_thread_vendor_oui)))
                 .thenReturn(TEST_VENDOR_OUI);
         when(mResources.getString(eq(R.string.config_thread_model_name)))
@@ -272,7 +282,7 @@ public final class ThreadNetworkControllerServiceTest {
                         mContext,
                         handler,
                         mMockSystemProperties,
-                        networkProvider,
+                        mMockNetworkFactory,
                         () -> mFakeOtDaemon,
                         mMockConnectivityManager,
                         mMockRoutingCoordinatorManager,
@@ -316,6 +326,8 @@ public final class ThreadNetworkControllerServiceTest {
                 .thenReturn(false);
         when(mResources.getString(eq(R.string.config_thread_vendor_name)))
                 .thenReturn(TEST_VENDOR_NAME);
+        when(mResources.getString(eq(R.string.config_thread_vendor_sw_version)))
+                .thenReturn(TEST_VENDOR_SW_VERSION);
         when(mResources.getString(eq(R.string.config_thread_vendor_oui)))
                 .thenReturn(TEST_VENDOR_OUI);
         when(mResources.getString(eq(R.string.config_thread_model_name)))
@@ -330,6 +342,8 @@ public final class ThreadNetworkControllerServiceTest {
         assertThat(mFakeOtDaemon.getConfiguration().borderRouterAutoJoinEnabled).isFalse();
         MeshcopTxtAttributes meshcopTxts = mFakeOtDaemon.getOverriddenMeshcopTxtAttributes();
         assertThat(meshcopTxts.vendorName).isEqualTo(TEST_VENDOR_NAME);
+        assertThat(mFakeOtDaemon.getConfiguration().vendorSwVersion)
+                .isEqualTo(TEST_VENDOR_SW_VERSION);
         assertThat(meshcopTxts.vendorOui).isEqualTo(TEST_VENDOR_OUI_BYTES);
         assertThat(meshcopTxts.modelName).isEqualTo(TEST_MODEL_NAME);
         assertThat(meshcopTxts.nonStandardTxtEntries)

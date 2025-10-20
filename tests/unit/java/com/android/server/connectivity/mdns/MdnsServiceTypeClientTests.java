@@ -25,7 +25,10 @@ import static com.android.server.connectivity.mdns.MdnsSearchOptions.PASSIVE_QUE
 import static com.android.server.connectivity.mdns.MdnsServiceTypeClient.EVENT_QUERY_RESULT;
 import static com.android.server.connectivity.mdns.MdnsServiceTypeClient.EVENT_REMOVE_EXPIRED_SERVICES;
 import static com.android.server.connectivity.mdns.MdnsServiceTypeClient.EVENT_START_QUERYTASK;
+import static com.android.server.connectivity.mdns.MdnsServiceTypeClient.NO_HOSTNAME;
 import static com.android.server.connectivity.mdns.MdnsServiceTypeClient.REMOVE_SERVICE_AFTER_QUERY_SENT_TIME;
+import static com.android.server.connectivity.mdns.MdnsServiceTypeClient.SERVICE_NAME_DISCOVERY;
+import static com.android.server.connectivity.mdns.util.MdnsUtils.createOffloadServiceInfoFromFilterReplies;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
@@ -56,6 +59,7 @@ import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.net.InetAddresses;
 import android.net.Network;
+import android.net.nsd.OffloadServiceInfo;
 import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -136,6 +140,8 @@ public class MdnsServiceTypeClientTests {
     private MdnsServiceTypeClient.Dependencies mockDeps;
     @Mock
     private Scheduler mockScheduler;
+    @Mock
+    private OffloadCallback mockCallback;
     @Captor
     private ArgumentCaptor<MdnsServiceInfo> serviceInfoCaptor;
 
@@ -275,7 +281,7 @@ public class MdnsServiceTypeClientTests {
     private MdnsServiceTypeClient makeMdnsServiceTypeClient(MdnsFeatureFlags featureFlags) {
         return new MdnsServiceTypeClient(SERVICE_TYPE, mockSocketClient, currentThreadExecutor,
                 mockDecoderClock, socketKey, mockSharedLog, thread.getLooper(), mockDeps,
-                serviceCache, featureFlags);
+                serviceCache, featureFlags, mockCallback);
     }
 
     @After
@@ -536,7 +542,7 @@ public class MdnsServiceTypeClientTests {
                 "service-instance-1", "192.0.2.123", 5353,
                 SERVICE_TYPE_LABELS,
                 Collections.emptyMap(), TEST_TTL,
-                TEST_ELAPSED_REALTIME - 1), socketKey);
+                TEST_ELAPSED_REALTIME - 1, "hostname"), socketKey);
         verify(mockDeps, times(2)).removeMessages(any(), eq(EVENT_START_QUERYTASK));
 
         // In backoff mode, the current scheduled task will not be canceled if the
@@ -2325,35 +2331,178 @@ public class MdnsServiceTypeClientTests {
         verify(mockListenerTwo, never()).onServiceNameRemoved(any());
     }
 
+    private Set<FilterRepliesInfo> getFilterRepliesInfo() throws Exception {
+        final CompletableFuture<Set<FilterRepliesInfo>> future = new CompletableFuture<>();
+        handler.post(() -> future.complete(client.getFilterRepliesInfo()));
+        return future.get(DEFAULT_TIMEOUT, TimeUnit.MILLISECONDS);
+    }
+
     @Test
     public void testGetFilterRepliesInfo() throws Exception {
+        final MdnsFeatureFlags flags = MdnsFeatureFlags.newBuilder()
+                .setIsSelectiveMdnsResponseOffloadEnabled(true).build();
+        client = makeMdnsServiceTypeClient(flags);
+
         final String instanceName = "instance1";
         final String subtype = "subtype";
         final MdnsSearchOptions resolveOptions = MdnsSearchOptions.newBuilder()
-                .addSubtype(subtype).setResolveInstanceName(instanceName).build();
+                .setResolveInstanceName(instanceName).build();
         final MdnsSearchOptions discoverOptions = MdnsSearchOptions.newBuilder()
                 .addSubtype(subtype).build();
         // Register two listener, one is for service resolution and one is for service discovery.
         startSendAndReceive(mockListenerOne, resolveOptions);
         startSendAndReceive(mockListenerTwo, discoverOptions);
 
+        // Check offload service info. There should be two services for both resolution and
+        // discovery.
+        final Set<FilterRepliesInfo> offloadInfo = getFilterRepliesInfo();
+        assertEquals(2, offloadInfo.size());
+
+        final FilterRepliesInfo resolveInfo = new FilterRepliesInfo(
+                instanceName, SERVICE_TYPE, List.of(), NO_HOSTNAME);
+        final FilterRepliesInfo discoverInfo = new FilterRepliesInfo(
+                SERVICE_NAME_DISCOVERY, SERVICE_TYPE, List.of(subtype), NO_HOSTNAME);
+        assertTrue(offloadInfo.containsAll(Set.of(resolveInfo, discoverInfo)));
+
         // Get a service response
         processResponse(createResponse(instanceName, "192.0.2.0", 5353, SUBTYPE,
                 Collections.emptyMap() /* textAttributes */, TEST_TTL), socketKey);
 
-        // Check offload service info. There should be two services for both resolution and
-        // discovery.
-        final CompletableFuture<Set<FilterRepliesInfo>> future = new CompletableFuture<>();
-        handler.post(() -> future.complete(client.getFilterRepliesInfo()));
-        final Set<FilterRepliesInfo> offloadInfo =
-                future.get(DEFAULT_TIMEOUT, TimeUnit.MILLISECONDS);
-        assertEquals(2, offloadInfo.size());
+        // Check offload service info again. The resolution info should be updated.
+        final Set<FilterRepliesInfo> offloadInfo2 = getFilterRepliesInfo();
+        assertEquals(2, offloadInfo2.size());
 
-        final FilterRepliesInfo resolveInfo = new FilterRepliesInfo(
-                instanceName, SERVICE_TYPE, List.of(subtype), "hostname");
-        final FilterRepliesInfo discoverInfo = new FilterRepliesInfo(
-                "" /* serviceName */, SERVICE_TYPE, List.of(subtype), "" /* hostname */);
-        assertTrue(offloadInfo.containsAll(Set.of(resolveInfo, discoverInfo)));
+        final FilterRepliesInfo resolveInfoWithHostname = new FilterRepliesInfo(
+                instanceName, SERVICE_TYPE, List.of(), "hostname");
+        assertTrue(offloadInfo2.containsAll(Set.of(resolveInfoWithHostname, discoverInfo)));
+
+        // Get a service response with a different hostname
+        final ArrayList<String> type = new ArrayList<>();
+        type.add(SUBTYPE);
+        type.add(MdnsConstants.SUBTYPE_LABEL);
+        type.addAll(Arrays.asList(SERVICE_TYPE_LABELS));
+        processResponse(createResponse(instanceName, "192.0.2.0", 5353, type.toArray(new String[0]),
+                Collections.emptyMap() /* textAttributes */, TEST_TTL, TEST_ELAPSED_REALTIME,
+                "otherHostname"), socketKey);
+
+        // Check offload service info again. The resolution info should be updated.
+        final Set<FilterRepliesInfo> offloadInfo3 = getFilterRepliesInfo();
+        assertEquals(2, offloadInfo3.size());
+
+        final FilterRepliesInfo resolveInfoWithOtherHostname = new FilterRepliesInfo(
+                instanceName, SERVICE_TYPE, List.of(), "otherHostname");
+        assertTrue(offloadInfo3.containsAll(Set.of(resolveInfoWithOtherHostname, discoverInfo)));
+
+        // Stop the resolution listener
+        stopSendAndReceive(mockListenerOne);
+
+        // Check offload service info again. There should be only one service for discovery.
+        final Set<FilterRepliesInfo> offloadInfo4 = getFilterRepliesInfo();
+        assertEquals(1, offloadInfo4.size());
+        assertTrue(offloadInfo4.contains(discoverInfo));
+    }
+
+    @Test
+    public void testGetFilterRepliesInfo_twoDiscoveryRequests() throws Exception {
+        final MdnsFeatureFlags flags = MdnsFeatureFlags.newBuilder()
+                .setIsSelectiveMdnsResponseOffloadEnabled(true).build();
+        client = makeMdnsServiceTypeClient(flags);
+
+        final String subtype = "subtype";
+        final MdnsSearchOptions discoverOptions1 = MdnsSearchOptions.newBuilder().build();
+        final MdnsSearchOptions discoverOptions2 = MdnsSearchOptions.newBuilder()
+                .addSubtype(subtype).build();
+        // Register two discovery listeners, one has subtypes and the other does not
+        startSendAndReceive(mockListenerOne, discoverOptions1);
+        startSendAndReceive(mockListenerTwo, discoverOptions2);
+
+        // Check offload service info. There should be only one service info with base type.
+        final Set<FilterRepliesInfo> offloadInfo = getFilterRepliesInfo();
+        assertEquals(1, offloadInfo.size());
+        assertTrue(offloadInfo.contains(new FilterRepliesInfo(
+                SERVICE_NAME_DISCOVERY, SERVICE_TYPE, List.of(), NO_HOSTNAME)));
+
+        // Stop base type listener
+        stopSendAndReceive(mockListenerOne);
+
+        // Check offload service info. There is still a service with subtypes.
+        final Set<FilterRepliesInfo> offloadInfo2 = getFilterRepliesInfo();
+        assertEquals(1, offloadInfo2.size());
+        assertTrue(offloadInfo2.contains(new FilterRepliesInfo(
+                SERVICE_NAME_DISCOVERY, SERVICE_TYPE, List.of(subtype), NO_HOSTNAME)));
+    }
+
+    @Test
+    public void testGetFilterRepliesInfo_combineSubtypes() throws Exception {
+        final MdnsFeatureFlags flags = MdnsFeatureFlags.newBuilder()
+                .setIsSelectiveMdnsResponseOffloadEnabled(true).build();
+        client = makeMdnsServiceTypeClient(flags);
+
+        final String subtype1 = "subtype1";
+        final String subtype2 = "subtype2";
+        final MdnsSearchOptions discoverOptions1 = MdnsSearchOptions.newBuilder()
+                .addSubtype(subtype1).build();
+        final MdnsSearchOptions discoverOptions2 = MdnsSearchOptions.newBuilder()
+                .addSubtype(subtype2).build();
+        // Register two discovery listeners, both have subtypes
+        startSendAndReceive(mockListenerOne, discoverOptions1);
+        startSendAndReceive(mockListenerTwo, discoverOptions2);
+
+        // Check offload service info. There should be a service info with combined subtypes.
+        final Set<FilterRepliesInfo> offloadInfo = getFilterRepliesInfo();
+        assertEquals(1, offloadInfo.size());
+        assertTrue(offloadInfo.contains(new FilterRepliesInfo(
+                SERVICE_NAME_DISCOVERY, SERVICE_TYPE, List.of(subtype1, subtype2), NO_HOSTNAME)));
+
+        // Stop one of listener
+        stopSendAndReceive(mockListenerOne);
+
+        // Check offload service info. There is still a service with subtypes.
+        final Set<FilterRepliesInfo> offloadInfo2 = getFilterRepliesInfo();
+        assertEquals(1, offloadInfo2.size());
+        assertTrue(offloadInfo2.contains(new FilterRepliesInfo(
+                SERVICE_NAME_DISCOVERY, SERVICE_TYPE, List.of(subtype2), NO_HOSTNAME)));
+    }
+
+    @Test
+    public void testOffloadServiceInfoUpdate() {
+        final MdnsFeatureFlags flags = MdnsFeatureFlags.newBuilder()
+                .setIsSelectiveMdnsResponseOffloadEnabled(true).build();
+        client = makeMdnsServiceTypeClient(flags);
+        final String instanceName = "instance1";
+        final String subtype = "subtype";
+        final MdnsSearchOptions resolveOptions = MdnsSearchOptions.newBuilder()
+                .setResolveInstanceName(instanceName).build();
+        final MdnsSearchOptions discoverOptions = MdnsSearchOptions.newBuilder()
+                .addSubtype(subtype).build();
+        // Register two listener, one is for service resolution and one is for service discovery.
+        startSendAndReceive(mockListenerOne, resolveOptions);
+        startSendAndReceive(mockListenerTwo, discoverOptions);
+
+        final OffloadServiceInfo resolveInfo1 = createOffloadServiceInfoFromFilterReplies(
+                new FilterRepliesInfo(
+                        instanceName, SERVICE_TYPE, List.of(), NO_HOSTNAME));
+        verify(mockCallback).onOffloadStartOrUpdate(socketKey.getInterfaceName(), resolveInfo1);
+        final OffloadServiceInfo discoverInfo = createOffloadServiceInfoFromFilterReplies(
+                new FilterRepliesInfo(
+                        SERVICE_NAME_DISCOVERY, SERVICE_TYPE, List.of(subtype), NO_HOSTNAME));
+        verify(mockCallback).onOffloadStartOrUpdate(socketKey.getInterfaceName(), discoverInfo);
+
+        // Get a service response
+        processResponse(createResponse(instanceName, "192.0.2.0", 5353,
+                MdnsUtils.constructFullSubtype(SERVICE_TYPE_LABELS, SUBTYPE),
+                Collections.emptyMap() /* textAttributes */, TEST_TTL), socketKey);
+
+        final OffloadServiceInfo resolveInfo2 = createOffloadServiceInfoFromFilterReplies(
+                new FilterRepliesInfo(
+                        instanceName, SERVICE_TYPE, List.of(), "hostname"));
+        verify(mockCallback).onOffloadStartOrUpdate(socketKey.getInterfaceName(), resolveInfo2);
+
+        stopSendAndReceive(mockListenerOne);
+        verify(mockCallback).onOffloadStop(socketKey.getInterfaceName(), resolveInfo2);
+
+        stopSendAndReceive(mockListenerTwo);
+        verify(mockCallback).onOffloadStop(socketKey.getInterfaceName(), discoverInfo);
     }
 
     private static MdnsServiceInfo matchServiceName(String name) {
@@ -2526,7 +2675,7 @@ public class MdnsServiceTypeClientTests {
             @NonNull Map<String, String> textAttributes,
             long ptrTtlMillis) {
         return createResponse(serviceInstanceName, host, port, type, textAttributes, ptrTtlMillis,
-                TEST_ELAPSED_REALTIME);
+                TEST_ELAPSED_REALTIME, "hostname");
     }
 
     // Creates a mDNS response.
@@ -2537,7 +2686,8 @@ public class MdnsServiceTypeClientTests {
             @NonNull String[] type,
             @NonNull Map<String, String> textAttributes,
             long ptrTtlMillis,
-            long receiptTimeMillis) {
+            long receiptTimeMillis,
+            @NonNull String hostname) {
 
         final ArrayList<MdnsRecord> answerRecords = new ArrayList<>();
 
@@ -2563,14 +2713,14 @@ public class MdnsServiceTypeClientTests {
                 0 /* servicePriority */,
                 0 /* serviceWeight */,
                 port,
-                new String[]{"hostname"});
+                new String[]{hostname});
         answerRecords.add(serviceRecord);
 
         // Set A/AAAA record.
         if (host != null) {
             final InetAddress addr = InetAddresses.parseNumericAddress(host);
             final MdnsInetAddressRecord inetAddressRecord = new MdnsInetAddressRecord(
-                    new String[] {"hostname"} /* name */,
+                    new String[] {hostname} /* name */,
                     receiptTimeMillis,
                     false /* cacheFlush */,
                     TEST_TTL,

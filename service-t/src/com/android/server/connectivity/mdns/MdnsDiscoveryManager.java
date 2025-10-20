@@ -33,6 +33,7 @@ import com.android.server.connectivity.mdns.MdnsServiceTypeClient.FilterRepliesI
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
@@ -51,6 +52,7 @@ public class MdnsDiscoveryManager implements MdnsSocketClientBase.Callback {
     @NonNull private final PerSocketServiceTypeClients perSocketServiceTypeClients;
     @NonNull private final DiscoveryExecutor discoveryExecutor;
     @NonNull private final MdnsFeatureFlags mdnsFeatureFlags;
+    @NonNull private final OffloadCallback offloadCallback;
 
     // Only accessed on the handler thread, initialized before first use
     @Nullable
@@ -131,13 +133,15 @@ public class MdnsDiscoveryManager implements MdnsSocketClientBase.Callback {
 
     public MdnsDiscoveryManager(@NonNull ExecutorProvider executorProvider,
             @NonNull MdnsSocketClientBase socketClient, @NonNull SharedLog sharedLog,
-            @NonNull MdnsFeatureFlags mdnsFeatureFlags) {
+            @NonNull MdnsFeatureFlags mdnsFeatureFlags,
+            @NonNull OffloadCallback offloadCallback) {
         this.executorProvider = executorProvider;
         this.socketClient = socketClient;
         this.sharedLog = sharedLog;
         this.perSocketServiceTypeClients = new PerSocketServiceTypeClients();
         this.mdnsFeatureFlags = mdnsFeatureFlags;
         this.discoveryExecutor = new DiscoveryExecutor(socketClient.getLooper(), mdnsFeatureFlags);
+        this.offloadCallback = offloadCallback;
     }
 
     /**
@@ -387,7 +391,8 @@ public class MdnsDiscoveryManager implements MdnsSocketClientBase.Callback {
         return new MdnsServiceTypeClient(
                 serviceType, socketClient,
                 executorProvider.newServiceTypeClientSchedulerExecutor(), socketKey,
-                sharedLog.forSubComponent(tag), looper, serviceCache, mdnsFeatureFlags);
+                sharedLog.forSubComponent(tag), looper, serviceCache, mdnsFeatureFlags,
+                offloadCallback);
     }
 
     private List<MdnsServiceTypeClient> getMdnsServiceTypeClientByInterfaceName(
@@ -410,6 +415,10 @@ public class MdnsDiscoveryManager implements MdnsSocketClientBase.Callback {
     public List<FilterRepliesInfo> notifyOffloadStart(@NonNull String interfaceName) {
         discoveryExecutor.ensureRunningOnHandlerThread();
         sharedLog.log("notifyOffloadStart for interface:" + interfaceName);
+
+        if (!mdnsFeatureFlags.mIsSelectiveMdnsResponseOffloadEnabled) {
+            return Collections.emptyList();
+        }
 
         final List<FilterRepliesInfo> info = new ArrayList<>();
         for (MdnsServiceTypeClient serviceTypeClient :

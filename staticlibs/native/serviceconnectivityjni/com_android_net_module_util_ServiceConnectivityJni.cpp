@@ -96,7 +96,7 @@ static void setTunTapCarrierEnabledImpl(JNIEnv *env, const char *iface,
 
 static int createTunTapImpl(JNIEnv *env, bool isTun, bool hasCarrier,
                             bool setIffMulticast, const char *iface) {
-  base::unique_fd tun(open("/dev/tun", O_RDWR | O_NONBLOCK));
+  base::unique_fd tun(open("/dev/tun", O_RDWR | O_NONBLOCK | O_CLOEXEC));
   ifreq ifr{};
 
   // Allocate interface.
@@ -104,7 +104,7 @@ static int createTunTapImpl(JNIEnv *env, bool isTun, bool hasCarrier,
   if (!hasCarrier) {
     // Using IFF_NO_CARRIER is supported starting in kernel version >= 6.0
     // Up until then, unsupported flags are ignored.
-    if (!bpf::isAtLeastKernelVersion(6, 0, 0)) {
+    if (!bpf::isAtLeastKernelVersion(6, 0)) {
       throwException(env, EOPNOTSUPP, "IFF_NO_CARRIER not supported",
                      ifr.ifr_name);
       return -1;

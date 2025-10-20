@@ -213,7 +213,8 @@ java_library {
         // in framework-connectivity
         "android.net.platform.flags-aconfig-java-export",
         "androidx.annotation_annotation",
-        "com.android.tethering.mainline.beta.flags-aconfig-java",
+        "com.android.tethering.flags-aconfig-java",
+        "com.android.tethering.mainline.beta.flags-aconfig-java-deprecated",
         "connectivity-net-module-utils-bpf",
         "connectivity_native_aidl_interface-lateststable-java",
         "dnsresolver_aidl_interface-V17-java",
@@ -239,6 +240,7 @@ java_library {
         "//packages/modules/Connectivity/tests:__subpackages__",
         "//packages/modules/Connectivity/thread/service:__subpackages__",
         "//packages/modules/Connectivity/thread/tests:__subpackages__",
+        "//packages/modules/Connectivity/Vcn/service-b",
     ],
 }
 
@@ -280,10 +282,8 @@ java_defaults {
         "service-networksecurity-pre-jarjar",
         service_remoteauth_pre_jarjar_lib,
         "service-thread-pre-jarjar",
-    ] + select(release_flag("RELEASE_MOVE_VCN_TO_MAINLINE"), {
-        true: ["service-connectivity-b-pre-jarjar"],
-        default: [],
-    }),
+        "service-connectivity-b-pre-jarjar",
+    ],
 
     // The below libraries are not actually needed to build since no source is compiled
     // (only combining prebuilt static_libs), but they are necessary so that R8 has the right
