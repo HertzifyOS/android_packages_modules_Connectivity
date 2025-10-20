@@ -591,6 +591,8 @@ public class ConnectivityService extends IConnectivityManager.Stub
     private final boolean mSupportEarlyLinkPropertiesUpdateForVPN;
     private final boolean mConstrainedDataSatelliteMetrics;
     private final boolean mUseSatelliteReportedSuspendedAndRoaming;
+    // Flag for ott network slicing enable status
+    private final boolean mIsOttNetworkSlicingEnabled;
 
     /**
      * Uids ConnectivityService tracks blocked status of to send blocked status callbacks.
@@ -720,8 +722,14 @@ public class ConnectivityService extends IConnectivityManager.Stub
     /**
      * Defines the preference order for all network requests managed by the
      * {@code AppOptInDefaultNetworkController}. This single preference level is used
-     * for various application-specific policies, including satellite fallback for SMS role holders,
-     * and satellite fallback for opt-in UIDs.
+     * for various application-specific policies, including high-priority requests
+     * for premium OTT call slicing, as well as lower-priority satellite fallbacks
+     * for SMS role holders and opt-in UIDs.
+     *
+     * <p>The priority between different network requirements, such as an active OTT call versus
+     * default satellite access, is determined by the order of layers within the multi-layer
+     * NetworkRequest. The {@code AppOptInDefaultNetworkController} determines the policy
+     * for each UID, and {@code ConnectivityService} constructs the request accordingly.
      */
     public static final int PREFERENCE_ORDER_APP_OPT_IN = 40;
     // Preference order that signifies the network shouldn't be set as a default network for
@@ -2235,10 +2243,11 @@ public class ConnectivityService extends IConnectivityManager.Stub
         mCarrierPrivilegeAuthenticator = mDeps.makeCarrierPrivilegeAuthenticator(
                 mContext, mTelephonyManager, mRequestRestrictedWifiEnabled,
                 this::handleUidCarrierPrivilegesLost, mHandler);
+        mIsOttNetworkSlicingEnabled =  mDeps.isFeatureNotChickenedOut(context,
+                ConnectivityFlags.OTT_NETWORK_SLICING);
 
         if (mDeps.isAtLeastU()
-                && mDeps
-                .isFeatureNotChickenedOut(mContext, ALLOW_SATALLITE_NETWORK_FALLBACK)) {
+                && mDeps.isFeatureNotChickenedOut(mContext, ALLOW_SATALLITE_NETWORK_FALLBACK)) {
             mAppOptInDefaultNetworkController = mDeps.makeAppOptInDefaultNetworkController(
                     mContext, this::handleUpdateAppOptInDefaultNetworkPolicies, mHandler);
         } else {
@@ -4906,6 +4915,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
                 (mMulticastRoutingCoordinatorService != null));
         pw.println("Background firewall chain enabled: " + mBackgroundFirewallChainEnabled);
         pw.println("IngressToVpnAddressFiltering: " + mIngressToVpnAddressFiltering);
+        pw.println("mIsOttNetworkSlicingEnabled: " + mIsOttNetworkSlicingEnabled);
 
         if (mIpToNetworksMap != null) {
             pw.println();
@@ -15256,6 +15266,11 @@ public class ConnectivityService extends IConnectivityManager.Stub
         for (AppOptInDefaultNetworkPolicy policy : policies) {
             final List<NetworkRequest> mlRequests = new ArrayList<>();
 
+            // Higher-Priority Networks
+            if (policy.isOtt()) {
+                mlRequests.addAll(getOttSlicingRequests());
+            }
+
             // System default network
             mlRequests.add(createDefaultInternetRequestForTransport(
                     TYPE_NONE, NetworkRequest.Type.TRACK_DEFAULT));
@@ -15273,6 +15288,28 @@ public class ConnectivityService extends IConnectivityManager.Stub
                     PREFERENCE_ORDER_APP_OPT_IN));
         }
         return allNris;
+    }
+
+    private List<NetworkRequest> getOttSlicingRequests() {
+        final List<NetworkRequest> requests = new ArrayList<>();
+
+        // Layer 1: Unmetered
+        final NetworkCapabilities unmeteredCap = new NetworkCapabilities.Builder()
+                .addCapability(NET_CAPABILITY_INTERNET)
+                .addCapability(NET_CAPABILITY_NOT_VCN_MANAGED)
+                .addCapability(NET_CAPABILITY_NOT_METERED)
+                .build();
+        requests.add(createNetworkRequest(NetworkRequest.Type.REQUEST, unmeteredCap));
+
+        // Layer 2: UFC / Premium Slice
+        final NetworkCapabilities sliceCap = new NetworkCapabilities.Builder()
+                .addTransportType(TRANSPORT_CELLULAR)
+                .addCapability(NET_CAPABILITY_NOT_VCN_MANAGED)
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_PRIORITIZE_UNIFIED_COMMUNICATIONS)
+                .build();
+        requests.add(createNetworkRequest(NetworkRequest.Type.REQUEST, sliceCap));
+
+        return requests;
     }
 
     private NetworkRequest getSatelliteRoleSmsRequest() {
@@ -16098,6 +16135,9 @@ public class ConnectivityService extends IConnectivityManager.Stub
         if (mQueueNetworkAgentEventsInSystemServer) {
             features |= ConnectivityManager.FEATURE_QUEUE_NETWORK_AGENT_EVENTS_IN_SYSTEM_SERVER;
         }
+        if (mIsOttNetworkSlicingEnabled) {
+            features |= ConnectivityManager.FEATURE_OTT_NETWORK_SLICING;
+        }
         return features;
     }
 
@@ -16196,5 +16236,19 @@ public class ConnectivityService extends IConnectivityManager.Stub
                     || oldPermission == INetd.PERMISSION_NETWORK;
             default -> throw new IllegalArgumentException("Invalid permission");
         };
+    }
+
+    @Override
+    public void onOttCallStateChanged(int uid, boolean isAdded) {
+        Log.i(TAG, "received onOttCallStateChanged");
+
+        if (mDeps.getCallingUid() != Process.SYSTEM_UID) {
+            throw new SecurityException("onOttCallStateChanged is called from non system uid.");
+        }
+
+        mHandler.post(() -> {
+            // TODO (b/447631226):  Automatic Ott slicing Opt Out feature for Apps
+            mAppOptInDefaultNetworkController.onOttCallStateChanged(uid, isAdded);
+        });
     }
 }
