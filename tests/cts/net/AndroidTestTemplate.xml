@@ -45,6 +45,11 @@
             is enforced regardless of dev opt-in. -->
         <option name="run-command"
             value="am compat enable RESTRICT_LOCAL_NETWORK android.net.cts.localnetnopermissions" />
+        <!-- Revoke in separate commands in case one of them fails. -->
+        <option name="run-command"
+            value="pm revoke android.net.cts.localnetnopermissions android.permission.ACCESS_LOCAL_NETWORK" />
+        <option name="run-command"
+            value="pm revoke android.net.cts.localnetnopermissions android.permission.NEARBY_WIFI_DEVICES" />
     </target_preparer>
     <test class="com.android.tradefed.testtype.AndroidJUnitTest" >
         <option name="package" value="{PACKAGE}" />
