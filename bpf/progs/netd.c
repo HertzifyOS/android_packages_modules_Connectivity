@@ -266,6 +266,19 @@ static inline __always_inline bool is_local_net_access_allowed(const uint32_t if
     return v ? *v : true;
 }
 
+static __always_inline inline uint8_t
+get_chunk_permissions(const uint32_t uid) {
+    // All chunks has the same size CHUNK_INT64_COUNT
+    uint32_t chunkId = uid / CHUNK_UID_COUNT;
+    uint32_t index = uid / UIDS_PER_INT64 % CHUNK_INT64_COUNT;
+    int shift = (uid % UIDS_PER_INT64 * PERMISSION_COUNT) & 63;
+
+    UidPermissionChunk *chunk =
+        bpf_uid_permission_chunk_map_lookup_elem(&chunkId);
+    return chunk ? ((chunk->block[index] >> shift) & UID_PERMISSION_MASK)
+                 : PERMISSION_BIT_NONE;
+}
+
 static __always_inline inline bool should_block_local_network_packets(struct __sk_buff *skb,
                                    const uint32_t uid, const struct egress_bool egress,
                                    const struct kver_uint kver) {
@@ -775,16 +788,7 @@ static __always_inline inline uint8_t get_app_permissions() {
     bool *uidMigrationEnabled =
         bpf_uid_migration_enabled_map_lookup_elem(&mapKey);
     if (uidMigrationEnabled && *uidMigrationEnabled) {
-
-        uint32_t chunkId = uid / CHUNK_UID_COUNT;
-        // All chunks has the same size CHUNK_INT64_COUNT
-        uint32_t index = uid / UIDS_PER_INT64 % CHUNK_INT64_COUNT;
-        int shift = (uid % UIDS_PER_INT64 * PERMISSION_COUNT) & 63;
-        UidPermissionChunk *chunk =
-            bpf_uid_permission_chunk_map_lookup_elem(&chunkId);
-        return chunk
-                   ? ((chunk->block[index] >> shift) & UID_PERMISSION_MASK)
-                   : PERMISSION_BIT_NONE;
+        return get_chunk_permissions(uid);
     } else {
         /*
          * A given app is guaranteed to have the same app ID in all the profiles
