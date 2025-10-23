@@ -17,6 +17,7 @@
 package com.android.server.vcn;
 
 import static android.net.NetworkCapabilities.TRANSPORT_CELLULAR;
+import static android.net.NetworkCapabilities.TRANSPORT_WIFI;
 
 import static com.android.server.vcn.VcnGatewayConnection.VcnIkeSession;
 import static com.android.server.vcn.VcnGatewayConnection.VcnNetworkAgent;
@@ -144,7 +145,7 @@ public class VcnGatewayConnectionTestBase {
     protected static final UnderlyingNetworkRecord TEST_UNDERLYING_NETWORK_RECORD_2 =
             getTestNetworkRecord(
                     mock(Network.class, CALLS_REAL_METHODS),
-                    new NetworkCapabilities(),
+                    new NetworkCapabilities.Builder().addTransportType(TRANSPORT_WIFI).build(),
                     new LinkProperties(),
                     false /* blocked */);
 
