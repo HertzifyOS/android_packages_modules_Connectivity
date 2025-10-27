@@ -150,6 +150,15 @@ public class BpfNetMaps {
             Pair.create(TRAFFIC_PERMISSION_UPDATE_DEVICE_STATS, "PERMISSION_UPDATE_DEVICE_STATS")
     );
     private final InterfaceTracker mInterfaceTracker;
+    private static boolean sPermissionMapUidMigrationEnabled = false;
+
+    /**
+     * Get the cached com.android.tethering.flags.Flags#permissionMapUidMigration() so the flag
+     * value is process stable.
+     */
+    public boolean isUidMigrationEnabled() {
+        return sPermissionMapUidMigrationEnabled;
+    }
 
     /**
      * Set configurationMap for test.
@@ -404,8 +413,9 @@ public class BpfNetMaps {
             sUidMigrationEnabledBpfBoolean = getUidMigrationEnabledBpfBoolean();
         }
 
+        sPermissionMapUidMigrationEnabled = deps.isPermissionMapUidMigrationEnabled();
         try {
-            sUidMigrationEnabledBpfBoolean.set(deps.isPermissionMapUidMigrationEnabled());
+            sUidMigrationEnabledBpfBoolean.set(sPermissionMapUidMigrationEnabled);
         } catch (ErrnoException e) {
             throw new IllegalStateException("Failed to set uid migration enabled map", e);
         }
@@ -465,6 +475,10 @@ public class BpfNetMaps {
         }
 
         /**
+         * WARNING: DO NOT CALL THIS METHOD DIRECTLY FROM ANY CODE PATH other than permission
+         * map uid migration. Wrapper around permissionMapUidMigration() so that it can be mocked
+         * in unit test.
+         *
          * @see com.android.tethering.flags.Flags#permissionMapUidMigration()
          */
         public boolean isPermissionMapUidMigrationEnabled() {

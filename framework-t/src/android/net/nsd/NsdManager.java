@@ -889,6 +889,18 @@ public final class NsdManager {
      */
     public static final int FAILURE_BAD_PARAMETERS              = 6;
 
+    /**
+     * Indicates that the operation failed because the caller did not have the required permissions.
+     * This can happen when trying to perform resolution, discovery, or callback registration
+     * without the {@link android.Manifest.permission.ACCESS_LOCAL_NETWORK} permission.
+     *
+     * This failure is passed with {@link ResolveListener#onResolveFailed},
+     * {@link DiscoveryListener#onStartDiscoveryFailed}, or
+     * {@link ServiceInfoCallback#onServiceInfoCallbackRegistrationFailed}.
+     */
+    @FlaggedApi(android.permission.flags.Flags.FLAG_ACCESS_LOCAL_NETWORK_PERMISSION_ENABLED)
+    public static final int FAILURE_PERMISSION_DENIED = 7;
+
     /** @hide */
     @Retention(RetentionPolicy.SOURCE)
     @IntDef(value = {
