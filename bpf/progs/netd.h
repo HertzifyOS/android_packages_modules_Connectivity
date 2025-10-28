@@ -92,6 +92,8 @@ STRUCT_SIZE(PacketTrace, 8+4+4 + 4+4 + 2+2 + 1+1+1+1);
 
 typedef struct {
     uint64_t cookie;
+    // Store gid and uid to make them available outside the program types that
+    // support `bpf_get_socket_uid`
     uint32_t gid;
     uint32_t uid;
 } SkStorageValue;
