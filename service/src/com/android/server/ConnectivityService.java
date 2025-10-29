@@ -2243,8 +2243,6 @@ public class ConnectivityService extends IConnectivityManager.Stub
         mCarrierPrivilegeAuthenticator = mDeps.makeCarrierPrivilegeAuthenticator(
                 mContext, mTelephonyManager, mRequestRestrictedWifiEnabled,
                 this::handleUidCarrierPrivilegesLost, mHandler);
-        mIsOttNetworkSlicingEnabled =  mDeps.isFeatureNotChickenedOut(context,
-                ConnectivityFlags.OTT_NETWORK_SLICING);
 
         if (mDeps.isAtLeastU()
                 && mDeps.isFeatureNotChickenedOut(mContext, ALLOW_SATALLITE_NETWORK_FALLBACK)) {
@@ -2253,6 +2251,8 @@ public class ConnectivityService extends IConnectivityManager.Stub
         } else {
             mAppOptInDefaultNetworkController = null;
         }
+        mIsOttNetworkSlicingEnabled = (mAppOptInDefaultNetworkController != null)
+                && mDeps.isFeatureNotChickenedOut(context, ConnectivityFlags.OTT_NETWORK_SLICING);
         mConstrainedDataSatelliteMetrics = (mAppOptInDefaultNetworkController != null)
                 && mDeps.isFeatureNotChickenedOut(mContext, CONSTRAINED_DATA_SATELLITE_METRICS);
         if (mConstrainedDataSatelliteMetrics) {
