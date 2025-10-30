@@ -221,10 +221,12 @@ public class NsdServiceTest {
     private static final long TEST_TIME_MS = 123L;
     private static final String SERVICE_NAME = "a_name";
     private static final String SERVICE_TYPE = "_test._tcp";
+    private static final String SERVICE_TYPE_WITH_LOCAL_TLD = SERVICE_TYPE + ".local";
     private static final String SERVICE_FULL_NAME = SERVICE_NAME + "." + SERVICE_TYPE;
     private static final String DOMAIN_NAME = "mytestdevice.local";
     private static final int PORT = 2201;
     private static final int IFACE_IDX_ANY = 0;
+    private static final int TEST_INTERFACE_INDEX = 1234;
     private static final String IPV4_ADDRESS = "192.0.2.0";
     private static final String IPV6_ADDRESS = "2001:db8::";
     private static final String FLAG_ACCESS_LOCAL_NETWORK_PERMISSION_ENABLED =
@@ -642,14 +644,13 @@ public class NsdServiceTest {
         final ArgumentCaptor<MdnsServiceBrowserListener> discoverListenerCaptor =
                 ArgumentCaptor.forClass(MdnsServiceBrowserListener.class);
         final InOrder discManagerOrder = inOrder(mDiscoveryManager);
-        final String serviceTypeWithLocalDomain = SERVICE_TYPE + ".local";
-        discManagerOrder.verify(mDiscoveryManager).registerListener(eq(serviceTypeWithLocalDomain),
+        discManagerOrder.verify(mDiscoveryManager).registerListener(eq(SERVICE_TYPE_WITH_LOCAL_TLD),
                 discoverListenerCaptor.capture(), any());
 
         final int interfaceIdx = 123;
         final MdnsServiceInfo mockServiceInfo = new MdnsServiceInfo(
                 SERVICE_NAME, /* serviceInstanceName */
-                serviceTypeWithLocalDomain.split("\\."), /* serviceType */
+                SERVICE_TYPE_WITH_LOCAL_TLD.split("\\."), /* serviceType */
                 List.of(), /* subtypes */
                 new String[] {"android", "local"}, /* hostName */
                 12345, /* port */
@@ -1109,7 +1110,6 @@ public class NsdServiceTest {
         final NsdManager client = connectClient(mService);
         final NsdServiceInfo request = new NsdServiceInfo(SERVICE_NAME, SERVICE_TYPE);
         final ServiceInfoCallback serviceInfoCallback = mock(ServiceInfoCallback.class);
-        final String serviceTypeWithLocalDomain = SERVICE_TYPE + ".local";
         request.setNetwork(TEST_NETWORK);
         client.registerServiceInfoCallback(request, Runnable::run, serviceInfoCallback);
         waitForIdle();
@@ -1117,7 +1117,7 @@ public class NsdServiceTest {
         final ArgumentCaptor<MdnsListener> listenerCaptor =
                 ArgumentCaptor.forClass(MdnsListener.class);
         verify(mSocketProvider).startMonitoringSockets();
-        verify(mDiscoveryManager).registerListener(eq(serviceTypeWithLocalDomain),
+        verify(mDiscoveryManager).registerListener(eq(SERVICE_TYPE_WITH_LOCAL_TLD),
                 listenerCaptor.capture(), argThat(options ->
                         TEST_NETWORK.equals(options.getNetwork())));
 
@@ -1126,19 +1126,7 @@ public class NsdServiceTest {
         // Verify the service info callback registered.
         verify(mMetrics).reportServiceInfoCallbackRegistered(servInfoId);
 
-        final MdnsServiceInfo mdnsServiceInfo = new MdnsServiceInfo(
-                SERVICE_NAME,
-                serviceTypeWithLocalDomain.split("\\."),
-                List.of(), /* subtypes */
-                new String[]{"android", "local"}, /* hostName */
-                PORT,
-                List.of(IPV4_ADDRESS),
-                List.of(IPV6_ADDRESS),
-                List.of() /* textEntries */,
-                1234,
-                TEST_NETWORK,
-                Instant.MAX /* expirationTime */,
-                0L /* creationCapabilitiesBits */);
+        final MdnsServiceInfo mdnsServiceInfo = makeTestServiceInfo();
 
         // Callbacks for query sent.
         listener.onDiscoveryQuerySent(Collections.emptyList(), 1 /* transactionId */);
@@ -1159,7 +1147,7 @@ public class NsdServiceTest {
         final String v6Address = "2001:db8::1";
         final MdnsServiceInfo updatedServiceInfo = new MdnsServiceInfo(
                 SERVICE_NAME,
-                serviceTypeWithLocalDomain.split("\\."),
+                SERVICE_TYPE_WITH_LOCAL_TLD.split("\\."),
                 List.of(), /* subtypes */
                 new String[]{"android", "local"}, /* hostName */
                 PORT,
@@ -1257,30 +1245,17 @@ public class NsdServiceTest {
         final NsdManager client = connectClient(mService);
         final NsdServiceInfo request = new NsdServiceInfo(SERVICE_NAME, SERVICE_TYPE);
         final ServiceInfoCallback serviceInfoCallback = mock(ServiceInfoCallback.class);
-        final String serviceTypeWithLocalDomain = SERVICE_TYPE + ".local";
         request.setNetwork(TEST_NETWORK);
         client.registerServiceInfoCallback(request, Runnable::run, serviceInfoCallback);
         waitForIdle();
         // Verify the registration callback start.
         final ArgumentCaptor<MdnsListener> listenerCaptor =
                 ArgumentCaptor.forClass(MdnsListener.class);
-        verify(mDiscoveryManager).registerListener(eq(serviceTypeWithLocalDomain),
+        verify(mDiscoveryManager).registerListener(eq(SERVICE_TYPE_WITH_LOCAL_TLD),
                 listenerCaptor.capture(), argThat(
                         options -> TEST_NETWORK.equals(options.getNetwork())));
 
-        final MdnsServiceInfo mdnsServiceInfo = new MdnsServiceInfo(
-                SERVICE_NAME,
-                serviceTypeWithLocalDomain.split("\\."),
-                List.of(), /* subtypes */
-                new String[]{"android", "local"}, /* hostName */
-                PORT,
-                List.of(IPV4_ADDRESS),
-                List.of(IPV6_ADDRESS),
-                List.of() /* textEntries */,
-                1234,
-                TEST_NETWORK,
-                Instant.MAX /* expirationTime */,
-                0L /* creationCapabilitiesBits */);
+        final MdnsServiceInfo mdnsServiceInfo = makeTestServiceInfo();
 
         // Discover the service and report back
         final MdnsListener listener = listenerCaptor.getValue();
@@ -1292,7 +1267,7 @@ public class NsdServiceTest {
         final String v6Address = "2001:db8::1";
         final MdnsServiceInfo updatedServiceInfo = new MdnsServiceInfo(
                 SERVICE_NAME,
-                serviceTypeWithLocalDomain.split("\\."),
+                SERVICE_TYPE_WITH_LOCAL_TLD.split("\\."),
                 List.of(), /* subtypes */
                 new String[]{"android", "local"}, /* hostName */
                 PORT,
@@ -1371,10 +1346,9 @@ public class NsdServiceTest {
         client.discoverServices(SERVICE_TYPE, PROTOCOL, discListenerWithFeature);
         waitForIdle();
 
-        final String serviceTypeWithLocalDomain = SERVICE_TYPE + ".local";
         final ArgumentCaptor<MdnsServiceBrowserListener> listenerCaptor =
                 ArgumentCaptor.forClass(MdnsServiceBrowserListener.class);
-        verify(mDiscoveryManager).registerListener(eq(serviceTypeWithLocalDomain),
+        verify(mDiscoveryManager).registerListener(eq(SERVICE_TYPE_WITH_LOCAL_TLD),
                 listenerCaptor.capture(), any());
 
         client.stopServiceDiscovery(discListenerWithoutFeature);
@@ -1383,7 +1357,7 @@ public class NsdServiceTest {
 
         client.stopServiceDiscovery(discListenerWithFeature);
         waitForIdle();
-        verify(mDiscoveryManager).unregisterListener(serviceTypeWithLocalDomain,
+        verify(mDiscoveryManager).unregisterListener(SERVICE_TYPE_WITH_LOCAL_TLD,
                 listenerCaptor.getValue());
     }
 
@@ -1394,14 +1368,13 @@ public class NsdServiceTest {
 
         final NsdManager client = connectClient(mService);
         final DiscoveryListener discListener = mock(DiscoveryListener.class);
-        final String serviceTypeWithLocalDomain = SERVICE_TYPE + ".local";
         // Verify the discovery start / stop.
         final ArgumentCaptor<MdnsListener> listenerCaptor =
                 ArgumentCaptor.forClass(MdnsListener.class);
         client.discoverServices(SERVICE_TYPE, PROTOCOL, TEST_NETWORK, r -> r.run(), discListener);
         waitForIdle();
         verify(mSocketProvider).startMonitoringSockets();
-        verify(mDiscoveryManager).registerListener(eq(serviceTypeWithLocalDomain),
+        verify(mDiscoveryManager).registerListener(eq(SERVICE_TYPE_WITH_LOCAL_TLD),
                 listenerCaptor.capture(), argThat(options ->
                         TEST_NETWORK.equals(options.getNetwork())));
         verify(discListener, timeout(TIMEOUT_MS)).onDiscoveryStarted(SERVICE_TYPE);
@@ -1417,7 +1390,7 @@ public class NsdServiceTest {
 
         final MdnsServiceInfo foundInfo = new MdnsServiceInfo(
                 SERVICE_NAME, /* serviceInstanceName */
-                serviceTypeWithLocalDomain.split("\\."), /* serviceType */
+                SERVICE_TYPE_WITH_LOCAL_TLD.split("\\."), /* serviceType */
                 List.of(), /* subtypes */
                 new String[] {"android", "local"}, /* hostName */
                 12345, /* port */
@@ -1439,7 +1412,7 @@ public class NsdServiceTest {
 
         final MdnsServiceInfo removedInfo = new MdnsServiceInfo(
                 SERVICE_NAME, /* serviceInstanceName */
-                serviceTypeWithLocalDomain.split("\\."), /* serviceType */
+                SERVICE_TYPE_WITH_LOCAL_TLD.split("\\."), /* serviceType */
                 null, /* subtypes */
                 null, /* hostName */
                 0, /* port */
@@ -1461,7 +1434,7 @@ public class NsdServiceTest {
         doReturn(TEST_TIME_MS + 10L).when(mClock).elapsedRealtime();
         client.stopServiceDiscovery(discListener);
         waitForIdle();
-        verify(mDiscoveryManager).unregisterListener(eq(serviceTypeWithLocalDomain), any());
+        verify(mDiscoveryManager).unregisterListener(eq(SERVICE_TYPE_WITH_LOCAL_TLD), any());
         verify(discListener, timeout(TIMEOUT_MS)).onDiscoveryStopped(SERVICE_TYPE);
         verify(mSocketProvider, timeout(CLEANUP_DELAY_MS + TIMEOUT_MS)).requestStopWhenInactive();
         verify(mMetrics).reportServiceDiscoveryStop(false /* isLegacy */, discId,
@@ -1486,12 +1459,11 @@ public class NsdServiceTest {
         verify(mMetrics, times(1)).reportServiceDiscoveryFailed(
                 false /* isLegacy */, NO_TRANSACTION, 0L /* durationMs */);
 
-        final String serviceTypeWithLocalDomain = SERVICE_TYPE + ".local";
         client.discoverServices(
-                serviceTypeWithLocalDomain, PROTOCOL, TEST_NETWORK, r -> r.run(), discListener);
+                SERVICE_TYPE_WITH_LOCAL_TLD, PROTOCOL, TEST_NETWORK, r -> r.run(), discListener);
         waitForIdle();
         verify(discListener, timeout(TIMEOUT_MS))
-                .onStartDiscoveryFailed(serviceTypeWithLocalDomain, FAILURE_INTERNAL_ERROR);
+                .onStartDiscoveryFailed(SERVICE_TYPE_WITH_LOCAL_TLD, FAILURE_INTERNAL_ERROR);
         verify(mMetrics, times(2)).reportServiceDiscoveryFailed(
                 false /* isLegacy */, NO_TRANSACTION, 0L /* durationMs */);
 
@@ -1588,19 +1560,7 @@ public class NsdServiceTest {
         final NsdPickerConnector connector = verifyPickerStarted();
         final NsdServiceReceiver receiver = setMockPickerReceiver(connector);
 
-        final MdnsServiceInfo mdnsServiceInfo = new MdnsServiceInfo(
-                SERVICE_NAME,
-                (SERVICE_TYPE + ".local").split("\\."),
-                List.of(), /* subtypes */
-                new String[]{"android", "local"}, /* hostName */
-                PORT,
-                List.of(IPV4_ADDRESS),
-                List.of(IPV6_ADDRESS),
-                List.of() /* textEntries */,
-                1234,
-                TEST_NETWORK,
-                Instant.MAX, /* expirationTime */
-                0L /* creationCapabilitiesBits */);
+        final MdnsServiceInfo mdnsServiceInfo = makeTestServiceInfo();
         mdnsListener.onServiceNameDiscovered(mdnsServiceInfo, false /* isServiceFromCache */);
         waitForIdle();
         // TODO: verify actual service contents, and find 2 services
@@ -1670,37 +1630,24 @@ public class NsdServiceTest {
 
         final NsdManager client = connectClient(mService);
         final DiscoveryListener discListener = mock(DiscoveryListener.class);
-        final String serviceTypeWithLocalDomain = SERVICE_TYPE + ".local";
         // Verify the discovery start / stop.
         final ArgumentCaptor<MdnsListener> listenerCaptor =
                 ArgumentCaptor.forClass(MdnsListener.class);
         client.discoverServices(SERVICE_TYPE, PROTOCOL, TEST_NETWORK, r -> r.run(), discListener);
         waitForIdle();
-        verify(mDiscoveryManager).registerListener(eq(serviceTypeWithLocalDomain),
+        verify(mDiscoveryManager).registerListener(eq(SERVICE_TYPE_WITH_LOCAL_TLD),
                 listenerCaptor.capture(), argThat(options ->
                         TEST_NETWORK.equals(options.getNetwork())));
         final MdnsListener listener = listenerCaptor.getValue();
 
         // Discover service
-        final MdnsServiceInfo foundInfo = new MdnsServiceInfo(
-                SERVICE_NAME, /* serviceInstanceName */
-                serviceTypeWithLocalDomain.split("\\."), /* serviceType */
-                List.of(), /* subtypes */
-                new String[]{"android", "local"}, /* hostName */
-                12345, /* port */
-                List.of(IPV4_ADDRESS),
-                List.of(IPV6_ADDRESS),
-                List.of(), /* textEntries */
-                1234, /* interfaceIndex */
-                TEST_NETWORK,
-                Instant.MAX /* expirationTime */,
-                0L /* creationCapabilitiesBits */);
+        final MdnsServiceInfo foundInfo = makeTestServiceInfo();
         listener.onServiceNameDiscovered(foundInfo, true /* isServiceFromCache */);
 
         // Remove service
         final MdnsServiceInfo removedInfo = new MdnsServiceInfo(
                 SERVICE_NAME, /* serviceInstanceName */
-                serviceTypeWithLocalDomain.split("\\."), /* serviceType */
+                SERVICE_TYPE_WITH_LOCAL_TLD.split("\\."), /* serviceType */
                 null, /* subtypes */
                 null, /* hostName */
                 0, /* port */
@@ -1899,32 +1846,19 @@ public class NsdServiceTest {
         waitForIdle();
         final ArgumentCaptor<MdnsSearchOptions> optionsCaptor =
                 ArgumentCaptor.forClass(MdnsSearchOptions.class);
-        final String serviceTypeWithLocalDomain = SERVICE_TYPE + ".local";
-        verify(mDiscoveryManager).registerListener(eq(serviceTypeWithLocalDomain),
+        verify(mDiscoveryManager).registerListener(eq(SERVICE_TYPE_WITH_LOCAL_TLD),
                 listenerCaptor.capture(),
                 optionsCaptor.capture());
 
         final MdnsListener listener = listenerCaptor.getValue();
-        final MdnsServiceInfo mdnsServiceInfo = new MdnsServiceInfo(
-                SERVICE_NAME,
-                serviceTypeWithLocalDomain.split("\\."),
-                List.of(), /* subtypes */
-                new String[]{"android", "local"}, /* hostName */
-                PORT,
-                List.of(IPV4_ADDRESS),
-                List.of(IPV6_ADDRESS),
-                List.of() /* textEntries */,
-                1234,
-                TEST_NETWORK,
-                Instant.MAX /* expirationTime */,
-                0L /* creationCapabilitiesBits */);
+        final MdnsServiceInfo mdnsServiceInfo = makeTestServiceInfo();
 
         // Verify onServiceFound callback
         listener.onServiceFound(mdnsServiceInfo, true /* isServiceFromCache */);
 
         // The listener should be unregistered and finishDataDelivery() called
         verify(mDiscoveryManager, timeout(TIMEOUT_MS))
-                .unregisterListener(eq(serviceTypeWithLocalDomain), any());
+                .unregisterListener(eq(SERVICE_TYPE_WITH_LOCAL_TLD), any());
         verify(mPermissionManager, times(1)).finishDataDelivery(ACCESS_LOCAL_NETWORK,
                 attributionSource);
     }
@@ -2058,7 +1992,6 @@ public class NsdServiceTest {
 
         final NsdManager client = connectClient(mService);
         final RegistrationListener regListener = mock(RegistrationListener.class);
-        // final String serviceTypeWithLocalDomain = SERVICE_TYPE + ".local";
         final ArgumentCaptor<MdnsAdvertiser.AdvertiserCallback> cbCaptor =
                 ArgumentCaptor.forClass(MdnsAdvertiser.AdvertiserCallback.class);
         verify(mDeps).makeMdnsAdvertiser(
@@ -2111,7 +2044,6 @@ public class NsdServiceTest {
 
         final NsdManager client = connectClient(mService);
         final RegistrationListener regListener = mock(RegistrationListener.class);
-        // final String serviceTypeWithLocalDomain = SERVICE_TYPE + ".local";
         final ArgumentCaptor<MdnsAdvertiser.AdvertiserCallback> cbCaptor =
                 ArgumentCaptor.forClass(MdnsAdvertiser.AdvertiserCallback.class);
         verify(mDeps).makeMdnsAdvertiser(
@@ -2140,7 +2072,6 @@ public class NsdServiceTest {
 
         final NsdManager client = connectClient(mService);
         final RegistrationListener regListener = mock(RegistrationListener.class);
-        // final String serviceTypeWithLocalDomain = SERVICE_TYPE + ".local";
         final ArgumentCaptor<MdnsAdvertiser.AdvertiserCallback> cbCaptor =
                 ArgumentCaptor.forClass(MdnsAdvertiser.AdvertiserCallback.class);
         verify(mDeps).makeMdnsAdvertiser(
@@ -3099,6 +3030,22 @@ public class NsdServiceTest {
             }
         };
         return service;
+    }
+
+    private MdnsServiceInfo makeTestServiceInfo() {
+        return new MdnsServiceInfo(
+                SERVICE_NAME,
+                SERVICE_TYPE_WITH_LOCAL_TLD.split("\\."),
+                List.of(), /* subtypes */
+                new String[] {"android", "local"}, /* hostName */
+                PORT,
+                List.of(IPV4_ADDRESS),
+                List.of(IPV6_ADDRESS),
+                List.of() /* textEntries */,
+                TEST_INTERFACE_INDEX,
+                TEST_NETWORK,
+                Instant.MAX /* expirationTime */,
+                0L /* creationCapabilitiesBits */);
     }
 
     private INsdManagerCallback getCallback() {
