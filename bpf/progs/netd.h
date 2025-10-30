@@ -173,6 +173,7 @@ ASSERT_STRING_EQUAL(XT_BPF_DENYLIST_PROG_PATH,  BPF_NETD_PATH "prog_netd_skfilte
 #define L4S_ACCECN_CE_MAP_PATH        BPF_NETD_PATH "map_netd_l4s_accecn_ce_map"
 #define L4S_ACCECN_BYTE_MAP_PATH      BPF_NETD_PATH "map_netd_l4s_accecn_byte_map"
 #define L4S_ACCECN_MSS_MAP_PATH       BPF_NETD_PATH "map_netd_l4s_accecn_mss_map"
+#define L4S_ACCECN_ENABLED_MAP_PATH   BPF_NETD_PATH "map_netd_l4s_accecn_enabled_map"
 
 #endif // __cplusplus
 
