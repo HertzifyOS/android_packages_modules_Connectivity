@@ -1618,6 +1618,45 @@ public class NsdServiceTest {
         verify(receiver).onCancelled();
     }
 
+
+    @Test
+    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    public void testDiscovery_pickerConnectsLate_callbacksAndMetricsRecorded() throws Exception {
+        setMdnsDiscoveryManagerEnabled();
+        final NsdManager client = connectClient(mService);
+        final DiscoveryListener listener = startDiscoveryWithPicker(client);
+        final NsdPickerConnector connector = verifyPickerStarted();
+
+        // Find and lose a service before the picker receiver is set
+        final ArgumentCaptor<MdnsListener> listenerCaptor =
+                ArgumentCaptor.forClass(MdnsListener.class);
+        verify(mDiscoveryManager).registerListener(eq(SERVICE_TYPE + ".local"),
+                listenerCaptor.capture(), any());
+        final MdnsListener mdnsListener = listenerCaptor.getValue();
+        final MdnsServiceInfo mdnsServiceInfo = makeTestServiceInfo();
+        mdnsListener.onServiceNameDiscovered(mdnsServiceInfo, false /* isServiceFromCache */);
+        mdnsListener.onServiceNameRemoved(mdnsServiceInfo, SERVICE_REMOVED_BY_GOODBYE_RECEIVED);
+        waitForIdle();
+
+        // Find it again after the picker receiver is set
+        final NsdServiceReceiver receiver = setMockPickerReceiver(connector);
+        mdnsListener.onServiceNameDiscovered(mdnsServiceInfo, false /* isServiceFromCache */);
+        doReturn(TEST_TIME_MS + 10L).when(mClock).elapsedRealtime();
+        client.stopServiceDiscovery(listener);
+        waitForIdle();
+
+        // Ensure callbacks and metrics for all events are received
+        final InOrder inOrder = inOrder(receiver, mMetrics);
+        inOrder.verify(receiver).onServiceFound(any());
+        inOrder.verify(receiver).onServiceLost(any());
+        inOrder.verify(receiver).onServiceFound(any());
+        inOrder.verify(mMetrics).reportServiceDiscoveryStop(eq(false) /* isLegacy */,
+                eq(mdnsListener.mTransactionId), eq(10L) /* durationMs */,
+                eq(2) /* foundCallbackCount */, eq(1) /* lostCallbackCount */,
+                eq(1) /* servicesCount */, eq(0) /* sentQueryCount */,
+                eq(false) /* isServiceFromCache */, eq(0) /* cachedServiceExpiredCount */);
+    }
+
     @Test
     @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     @RequiresFlagsEnabled(FLAG_ACCESS_LOCAL_NETWORK_PERMISSION_ENABLED)
