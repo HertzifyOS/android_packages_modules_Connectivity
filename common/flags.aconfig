@@ -35,3 +35,10 @@ flag {
   description: "The querier should include its known answers within each query packet"
   bug: "454491508"
 }
+
+flag {
+    name: "encrypted_client_hello_dns"
+    namespace: "com_android_tethering"
+    description: "Enable new ECH-related DNS resolver changes"
+    bug: "419020719"
+}
