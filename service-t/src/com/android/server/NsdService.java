@@ -2114,8 +2114,14 @@ public class NsdService extends INsdManager.Stub {
                         mContext, MdnsFeatureFlags.NSD_UNICAST_REPLY_ENABLED))
                 .setIsAggressiveQueryModeEnabled(mDeps.isFeatureEnabled(
                         mContext, MdnsFeatureFlags.NSD_AGGRESSIVE_QUERY_MODE))
-                .setIsQueryWithKnownAnswerEnabled(mDeps.isFeatureEnabled(
-                        mContext, MdnsFeatureFlags.NSD_QUERY_WITH_KNOWN_ANSWER))
+                .setIsQueryWithKnownAnswerEnabled(mDeps.isAconfigFlagEnabled(
+                        com.android.tethering.flags.Flags.FLAG_NSD_QUERY_WITH_KNOWN_ANSWER))
+                // Both accurate_delay_callback and optimized_expired_service_removal features are
+                // tied with query_with_known_answer feature.
+                .setIsAccurateDelayCallbackEnabled(mDeps.isAconfigFlagEnabled(
+                        com.android.tethering.flags.Flags.FLAG_NSD_QUERY_WITH_KNOWN_ANSWER))
+                .setIsOptimizedExpiredServiceRemovalEnabled(mDeps.isAconfigFlagEnabled(
+                        com.android.tethering.flags.Flags.FLAG_NSD_QUERY_WITH_KNOWN_ANSWER))
                 .setAvoidAdvertisingEmptyTxtRecords(mDeps.isTetheringFeatureNotChickenedOut(
                         mContext, MdnsFeatureFlags.NSD_AVOID_ADVERTISING_EMPTY_TXT_RECORDS))
                 .setIsCachedServicesRemovalEnabled(mDeps.isTetheringFeatureNotChickenedOut(
@@ -2218,6 +2224,8 @@ public class NsdService extends INsdManager.Stub {
             return switch (feature) {
                 case Flags.FLAG_NSD_SELECTIVE_MDNS_RESPONSE_OFFLOAD ->
                         Flags.nsdSelectiveMdnsResponseOffload();
+                case com.android.tethering.flags.Flags.FLAG_NSD_QUERY_WITH_KNOWN_ANSWER ->
+                        com.android.tethering.flags.Flags.nsdQueryWithKnownAnswer();
                 default -> throw new IllegalStateException("Unknown flag " + feature);
             };
         }
