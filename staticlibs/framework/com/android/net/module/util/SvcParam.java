@@ -33,6 +33,8 @@ import java.util.StringJoiner;
 /**
  * The base class for all SvcParam.
  *
+ * <p>See RFC 9460 for more details.
+ *
  * @hide
  */
 public abstract class SvcParam<T> {
@@ -76,6 +78,11 @@ public abstract class SvcParam<T> {
         }
     }
 
+    /**
+     * Representation of the `mandatory` SvcParamKey.
+     *
+     * <p>See RFC 9460 section 8 for more details.
+     */
     static class SvcParamMandatory extends SvcParam<short[]> {
         private final short[] mValue;
 
@@ -107,6 +114,11 @@ public abstract class SvcParam<T> {
         }
     }
 
+    /**
+     * Representation of the `alpn` SvcParamKey.
+     *
+     * <p>See RFC 9460 section 7.1 for more details.
+     */
     static class SvcParamAlpn extends SvcParam<List<String>> {
         private final List<String> mValue;
 
@@ -132,6 +144,11 @@ public abstract class SvcParam<T> {
         }
     }
 
+    /**
+     * Representation of the `no-default-alpn` SvcParamKey.
+     *
+     * <p>See RFC 9460 section 7.1 for more details.
+     */
     static class SvcParamNoDefaultAlpn extends SvcParam<Void> {
         SvcParamNoDefaultAlpn(@NonNull ByteBuffer buf)
                 throws BufferUnderflowException, ParseException {
@@ -154,6 +171,11 @@ public abstract class SvcParam<T> {
         }
     }
 
+    /**
+     * Representation of the `port` SvcParamKey.
+     *
+     * <p>See RFC 9460 section 7.2 for more details.
+     */
     static class SvcParamPort extends SvcParam<Integer> {
         private final int mValue;
 
@@ -208,12 +230,22 @@ public abstract class SvcParam<T> {
         }
     }
 
+    /**
+     * Representation of the `ipv4hint` SvcParamKey.
+     *
+     * <p>See RFC 9460 section 7.3 for more details.
+     */
     static class SvcParamIpv4Hint extends SvcParamIpHint {
         SvcParamIpv4Hint(@NonNull ByteBuffer buf) throws BufferUnderflowException, ParseException {
             super(KEY_IPV4HINT, buf, NetworkStackConstants.IPV4_ADDR_LEN);
         }
     }
 
+    /**
+     * Representation of the `ipv6hint` SvcParamKey.
+     *
+     * <p>See RFC 9460 section 7.3 for more details.
+     */
     static class SvcParamIpv6Hint extends SvcParamIpHint {
         SvcParamIpv6Hint(@NonNull ByteBuffer buf) throws BufferUnderflowException, ParseException {
             super(KEY_IPV6HINT, buf, NetworkStackConstants.IPV6_ADDR_LEN);
@@ -226,6 +258,11 @@ public abstract class SvcParam<T> {
         }
     }
 
+    /**
+     * Representation of the `dohpath` SvcParamKey.
+     *
+     * <p>See RFC 9461 section 5 for more details.
+     */
     static class SvcParamDohPath extends SvcParam<String> {
         private final String mValue;
 
@@ -308,29 +345,76 @@ public abstract class SvcParam<T> {
      * https://www.iana.org/assignments/dns-svcb/dns-svcb.xhtml.
      */
 
-    // The SvcParamKey "mandatory". The associated implementation of SvcParam is SvcParamMandatory.
+    /**
+     * The "mandatory" key.
+     *
+     * <p>This key is used to indicate which other SvcParamKeys are critical (i.e. the record will
+     * not function correctly if a SvcParamKey specified in this field is ignored). If a
+     * client does not understand a parameter listed, the entire HTTPS record should be ignored.
+     */
     static final int KEY_MANDATORY = 0;
 
-    // The SvcParamKey "alpn". The associated implementation of SvcParam is SvcParamAlpn.
+    /**
+     * The "alpn" (Application-Layer Protocol Negotiation) SvcParamKey.
+     *
+     * <p>Specifies a list of application-layer protocols supported by the service,
+     * such as {@code "h2"} for HTTP/2 or {@code "h3"} for HTTP/3. Clients can use
+     * this to select an appropriate protocol without additional round trips.
+     */
     static final int KEY_ALPN = 1;
 
-    // The SvcParamKey "no-default-alpn". The associated implementation of SvcParam is
-    // SvcParamNoDefaultAlpn.
+    /**
+     * The "no-default-alpn" SvcParamKey.
+     *
+     * <p>This is a boolean flag and has no contents. Its presence indicates that clients can't
+     * assume support for any ALPN protocols beyond those explicitly listed in the "alpn"
+     * parameter (which must also be present in the record).
+     */
     static final int KEY_NO_DEFAULT_ALPN = 2;
 
-    // The SvcParamKey "port". The associated implementation of SvcParam is SvcParamPort.
+    /**
+     * The "port" SvcParamKey.
+     *
+     * <p>Specifies a TCP or UDP port number for connecting to the service.
+     * If absent, clients should connect to the default port for the service instead.
+     */
     static final int KEY_PORT = 3;
 
-    // The SvcParamKey "ipv4hint". The associated implementation of SvcParam is SvcParamIpv4Hint.
+    /**
+     * The "ipv4hint" SvcParamKey.
+     *
+     * <p>Provides a hint of one or more IPv4 addresses for the service. Clients
+     * can use these hints to optionally avoid a separate A record lookup,
+     * improving connection setup time.
+     */
     static final int KEY_IPV4HINT = 4;
 
-    // The SvcParamKey "ech". The associated implementation of SvcParam is SvcParamEch.
+    /**
+     * The "ech" (Encrypted Client Hello) SvcParamKey.
+     *
+     * <p>Contains parameters necessary for clients to use Encrypted Client Hello (ECH)
+     * when connecting to the service, to enhance connection privacy by encrypting the Server
+     * Name Indication (SNI) extension.
+     *
+     * <p>This value should be passed into {@link SSLEngines#setEchConfigList()} or
+     * {@link SSLSockets#setEchConfigList()} to enable ECH in a TLS handshake.
+     */
     static final int KEY_ECH = 5;
 
-    // The SvcParamKey "ipv6hint". The associated implementation of SvcParam is SvcParamIpv6Hint.
+    /**
+     * The "ipv6hint" SvcParamKey.
+     *
+     * <p>Provides a hint of one or more IPv6 addresses for the service. Similar
+     * to {@link #IPV4_HINT}, this can help reduce latency by optionally
+     * skipping AAAA record lookups.
+     */
     static final int KEY_IPV6HINT = 6;
 
-    // The SvcParamKey "dohpath". The associated implementation of SvcParam is SvcParamDohPath.
+    /**
+     * The "dohpath" SvcParamKey.
+     *
+     * <p>Contains the path to the DoH server for the service.
+     */
     static final int KEY_DOHPATH = 7;
 
     // The minimal size of a SvcParam.
