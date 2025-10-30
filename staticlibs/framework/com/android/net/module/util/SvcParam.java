@@ -53,26 +53,17 @@ public abstract class SvcParam<T> {
     static SvcParam parseSvcParam(@NonNull ByteBuffer buf) throws ParseException {
         try {
             final int key = Short.toUnsignedInt(buf.getShort());
-            switch (key) {
-                case KEY_MANDATORY:
-                    return new SvcParamMandatory(buf);
-                case KEY_ALPN:
-                    return new SvcParamAlpn(buf);
-                case KEY_NO_DEFAULT_ALPN:
-                    return new SvcParamNoDefaultAlpn(buf);
-                case KEY_PORT:
-                    return new SvcParamPort(buf);
-                case KEY_IPV4HINT:
-                    return new SvcParamIpv4Hint(buf);
-                case KEY_ECH:
-                    return new SvcParamEch(buf);
-                case KEY_IPV6HINT:
-                    return new SvcParamIpv6Hint(buf);
-                case KEY_DOHPATH:
-                    return new SvcParamDohPath(buf);
-                default:
-                    return new SvcParamGeneric(key, buf);
-            }
+            return switch (key) {
+                case KEY_MANDATORY -> new SvcParamMandatory(buf);
+                case KEY_ALPN -> new SvcParamAlpn(buf);
+                case KEY_NO_DEFAULT_ALPN -> new SvcParamNoDefaultAlpn(buf);
+                case KEY_PORT -> new SvcParamPort(buf);
+                case KEY_IPV4HINT -> new SvcParamIpv4Hint(buf);
+                case KEY_ECH -> new SvcParamEch(buf);
+                case KEY_IPV6HINT -> new SvcParamIpv6Hint(buf);
+                case KEY_DOHPATH -> new SvcParamDohPath(buf);
+                default -> new SvcParamGeneric(key, buf);
+            };
         } catch (BufferUnderflowException e) {
             throw new ParseException("Malformed packet", e);
         }
@@ -318,26 +309,17 @@ public abstract class SvcParam<T> {
     }
 
     private static String toKeyName(int key) {
-        switch (key) {
-            case KEY_MANDATORY:
-                return "mandatory";
-            case KEY_ALPN:
-                return "alpn";
-            case KEY_NO_DEFAULT_ALPN:
-                return "no-default-alpn";
-            case KEY_PORT:
-                return "port";
-            case KEY_IPV4HINT:
-                return "ipv4hint";
-            case KEY_ECH:
-                return "ech";
-            case KEY_IPV6HINT:
-                return "ipv6hint";
-            case KEY_DOHPATH:
-                return "dohpath";
-            default:
-                return "key" + key;
-        }
+        return switch (key) {
+            case KEY_MANDATORY -> "mandatory";
+            case KEY_ALPN -> "alpn";
+            case KEY_NO_DEFAULT_ALPN -> "no-default-alpn";
+            case KEY_PORT -> "port";
+            case KEY_IPV4HINT -> "ipv4hint";
+            case KEY_ECH -> "ech";
+            case KEY_IPV6HINT -> "ipv6hint";
+            case KEY_DOHPATH -> "dohpath";
+            default -> "key" + key;
+        };
     }
 
     /**
