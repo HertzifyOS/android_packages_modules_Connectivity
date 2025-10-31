@@ -40,6 +40,7 @@ import static android.permission.PermissionManager.PERMISSION_GRANTED;
 import static android.permission.flags.Flags.accessLocalNetworkPermissionEnabled;
 import static android.provider.DeviceConfig.NAMESPACE_TETHERING;
 
+import static com.android.modules.utils.build.SdkLevel.isAtLeastB;
 import static com.android.modules.utils.build.SdkLevel.isAtLeastU;
 import static com.android.networkstack.apishim.ConstantsShim.REGISTER_NSD_OFFLOAD_ENGINE;
 import static com.android.server.connectivity.mdns.MdnsAdvertiser.AdvertiserMetrics;
@@ -567,7 +568,7 @@ public class NsdService extends INsdManager.Stub {
     private String getLocalNetworkPermission(int uid) {
         if (SdkLevel.isAtLeastB() && accessLocalNetworkPermissionEnabled()) {
             return Manifest.permission.ACCESS_LOCAL_NETWORK;
-        } else if (BpfNetMaps.isAtLeast25Q2()
+        } else if (isAtLeastB()
                 && com.android.tethering.mainline.beta.Flags.lnpDeveloperOptIn()
                 && CompatChanges.isChangeEnabled(RESTRICT_LOCAL_NETWORK, uid)) {
             return Manifest.permission.NEARBY_WIFI_DEVICES;
@@ -2582,7 +2583,7 @@ public class NsdService extends INsdManager.Stub {
         // AttributionSource builder method setPid() introduced in U, but check for 25Q2 here to
         // consolidate SDK level checks, since attribution source is only used for permission checks
         // introduced in 25Q2 and later.
-        if (BpfNetMaps.isAtLeast25Q2()) {
+        if (isAtLeastB()) {
             return new AttributionSource.Builder(uid).setPid(pid).build();
         }
         return null;
