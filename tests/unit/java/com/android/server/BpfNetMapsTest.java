@@ -1151,9 +1151,10 @@ public final class BpfNetMapsTest {
         assertNull(mUidPermissionMap.getValue(new S32(uid1)));
     }
 
-    @Test
+    @FeatureFlag(name = FLAG_PERMISSION_MAP_UID_MIGRATION, enabled = false)
     @IgnoreUpTo(Build.VERSION_CODES.TIRAMISU)
-    public void testGetNetPermFoUid() throws Exception {
+    @Test
+    public void testGetNetPermFoUid_uidMigrationDisabled() throws Exception {
         mUidPermissionMap.deleteEntry(new S32(TEST_UID));
         assertEquals(PERMISSION_INTERNET, mBpfNetMaps.getNetPermForUid(TEST_UID));
 
@@ -1163,6 +1164,25 @@ public final class BpfNetMapsTest {
         mUidPermissionMap.updateEntry(new S32(TEST_UID),
                 new U8((short) (PERMISSION_INTERNET | PERMISSION_UPDATE_DEVICE_STATS)));
         assertEquals(PERMISSION_INTERNET | PERMISSION_UPDATE_DEVICE_STATS,
+                mBpfNetMaps.getNetPermForUid(TEST_UID));
+    }
+
+    @FeatureFlag(name = FLAG_PERMISSION_MAP_UID_MIGRATION, enabled = true)
+    @IgnoreUpTo(Build.VERSION_CODES.TIRAMISU)
+    @Test
+    public void testGetNetPermFoUid_uidMigrationEnabled() throws Exception {
+        mUidPermissionChunkMap.deleteEntry(new S32(getChunkId(TEST_UID)));
+        assertEquals(PERMISSION_NONE, mBpfNetMaps.getNetPermForUid(TEST_UID));
+
+        SparseIntArray permissionsUids = new SparseIntArray();
+        permissionsUids.put(TEST_UID, PERMISSION_BIT_NONE);
+        mBpfNetMaps.setChunkPermListForUids(permissionsUids);
+        assertEquals(PERMISSION_NONE, mBpfNetMaps.getNetPermForUid(TEST_UID));
+
+        permissionsUids = new SparseIntArray();
+        permissionsUids.put(TEST_UID, PERMISSION_BIT_INTERNET | PERMISSION_BIT_UPDATE_DEVICE_STATS);
+        mBpfNetMaps.setChunkPermListForUids(permissionsUids);
+        assertEquals(TRAFFIC_PERMISSION_INTERNET | TRAFFIC_PERMISSION_UPDATE_DEVICE_STATS,
                 mBpfNetMaps.getNetPermForUid(TEST_UID));
     }
 
