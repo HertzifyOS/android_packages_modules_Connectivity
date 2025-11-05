@@ -321,18 +321,26 @@ public class L2capNetworkProvider {
 
             final L2capNetwork network = createL2capNetwork(socket, mReservedCapabilities,
                     new L2capNetwork.ICallback() {
-                    @Override
-                    public void onError(L2capNetwork network) {
+                    // TODO: stop distinguishing between onError() and onNetworkUnwanted().
+                    private void onAnyError(L2capNetwork network) {
                         HandlerUtils.ensureRunningOnHandlerThread(mHandler);
-                        destroyAndUnregisterReservedOffer(ReservedServerOffer.this);
-                    }
-                    @Override
-                    public void onNetworkUnwanted(L2capNetwork network) {
-                        HandlerUtils.ensureRunningOnHandlerThread(mHandler);
-                        // Leave reservation in place.
+                        // Never tear down the reserved offer here. BluetoothSocket errors should
+                        // only affect the L2capNetwork not the entire reservation. If Bluetooth is
+                        // in a bad state or turned off, BluetoothServerSocket#accept() will throw
+                        // which removes the reservation.
                         final boolean networkExists = mL2capNetworks.remove(network);
                         if (!networkExists) return; // already torn down.
                         network.tearDown();
+                    }
+
+                    @Override
+                    public void onError(L2capNetwork network) {
+                        onAnyError(network);
+                    }
+
+                    @Override
+                    public void onNetworkUnwanted(L2capNetwork network) {
+                        onAnyError(network);
                     }
             });
 
