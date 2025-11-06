@@ -162,7 +162,8 @@ public class MdnsServiceTypeClientTests {
     private long latestDelayMs = 0;
     private Message delayMessage = null;
     private Handler realHandler = null;
-    private MdnsFeatureFlags featureFlags = MdnsFeatureFlags.newBuilder().build();
+    private MdnsFeatureFlags featureFlags =
+            MdnsFeatureFlags.newBuilder().setAllFlagsForTesting().build();
     private Message message = null;
 
     @Before
@@ -241,7 +242,8 @@ public class MdnsServiceTypeClientTests {
         handler = new Handler(thread.getLooper());
         serviceCache = new MdnsServiceCache(
                 thread.getLooper(),
-                MdnsFeatureFlags.newBuilder().setIsExpiredServicesRemovalEnabled(false).build(),
+                MdnsFeatureFlags.newBuilder().setAllFlagsForTesting()
+                        .setIsExpiredServicesRemovalEnabled(false).build(),
                 mockDecoderClock);
 
         doAnswer(inv -> {
@@ -866,7 +868,7 @@ public class MdnsServiceTypeClientTests {
     @Test
     public void processProxyOffloadEngineResponse_notGoodBye_shouldUpdateCache() {
         final String serviceName = "service-instance";
-        final MdnsFeatureFlags flags = MdnsFeatureFlags.newBuilder()
+        final MdnsFeatureFlags flags = MdnsFeatureFlags.newBuilder().setAllFlagsForTesting()
                 .setIsSelectiveMdnsResponseOffloadEnabled(true).build();
         NsdServiceInfo nsdServiceInfo = new NsdServiceInfo(serviceName, SERVICE_TYPE);
         nsdServiceInfo.setSubtypes(Set.of("subtype1"));
@@ -956,7 +958,7 @@ public class MdnsServiceTypeClientTests {
     @Test
     public void processProxyOffloadEngineResponse_GoodBye_shouldClearCache() {
         final String serviceName = "service-instance";
-        final MdnsFeatureFlags flags = MdnsFeatureFlags.newBuilder()
+        final MdnsFeatureFlags flags = MdnsFeatureFlags.newBuilder().setAllFlagsForTesting()
                 .setIsSelectiveMdnsResponseOffloadEnabled(true).build();
         NsdServiceInfo nsdServiceInfo = new NsdServiceInfo(serviceName, SERVICE_TYPE);
         client = makeMdnsServiceTypeClient(flags, true);
@@ -982,7 +984,7 @@ public class MdnsServiceTypeClientTests {
     @Test
     public void processProxyOffloadEngineResponse_incompleteResponse() {
         final String serviceName = "service-instance";
-        final MdnsFeatureFlags flags = MdnsFeatureFlags.newBuilder()
+        final MdnsFeatureFlags flags = MdnsFeatureFlags.newBuilder().setAllFlagsForTesting()
                 .setIsSelectiveMdnsResponseOffloadEnabled(true).build();
         NsdServiceInfo nsdServiceInfo = new NsdServiceInfo(serviceName, SERVICE_TYPE);
         client = makeMdnsServiceTypeClient(flags, true);
@@ -1007,7 +1009,7 @@ public class MdnsServiceTypeClientTests {
 
     @Test
     public void processProxyOffloadEngineResponse_inOrder() {
-        final MdnsFeatureFlags flags = MdnsFeatureFlags.newBuilder()
+        final MdnsFeatureFlags flags = MdnsFeatureFlags.newBuilder().setAllFlagsForTesting()
                 .setIsSelectiveMdnsResponseOffloadEnabled(true).build();
         final String serviceName1 = "service-instance1";
         final String serviceName2 = "service-instance2";
@@ -2231,7 +2233,8 @@ public class MdnsServiceTypeClientTests {
     @Test
     public void testSendQueryWithKnownAnswers() throws Exception {
         client = makeMdnsServiceTypeClient(
-                MdnsFeatureFlags.newBuilder().setIsQueryWithKnownAnswerEnabled(true).build(),
+                MdnsFeatureFlags.newBuilder().setAllFlagsForTesting()
+                        .setIsQueryWithKnownAnswerEnabled(true).build(),
                 false
         );
 
@@ -2295,7 +2298,8 @@ public class MdnsServiceTypeClientTests {
     @Test
     public void testSendQueryWithSubTypeWithKnownAnswers() throws Exception {
         client = makeMdnsServiceTypeClient(
-                MdnsFeatureFlags.newBuilder().setIsQueryWithKnownAnswerEnabled(true).build(),
+                MdnsFeatureFlags.newBuilder().setAllFlagsForTesting()
+                        .setIsQueryWithKnownAnswerEnabled(true).build(),
                 false
         );
 
@@ -2421,7 +2425,8 @@ public class MdnsServiceTypeClientTests {
     @Test
     public void sendQueries_AccurateDelayCallback() {
         client = makeMdnsServiceTypeClient(
-                MdnsFeatureFlags.newBuilder().setIsAccurateDelayCallbackEnabled(true).build(),
+                MdnsFeatureFlags.newBuilder().setAllFlagsForTesting()
+                        .setIsAccurateDelayCallbackEnabled(true).build(),
                 false
         );
 
@@ -2475,7 +2480,8 @@ public class MdnsServiceTypeClientTests {
     @Test
     public void testTimerFdCloseProperly() {
         client = makeMdnsServiceTypeClient(
-                MdnsFeatureFlags.newBuilder().setIsAccurateDelayCallbackEnabled(true).build(),
+                MdnsFeatureFlags.newBuilder().setAllFlagsForTesting()
+                        .setIsAccurateDelayCallbackEnabled(true).build(),
                 false
         );
 
@@ -2503,7 +2509,7 @@ public class MdnsServiceTypeClientTests {
     public void testExpireServiceRemovedAfterQuerySent() throws IOException {
         final String requestedInstance = "instance1";
         final String ipV4Address = "192.0.2.0";
-        final MdnsFeatureFlags flags = MdnsFeatureFlags.newBuilder()
+        final MdnsFeatureFlags flags = MdnsFeatureFlags.newBuilder().setAllFlagsForTesting()
                 .setIsExpiredServicesRemovalEnabled(true)
                 .setIsOptimizedExpiredServiceRemovalEnabled(true)
                 .setIsAccurateDelayCallbackEnabled(true)
@@ -2554,7 +2560,7 @@ public class MdnsServiceTypeClientTests {
     public void testNoLostCallbackIfServiceHasNotNotified() throws IOException {
         final String requestedInstance = "instance1";
         final String ipV4Address = "192.0.2.0";
-        final MdnsFeatureFlags flags = MdnsFeatureFlags.newBuilder()
+        final MdnsFeatureFlags flags = MdnsFeatureFlags.newBuilder().setAllFlagsForTesting()
                 .setIsExpiredServicesRemovalEnabled(true)
                 .setIsOptimizedExpiredServiceRemovalEnabled(true)
                 .setIsAccurateDelayCallbackEnabled(true)
@@ -2615,7 +2621,7 @@ public class MdnsServiceTypeClientTests {
 
     @Test
     public void testGetFilterRepliesInfo() throws Exception {
-        final MdnsFeatureFlags flags = MdnsFeatureFlags.newBuilder()
+        final MdnsFeatureFlags flags = MdnsFeatureFlags.newBuilder().setAllFlagsForTesting()
                 .setIsSelectiveMdnsResponseOffloadEnabled(true).build();
         client = makeMdnsServiceTypeClient(flags, false);
 
@@ -2680,7 +2686,7 @@ public class MdnsServiceTypeClientTests {
 
     @Test
     public void testGetFilterRepliesInfo_twoDiscoveryRequests() throws Exception {
-        final MdnsFeatureFlags flags = MdnsFeatureFlags.newBuilder()
+        final MdnsFeatureFlags flags = MdnsFeatureFlags.newBuilder().setAllFlagsForTesting()
                 .setIsSelectiveMdnsResponseOffloadEnabled(true).build();
         client = makeMdnsServiceTypeClient(flags, false);
 
@@ -2710,7 +2716,7 @@ public class MdnsServiceTypeClientTests {
 
     @Test
     public void testGetFilterRepliesInfo_combineSubtypes() throws Exception {
-        final MdnsFeatureFlags flags = MdnsFeatureFlags.newBuilder()
+        final MdnsFeatureFlags flags = MdnsFeatureFlags.newBuilder().setAllFlagsForTesting()
                 .setIsSelectiveMdnsResponseOffloadEnabled(true).build();
         client = makeMdnsServiceTypeClient(flags, false);
 
@@ -2742,7 +2748,7 @@ public class MdnsServiceTypeClientTests {
 
     @Test
     public void sendAndReceive_forReceiveOnlyServiceTypeClient_DoesNotSchedule() {
-        final MdnsFeatureFlags flags = MdnsFeatureFlags.newBuilder()
+        final MdnsFeatureFlags flags = MdnsFeatureFlags.newBuilder().setAllFlagsForTesting()
                 .setIsSelectiveMdnsResponseOffloadEnabled(true).build();
         client = makeMdnsServiceTypeClient(flags, true);
         final String subtype = "subtype";
@@ -2756,7 +2762,7 @@ public class MdnsServiceTypeClientTests {
 
     @Test
     public void sendAndReceive_onOffloadStartOrUpdateIsInvoked_forReceiveOnlyServiceTypeClient() {
-        final MdnsFeatureFlags flags = MdnsFeatureFlags.newBuilder()
+        final MdnsFeatureFlags flags = MdnsFeatureFlags.newBuilder().setAllFlagsForTesting()
                 .setIsSelectiveMdnsResponseOffloadEnabled(true).build();
         client = makeMdnsServiceTypeClient(flags, true);
         final String instanceName = "instance1";
@@ -2781,7 +2787,7 @@ public class MdnsServiceTypeClientTests {
 
     @Test
     public void testOffloadServiceInfoUpdate() {
-        final MdnsFeatureFlags flags = MdnsFeatureFlags.newBuilder()
+        final MdnsFeatureFlags flags = MdnsFeatureFlags.newBuilder().setAllFlagsForTesting()
                 .setIsSelectiveMdnsResponseOffloadEnabled(true).build();
         client = makeMdnsServiceTypeClient(flags, false);
         final String instanceName = "instance1";
