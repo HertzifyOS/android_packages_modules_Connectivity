@@ -1444,7 +1444,21 @@ public class NsdService extends INsdManager.Stub {
     }
 
     private void handleUnregisterOffloadEngine(IOffloadEngine offloadEngine) {
-        mOffloadEngines.unregister(offloadEngine);
+        final int count = mOffloadEngines.beginBroadcast();
+        try {
+            for (int i = 0; i < count; i++) {
+                final OffloadEngineInfo engineInfo =
+                        (OffloadEngineInfo) mOffloadEngines.getBroadcastCookie(i);
+                if (offloadEngine.asBinder() == engineInfo.mOffloadEngine.asBinder()) {
+                    String interfaceName = engineInfo.mInterfaceName;
+                    mOffloadEngines.unregister(offloadEngine);
+                    mMdnsDiscoveryManager.notifyOffloadStop(interfaceName);
+                    break;
+                }
+            }
+        } finally {
+            mOffloadEngines.finishBroadcast();
+        }
     }
 
     private void handleRegisterClient(int clientRequestId, ConnectorArgs arg) {
