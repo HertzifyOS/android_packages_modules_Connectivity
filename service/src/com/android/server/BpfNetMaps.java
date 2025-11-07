@@ -1203,6 +1203,20 @@ public class BpfNetMaps {
         return chunkPermissions;
     }
 
+    private int convertToTrafficPermission(int chunkPermissions) {
+        int trafficPermissions = PERMISSION_NONE;
+        if ((chunkPermissions & PERMISSION_BIT_ACCESS_LOCAL_NETWORK) != 0) {
+            trafficPermissions |= TRAFFIC_PERMISSION_ACCESS_LOCAL_NETWORK;
+        }
+        if ((chunkPermissions & PERMISSION_BIT_UPDATE_DEVICE_STATS) != 0) {
+            trafficPermissions |= TRAFFIC_PERMISSION_UPDATE_DEVICE_STATS;
+        }
+        if ((chunkPermissions & PERMISSION_BIT_INTERNET) != 0) {
+            trafficPermissions |= TRAFFIC_PERMISSION_INTERNET;
+        }
+        return trafficPermissions;
+    }
+
     private int mergePermissionsForAppId(ArraySet<Integer> permissionIntegers) {
         int result = 0;
         boolean isAllTrafficPermissionUninstalled = true;
@@ -1435,6 +1449,11 @@ public class BpfNetMaps {
      */
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     public int getNetPermForUid(final int uid) {
+        if (isUidMigrationEnabled()) {
+            final int chunkPermissions = getChunkPermForUid(uid);
+            return convertToTrafficPermission(chunkPermissions);
+        }
+
         final int appId = UserHandle.getAppId(uid);
         try {
             // Key of uid permission map is appId
@@ -1454,6 +1473,7 @@ public class BpfNetMaps {
      * @return    the granted chunk permissions.
      */
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    @VisibleForTesting
     public int getChunkPermForUid(final int uid) {
         throwIfUidMigrationIsDisabled(
             "getChunkPermForUid is not available when flag" +
