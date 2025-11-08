@@ -46,10 +46,10 @@ import android.net.MacAddress
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkCapabilities.NET_CAPABILITY_NOT_CONGESTED
+import android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED
 import android.net.NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED
 import android.net.NetworkCapabilities.NET_CAPABILITY_TEMPORARILY_NOT_METERED
 import android.net.NetworkCapabilities.NET_CAPABILITY_TRUSTED
-import android.net.NetworkCapabilities.TRANSPORT_ETHERNET
 import android.net.NetworkCapabilities.TRANSPORT_TEST
 import android.net.NetworkCapabilities.TRANSPORT_USB
 import android.net.NetworkRequest
@@ -127,7 +127,7 @@ private val DEFAULT_IP_CONFIGURATION = IpConfiguration(
 )
 private val ETH_REQUEST: NetworkRequest = NetworkRequest.Builder()
         .addTransportType(TRANSPORT_TEST)
-        .addTransportType(TRANSPORT_ETHERNET)
+        .addCapability(NET_CAPABILITY_NOT_METERED)
         .removeCapability(NET_CAPABILITY_TRUSTED)
         .build()
 private val LOCAL_REQUEST: NetworkRequest = NetworkRequest.Builder()
