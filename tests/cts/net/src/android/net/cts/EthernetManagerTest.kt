@@ -736,7 +736,7 @@ class EthernetManagerTest {
     @Test
     fun testCallbacks_withRunningInterfaces() {
         // Do not run this test when unrestricted interfaces are present. Refer to testCallbacks.
-        assumeNoInterfaceForTetheringAvailable()
+        assumeNoUnrestrictedInterfacesAvailable()
 
         // The interfaces must be created before setIncludeTestInterfaces is set to false, so the
         // test can ensure that the RTM_NEWLINK has been processed before proceeding.
