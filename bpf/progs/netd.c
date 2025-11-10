@@ -783,38 +783,38 @@ DEFINE_XTBPF_PROG(skfilter, denylist_xtbpf, )
 static __always_inline inline uint8_t get_app_permissions() {
     uint64_t gid_uid = bpf_get_current_uid_gid();
     uint32_t uid = (gid_uid & 0xffffffff);
-
-    uint32_t mapKey = 0;
-    bool *uidMigrationEnabled =
-        bpf_uid_migration_enabled_map_lookup_elem(&mapKey);
-    if (uidMigrationEnabled && *uidMigrationEnabled) {
-        return get_chunk_permissions(uid);
-    } else {
-        /*
-         * A given app is guaranteed to have the same app ID in all the profiles
-         * in which it is installed, and install permission is granted to app
-         * for all user at install time so we only check the appId part of a
-         * request uid at run time. See UserHandle#isSameApp for detail.
-         */
-        uint32_t appId = uid % AID_USER_OFFSET; // == PER_USER_RANGE == 100000
-        uint8_t *permissions = bpf_uid_permission_map_lookup_elem(&appId);
-        // if UID not in map, then default to just INTERNET permission.
-        return permissions ? *permissions : BPF_PERMISSION_INTERNET;
-    }
+    /*
+     * A given app is guaranteed to have the same app ID in all the profiles
+     * in which it is installed, and install permission is granted to app
+     * for all user at install time so we only check the appId part of a
+     * request uid at run time. See UserHandle#isSameApp for detail.
+     */
+    uint32_t appId = uid % AID_USER_OFFSET; // == PER_USER_RANGE == 100000
+    uint8_t *permissions = bpf_uid_permission_map_lookup_elem(&appId);
+    // if UID not in map, then default to just INTERNET permission.
+    return permissions ? *permissions : BPF_PERMISSION_INTERNET;
 }
 
 static __always_inline inline int inet_socket_create(struct bpf_sock* sk,
                                                      const struct kver_uint kver) {
+    uint64_t gid_uid = bpf_get_current_uid_gid();
     if (KVER_IS_AT_LEAST(kver, 5, 10, 0)) {
         SkStorageValue *v = bpf_sk_storage_get(sk, 0, BPF_SK_STORAGE_GET_F_CREATE);
         if (v) {
             v->cookie = bpf_get_sk_cookie(sk);
-            uint64_t gid_uid = bpf_get_current_uid_gid();
             v->uid = gid_uid;
             v->gid = (gid_uid >> 32);
         }
     }
-    return (get_app_permissions() & BPF_PERMISSION_INTERNET) ? BPF_ALLOW : BPF_DISALLOW;
+
+    uint32_t mapKey = 0;
+    bool *uidMigrationEnabled = bpf_uid_migration_enabled_map_lookup_elem(&mapKey);
+    if (uidMigrationEnabled && *uidMigrationEnabled) {
+        uint32_t uid = (gid_uid & 0xffffffff);
+        return (get_chunk_permissions(uid) & PERMISSION_BIT_INTERNET) ? BPF_ALLOW : BPF_DISALLOW;
+    } else {
+        return (get_app_permissions() & BPF_PERMISSION_INTERNET) ? BPF_ALLOW : BPF_DISALLOW;
+    }
 }
 
 DEFINE_NETD_BPF_PROG_KVER(cgroupsock, inet_create, 5_10, 5_10)
