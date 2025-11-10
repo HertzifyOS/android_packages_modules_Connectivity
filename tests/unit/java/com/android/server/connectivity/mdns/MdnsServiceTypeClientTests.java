@@ -16,6 +16,9 @@
 
 package com.android.server.connectivity.mdns;
 
+import static com.android.server.connectivity.mdns.MdnsConstants.SERVICE_REMOVED_BY_GOODBYE_RECEIVED;
+import static com.android.server.connectivity.mdns.MdnsConstants.SERVICE_REMOVED_BY_SOCKET_DESTROYED;
+import static com.android.server.connectivity.mdns.MdnsConstants.SERVICE_REMOVED_BY_TTL_EXPIRED;
 import static com.android.server.connectivity.mdns.MdnsConstants.EMPTY_NETWORK_CAPABILITIES;
 import static com.android.server.connectivity.mdns.MdnsQueryScheduler.INITIAL_AGGRESSIVE_TIME_BETWEEN_BURSTS_MS;
 import static com.android.server.connectivity.mdns.MdnsQueryScheduler.MAX_TIME_BETWEEN_AGGRESSIVE_BURSTS_MS;
@@ -1072,7 +1075,8 @@ public class MdnsServiceTypeClientTests {
                 serviceInfoCaptor.capture(), eq(false) /* isServiceFromCache */);
         assertEquals(serviceName1, serviceInfoCaptor.getValue().getServiceInstanceName());
 
-        inOrder.verify(mockListenerOne).onServiceNameRemoved(serviceInfoCaptor.capture());
+        inOrder.verify(mockListenerOne).onServiceNameRemoved(
+                serviceInfoCaptor.capture(), eq(SERVICE_REMOVED_BY_GOODBYE_RECEIVED));
         assertEquals(serviceName1, serviceInfoCaptor.getValue().getServiceInstanceName());
 
         inOrder.verify(mockListenerOne).onServiceNameDiscovered(
@@ -1211,22 +1215,26 @@ public class MdnsServiceTypeClientTests {
     }
 
     private void verifyServiceRemovedNoCallback(MdnsServiceBrowserListener listener) {
-        verify(listener, never()).onServiceRemoved(any());
-        verify(listener, never()).onServiceNameRemoved(any());
+        verify(listener, never()).onServiceRemoved(any(), anyInt());
+        verify(listener, never()).onServiceNameRemoved(any(), anyInt());
     }
 
+
     private void verifyServiceRemovedCallback(MdnsServiceBrowserListener listener,
-            String serviceName, String[] serviceType, SocketKey socketKey) {
+            String serviceName, String[] serviceType, SocketKey socketKey,
+            int serviceRemovedReason) {
         verify(listener).onServiceRemoved(argThat(
-                info -> serviceName.equals(info.getServiceInstanceName())
-                        && Arrays.equals(serviceType, info.getServiceType())
-                        && info.getInterfaceIndex() == socketKey.getInterfaceIndex()
-                        && socketKey.getNetwork().equals(info.getNetwork())));
+                        info -> serviceName.equals(info.getServiceInstanceName())
+                                && Arrays.equals(serviceType, info.getServiceType())
+                                && info.getInterfaceIndex() == socketKey.getInterfaceIndex()
+                                && socketKey.getNetwork().equals(info.getNetwork())),
+                eq(serviceRemovedReason));
         verify(listener).onServiceNameRemoved(argThat(
-                info -> serviceName.equals(info.getServiceInstanceName())
-                        && Arrays.equals(serviceType, info.getServiceType())
-                        && info.getInterfaceIndex() == socketKey.getInterfaceIndex()
-                        && socketKey.getNetwork().equals(info.getNetwork())));
+                        info -> serviceName.equals(info.getServiceInstanceName())
+                                && Arrays.equals(serviceType, info.getServiceType())
+                                && info.getInterfaceIndex() == socketKey.getInterfaceIndex()
+                                && socketKey.getNetwork().equals(info.getNetwork())),
+                eq(serviceRemovedReason));
     }
 
     @Test
@@ -1256,10 +1264,10 @@ public class MdnsServiceTypeClientTests {
                 serviceName, ipV6Address, 5353,
                 SERVICE_TYPE_LABELS,
                 Collections.emptyMap(), 0L), socketKey);
-        verifyServiceRemovedCallback(
-                mockListenerOne, serviceName, SERVICE_TYPE_LABELS, socketKey);
-        verifyServiceRemovedCallback(
-                mockListenerTwo, serviceName, SERVICE_TYPE_LABELS, socketKey);
+        verifyServiceRemovedCallback(mockListenerOne, serviceName, SERVICE_TYPE_LABELS, socketKey,
+                SERVICE_REMOVED_BY_GOODBYE_RECEIVED);
+        verifyServiceRemovedCallback(mockListenerTwo, serviceName, SERVICE_TYPE_LABELS, socketKey,
+                SERVICE_REMOVED_BY_GOODBYE_RECEIVED);
     }
 
     @Test
@@ -1342,8 +1350,8 @@ public class MdnsServiceTypeClientTests {
         verify(mockDeps, times(2)).sendMessage(any(), any(Message.class));
 
         // Verify removed callback was called.
-        verifyServiceRemovedCallback(
-                mockListenerOne, serviceInstanceName, SERVICE_TYPE_LABELS, socketKey);
+        verifyServiceRemovedCallback(mockListenerOne, serviceInstanceName, SERVICE_TYPE_LABELS,
+                socketKey, SERVICE_REMOVED_BY_TTL_EXPIRED);
     }
 
     @Test
@@ -1391,8 +1399,8 @@ public class MdnsServiceTypeClientTests {
         firstMdnsTask.run();
 
         // Verify removed callback was called.
-        verifyServiceRemovedCallback(
-                mockListenerOne, serviceInstanceName, SERVICE_TYPE_LABELS, socketKey);
+        verifyServiceRemovedCallback(mockListenerOne, serviceInstanceName, SERVICE_TYPE_LABELS,
+                socketKey, SERVICE_REMOVED_BY_TTL_EXPIRED);
     }
 
     @Test
@@ -1463,7 +1471,8 @@ public class MdnsServiceTypeClientTests {
                 socketKey);
 
         // Verify onServiceRemoved was called for the last response.
-        inOrder.verify(mockListenerOne).onServiceRemoved(serviceInfoCaptor.capture());
+        inOrder.verify(mockListenerOne).onServiceRemoved(
+                serviceInfoCaptor.capture(), eq(SERVICE_REMOVED_BY_GOODBYE_RECEIVED));
         verifyServiceInfo(serviceInfoCaptor.getAllValues().get(3),
                 serviceName,
                 SERVICE_TYPE_LABELS,
@@ -1475,7 +1484,8 @@ public class MdnsServiceTypeClientTests {
                 socketKey);
 
         // Verify onServiceNameRemoved was called for the last response.
-        inOrder.verify(mockListenerOne).onServiceNameRemoved(serviceInfoCaptor.capture());
+        inOrder.verify(mockListenerOne).onServiceNameRemoved(
+                serviceInfoCaptor.capture(), eq(SERVICE_REMOVED_BY_GOODBYE_RECEIVED));
         verifyServiceInfo(serviceInfoCaptor.getAllValues().get(4),
                 serviceName,
                 SERVICE_TYPE_LABELS,
@@ -1768,7 +1778,8 @@ public class MdnsServiceTypeClientTests {
         verify(mockListenerOne, never()).onServiceNameDiscovered(
                 matchServiceName(otherInstance), anyBoolean());
         verify(mockListenerOne, never()).onServiceUpdated(matchServiceName(otherInstance));
-        verify(mockListenerOne, never()).onServiceRemoved(matchServiceName(otherInstance));
+        verify(mockListenerOne, never()).onServiceRemoved(
+                matchServiceName(otherInstance), anyInt());
 
         // mockListenerTwo gets notified for both though
         final InOrder inOrder = inOrder(mockListenerTwo);
@@ -1782,7 +1793,8 @@ public class MdnsServiceTypeClientTests {
         inOrder.verify(mockListenerTwo).onServiceFound(
                 matchServiceName(otherInstance), eq(false) /* isServiceFromCache */);
         inOrder.verify(mockListenerTwo).onServiceUpdated(matchServiceName(otherInstance));
-        inOrder.verify(mockListenerTwo).onServiceRemoved(matchServiceName(otherInstance));
+        inOrder.verify(mockListenerTwo).onServiceRemoved(
+                matchServiceName(otherInstance), eq(SERVICE_REMOVED_BY_GOODBYE_RECEIVED));
     }
 
     @Test
@@ -1854,7 +1866,8 @@ public class MdnsServiceTypeClientTests {
         verify(mockListenerOne, never()).onServiceNameDiscovered(
                 matchServiceName(otherInstance), anyBoolean());
         verify(mockListenerOne, never()).onServiceUpdated(matchServiceName(otherInstance));
-        verify(mockListenerOne, never()).onServiceRemoved(matchServiceName(otherInstance));
+        verify(mockListenerOne, never()).onServiceRemoved(
+                matchServiceName(otherInstance), anyInt());
 
         // mockListenerTwo gets notified for both though
         final InOrder inOrder = inOrder(mockListenerTwo);
@@ -1868,7 +1881,8 @@ public class MdnsServiceTypeClientTests {
         inOrder.verify(mockListenerTwo).onServiceFound(
                 matchServiceName(otherInstance), eq(false) /* isServiceFromCache */);
         inOrder.verify(mockListenerTwo).onServiceUpdated(matchServiceName(otherInstance));
-        inOrder.verify(mockListenerTwo).onServiceRemoved(matchServiceName(otherInstance));
+        inOrder.verify(mockListenerTwo).onServiceRemoved(
+                matchServiceName(otherInstance), eq(SERVICE_REMOVED_BY_GOODBYE_RECEIVED));
     }
 
     @Test
@@ -1948,8 +1962,10 @@ public class MdnsServiceTypeClientTests {
                 matchingInstance, ipV6Address, 5353, SERVICE_TYPE_LABELS,
                 Collections.emptyMap(), 0L /* ttl */), socketKey);
 
-        inOrder.verify(mockListenerOne).onServiceRemoved(matchServiceName(matchingInstance));
-        inOrder.verify(mockListenerOne).onServiceNameRemoved(matchServiceName(matchingInstance));
+        inOrder.verify(mockListenerOne).onServiceRemoved(
+                matchServiceName(matchingInstance), eq(SERVICE_REMOVED_BY_GOODBYE_RECEIVED));
+        inOrder.verify(mockListenerOne).onServiceNameRemoved(
+                matchServiceName(matchingInstance), eq(SERVICE_REMOVED_BY_GOODBYE_RECEIVED));
     }
 
     @Test
@@ -2000,14 +2016,18 @@ public class MdnsServiceTypeClientTests {
                 matchServiceName(requestedInstance), eq(false) /* isServiceFromCache */);
         inOrder1.verify(mockListenerOne).onServiceFound(
                 matchServiceName(requestedInstance), eq(false) /* isServiceFromCache */);
-        inOrder1.verify(mockListenerOne).onServiceRemoved(matchServiceName(requestedInstance));
-        inOrder1.verify(mockListenerOne).onServiceNameRemoved(matchServiceName(requestedInstance));
+        inOrder1.verify(mockListenerOne).onServiceRemoved(
+                matchServiceName(requestedInstance), eq(SERVICE_REMOVED_BY_SOCKET_DESTROYED));
+        inOrder1.verify(mockListenerOne).onServiceNameRemoved(
+                matchServiceName(requestedInstance), eq(SERVICE_REMOVED_BY_SOCKET_DESTROYED));
         verify(mockListenerOne, never()).onServiceFound(
                 matchServiceName(otherInstance), anyBoolean());
         verify(mockListenerOne, never()).onServiceNameDiscovered(
                 matchServiceName(otherInstance), anyBoolean());
-        verify(mockListenerOne, never()).onServiceRemoved(matchServiceName(otherInstance));
-        verify(mockListenerOne, never()).onServiceNameRemoved(matchServiceName(otherInstance));
+        verify(mockListenerOne, never()).onServiceRemoved(
+                matchServiceName(otherInstance), anyInt());
+        verify(mockListenerOne, never()).onServiceNameRemoved(
+                matchServiceName(otherInstance), anyInt());
 
         // mockListenerTwo gets notified for both though
         final InOrder inOrder2 = inOrder(mockListenerTwo);
@@ -2015,14 +2035,18 @@ public class MdnsServiceTypeClientTests {
                 matchServiceName(requestedInstance), eq(false) /* isServiceFromCache */);
         inOrder2.verify(mockListenerTwo).onServiceFound(
                 matchServiceName(requestedInstance), eq(false) /* isServiceFromCache */);
-        inOrder2.verify(mockListenerTwo).onServiceRemoved(matchServiceName(requestedInstance));
-        inOrder2.verify(mockListenerTwo).onServiceNameRemoved(matchServiceName(requestedInstance));
+        inOrder2.verify(mockListenerTwo).onServiceRemoved(
+                matchServiceName(requestedInstance), eq(SERVICE_REMOVED_BY_SOCKET_DESTROYED));
+        inOrder2.verify(mockListenerTwo).onServiceNameRemoved(
+                matchServiceName(requestedInstance), eq(SERVICE_REMOVED_BY_SOCKET_DESTROYED));
         verify(mockListenerTwo).onServiceNameDiscovered(
                 matchServiceName(otherInstance), eq(false) /* isServiceFromCache */);
         verify(mockListenerTwo).onServiceFound(
                 matchServiceName(otherInstance), eq(false) /* isServiceFromCache */);
-        verify(mockListenerTwo).onServiceRemoved(matchServiceName(otherInstance));
-        verify(mockListenerTwo).onServiceNameRemoved(matchServiceName(otherInstance));
+        verify(mockListenerTwo).onServiceRemoved(
+                matchServiceName(otherInstance), eq(SERVICE_REMOVED_BY_SOCKET_DESTROYED));
+        verify(mockListenerTwo).onServiceNameRemoved(
+                matchServiceName(otherInstance), eq(SERVICE_REMOVED_BY_SOCKET_DESTROYED));
     }
 
     @Test
@@ -2533,8 +2557,8 @@ public class MdnsServiceTypeClientTests {
         verifyQuerySentAndRemoveExpiredServices(2 /* count */);
         runOnHandler(() -> realHandler.dispatchMessage(
                 realHandler.obtainMessage(EVENT_REMOVE_EXPIRED_SERVICES)));
-        verify(mockListenerOne, never()).onServiceRemoved(any());
-        verify(mockListenerOne, never()).onServiceNameRemoved(any());
+        verify(mockListenerOne, never()).onServiceRemoved(any(), anyInt());
+        verify(mockListenerOne, never()).onServiceNameRemoved(any(), anyInt());
 
         // Advance the time so that the service's TTL is expired, and send a query again. Attempt to
         // remove expired services for which there should be a callback.
@@ -2544,10 +2568,10 @@ public class MdnsServiceTypeClientTests {
         verifyQuerySentAndRemoveExpiredServices(3 /* count */);
         runOnHandler(() -> realHandler.dispatchMessage(
                 realHandler.obtainMessage(EVENT_REMOVE_EXPIRED_SERVICES)));
-        verify(mockListenerOne, timeout(TEST_TIMEOUT_MS).times(1))
-                .onServiceRemoved(matchServiceName(requestedInstance));
-        verify(mockListenerOne, timeout(TEST_TIMEOUT_MS).times(1))
-                .onServiceNameRemoved(matchServiceName(requestedInstance));
+        verify(mockListenerOne, timeout(TEST_TIMEOUT_MS).times(1)).onServiceRemoved(
+                matchServiceName(requestedInstance), eq(SERVICE_REMOVED_BY_TTL_EXPIRED));
+        verify(mockListenerOne, timeout(TEST_TIMEOUT_MS).times(1)).onServiceNameRemoved(
+                matchServiceName(requestedInstance), eq(SERVICE_REMOVED_BY_TTL_EXPIRED));
     }
 
     @Test
@@ -2599,12 +2623,12 @@ public class MdnsServiceTypeClientTests {
         doReturn(currentTime).when(mockDecoderClock).elapsedRealtime();
         runOnHandler(() -> realHandler.dispatchMessage(
                 realHandler.obtainMessage(EVENT_REMOVE_EXPIRED_SERVICES)));
-        verify(mockListenerOne, timeout(TEST_TIMEOUT_MS).times(1))
-                .onServiceRemoved(matchServiceName(requestedInstance));
-        verify(mockListenerOne, timeout(TEST_TIMEOUT_MS).times(1))
-                .onServiceNameRemoved(matchServiceName(requestedInstance));
-        verify(mockListenerTwo, never()).onServiceRemoved(any());
-        verify(mockListenerTwo, never()).onServiceNameRemoved(any());
+        verify(mockListenerOne, timeout(TEST_TIMEOUT_MS).times(1)).onServiceRemoved(
+                matchServiceName(requestedInstance), eq(SERVICE_REMOVED_BY_TTL_EXPIRED));
+        verify(mockListenerOne, timeout(TEST_TIMEOUT_MS).times(1)).onServiceNameRemoved(
+                matchServiceName(requestedInstance), eq(SERVICE_REMOVED_BY_TTL_EXPIRED));
+        verify(mockListenerTwo, never()).onServiceRemoved(any(), anyInt());
+        verify(mockListenerTwo, never()).onServiceNameRemoved(any(), anyInt());
     }
 
     private Set<FilterRepliesInfo> getFilterRepliesInfo() throws Exception {
