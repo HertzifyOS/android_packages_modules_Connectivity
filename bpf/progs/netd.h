@@ -165,6 +165,7 @@ ASSERT_STRING_EQUAL(XT_BPF_DENYLIST_PROG_PATH,  BPF_NETD_PATH "prog_netd_skfilte
 #define LOCAL_NET_BLOCKED_UID_MAP_PATH BPF_NETD_PATH "map_netd_local_net_blocked_uid_map"
 #define UID_MIGRATION_ENABLED_MAP_PATH                                         \
     BPF_NETD_PATH "map_netd_uid_migration_enabled_map"
+#define LOCAL_NET_NOTE_OP_RINGBUF_PATH BPF_NETD_PATH "map_netd_local_net_note_op_ringbuf"
 
 #define L4S_INGRESS_ETHER_PROG_PATH   BPF_NETD_PATH "prog_netd_schedcls_ingress_accecn_eth"
 #define L4S_EGRESS_ETHER_PROG_PATH    BPF_NETD_PATH "prog_netd_schedcls_egress_accecn_eth"
@@ -277,6 +278,13 @@ typedef struct {
     uint64_t block[CHUNK_INT64_COUNT];
 } UidPermissionChunk;
 STRUCT_SIZE(UidPermissionChunk, 8 * CHUNK_INT64_COUNT); // 8 * 128 = 1024
+
+// Uid and Pid that have local network permission and access local network
+typedef struct {
+    uint32_t uid;
+    uint32_t pid;
+} LocalNetNoteOp;
+STRUCT_SIZE(LocalNetNoteOp, 4 + 4); // 8
 
 // Entry in the configuration map that stores which UID rules are enabled.
 #define UID_RULES_CONFIGURATION_KEY 0

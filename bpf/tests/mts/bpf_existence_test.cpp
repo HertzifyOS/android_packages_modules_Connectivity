@@ -165,6 +165,11 @@ static const set<string> MAINLINE_FOR_25Q2_PLUS = {
     NETD "map_netd_local_net_blocked_uid_map",
 };
 
+// Provided by *current* mainline module for 25Q2+ devices with 5.10+ kernels
+static const set<string> MAINLINE_FOR_25Q2_5_10_PLUS = {
+    NETD "map_netd_local_net_note_op_ringbuf",
+};
+
 // Provided by *current* mainline module for 26Q2+ devices
 static const set<string> MAINLINE_FOR_26Q2_PLUS = {
     NETD "map_netd_l4s_accecn_byte_map",
@@ -234,6 +239,7 @@ TEST_F(BpfExistenceTest, TestPrograms) {
 
     if (isAtLeast25Q2) ASSERT_TRUE(isAtLeastKernelVersion(5, 4));
     DO_EXPECT(isAtLeast25Q2, MAINLINE_FOR_25Q2_PLUS);
+    DO_EXPECT(isAtLeast25Q2 && isAtLeastKernelVersion(5, 10), MAINLINE_FOR_25Q2_5_10_PLUS);
 
     if (isAtLeast25Q4) ASSERT_TRUE(isAtLeastKernelVersion(5, 10));
 
