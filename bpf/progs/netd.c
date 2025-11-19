@@ -328,16 +328,50 @@ get_chunk_permissions(const uint32_t uid) {
                  : PERMISSION_BIT_NONE;
 }
 
+#define NS_PER_MINUTE (60ULL * 1000ULL * 1000ULL * 1000ULL)
+
 static __always_inline inline bool should_block_local_network_packets(struct __sk_buff *skb,
                                    const uint32_t uid, const struct egress_bool egress,
                                    const struct kver_uint kver) {
+    bool reportLocalAccess = false;
+    if (KVER_IS_AT_LEAST(kver, 5, 10, 0)) {
+        uint32_t key = 0;
+        bool *noteOpEnabled = bpf_local_net_note_op_enabled_map_lookup_elem(&key);
+        reportLocalAccess = noteOpEnabled && *noteOpEnabled;
+    }
+    bool isRestricted;
+    if (reportLocalAccess) {
+        isRestricted = is_restricted_local_network(skb, egress, kver);
+        // Currently, generate events for all local network access, regardless of the UID's
+        // permission status.
+        // This is to identify all UIDs that are accessing the local network.
+        if (isRestricted) {
+            // Cache to report only once per minute per UID.
+            uint32_t* lastReportMinutes = bpf_local_net_note_op_cache_map_lookup_elem(&uid);
+            uint32_t bootMinutes = (uint32_t) (bpf_ktime_get_boot_ns() / NS_PER_MINUTE);
+            if (!lastReportMinutes || *lastReportMinutes < bootMinutes) {
+                LocalNetNoteOp *noteOp = bpf_local_net_note_op_ringbuf_reserve();
+                if (noteOp != NULL) {
+                    noteOp->uid = uid;
+                    bpf_local_net_note_op_ringbuf_submit(noteOp);
+                    bpf_local_net_note_op_cache_map_update_elem(&uid, &bootMinutes, BPF_ANY);
+                }
+            }
+        }
+    }
+
+    // System uid has access to restricted local network
     if (is_system_uid(uid)) return false;
 
+    // Uid that is not in the blocked uid map has access to restricted local network
     bool* block_local_net = bpf_local_net_blocked_uid_map_lookup_elem(&uid);
     if (!block_local_net) return false; // uid not found in map
     if (!*block_local_net) return false; // lookup returned 'bool false'
 
-    return is_restricted_local_network(skb, egress, kver);
+    if (!reportLocalAccess) {
+        isRestricted = is_restricted_local_network(skb, egress, kver);
+    }
+    return isRestricted;
 }
 
 static __always_inline inline void do_packet_tracing(
