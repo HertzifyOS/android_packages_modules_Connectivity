@@ -106,7 +106,7 @@ STRUCT_SIZE(SkStorageValue, 8 + 4 + 4);
 
 #define BPF_NETD_PATH "/sys/fs/bpf/netd_shared/"
 
-#define BPF_EGRESS_PROG_PATH BPF_NETD_PATH "prog_netd_cgroupskb_egress_stats"
+#define BPF_EGRESS_PROG_PATH BPF_NETD_PATH "prog_netd_egress_stats"
 #define BPF_INGRESS_PROG_PATH BPF_NETD_PATH "prog_netd_ingress_stats"
 
 #define ASSERT_STRING_EQUAL(s1, s2) \

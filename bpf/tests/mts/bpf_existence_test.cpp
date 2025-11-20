@@ -103,7 +103,7 @@ static const set<string> MAINLINE_FOR_T_PLUS = {
     SHARED "prog_clatd_schedcls_egress4_clat_rawip",
     SHARED "prog_clatd_schedcls_ingress6_clat_ether",
     SHARED "prog_clatd_schedcls_ingress6_clat_rawip",
-    NETD "prog_netd_cgroupskb_egress_stats",
+    NETD "prog_netd_egress_stats",
     NETD "prog_netd_ingress_stats",
     NETD "prog_netd_schedact_ingress_account",
     NETD "prog_netd_skfilter_allowlist_xtbpf",
