@@ -1590,11 +1590,11 @@ static int doLoad(char** argv, char * const envp[]) {
     // first in U QPR2 beta~2
     const bool has_platform_netbpfload_rc = exists("/system/etc/init/netbpfload.rc");
 
-    ALOGI("NetBpfLoad (%s) api:%d/%d kver:%07x (%s) libbpf: v%u.%u uid:%d rc:%d%d",
+    ALOGI("NetBpfLoad (%s) api:%d/%d kver:%07x (%s) libbpf: v%u.%u uid:%d rc:%d%d user:%d%d%d",
           argv[0], android_get_device_api_level(), api_level_full,
           kernelVer, describeArch(), libbpf_major_version(),
           libbpf_minor_version(), getuid(), has_platform_bpfloader_rc,
-          has_platform_netbpfload_rc);
+          has_platform_netbpfload_rc, isUser, isUserdebug, isEng);
 
     if (!has_platform_bpfloader_rc && !has_platform_netbpfload_rc) {
         ALOGE("Unable to find platform's bpfloader & netbpfload init scripts.");
