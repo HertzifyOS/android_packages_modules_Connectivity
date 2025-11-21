@@ -649,17 +649,14 @@ public class TetheringMetrics {
                         .build();
             case UT_WIFI:
                 return new NetworkTemplate.Builder(MATCH_WIFI)
-                        .setMeteredness(METERED_YES)
                         .setDefaultNetworkStatus(DEFAULT_NETWORK_YES)
                         .build();
             case UT_BLUETOOTH:
                 return new NetworkTemplate.Builder(MATCH_BLUETOOTH)
-                        .setMeteredness(METERED_YES)
                         .setDefaultNetworkStatus(DEFAULT_NETWORK_YES)
                         .build();
             case UT_ETHERNET:
                 return new NetworkTemplate.Builder(MATCH_ETHERNET)
-                        .setMeteredness(METERED_YES)
                         .setDefaultNetworkStatus(DEFAULT_NETWORK_YES)
                         .build();
             default:
