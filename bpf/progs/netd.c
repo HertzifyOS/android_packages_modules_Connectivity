@@ -277,28 +277,8 @@ static inline __always_inline bool is_local_net_access_allowed(const uint32_t if
     return v ? *v : true;
 }
 
-static __always_inline inline uint8_t
-get_chunk_permissions(const uint32_t uid) {
-    // All chunks has the same size CHUNK_INT64_COUNT
-    uint32_t chunkId = uid / CHUNK_UID_COUNT;
-    uint32_t index = uid / UIDS_PER_INT64 % CHUNK_INT64_COUNT;
-    int shift = (uid % UIDS_PER_INT64 * PERMISSION_COUNT) & 63;
-
-    UidPermissionChunk *chunk =
-        bpf_uid_permission_chunk_map_lookup_elem(&chunkId);
-    return chunk ? ((chunk->block[index] >> shift) & UID_PERMISSION_MASK)
-                 : PERMISSION_BIT_NONE;
-}
-
-static __always_inline inline bool should_block_local_network_packets(struct __sk_buff *skb,
-                                   const uint32_t uid, const struct egress_bool egress,
-                                   const struct kver_uint kver) {
-    if (is_system_uid(uid)) return false;
-
-    bool* block_local_net = bpf_local_net_blocked_uid_map_lookup_elem(&uid);
-    if (!block_local_net) return false; // uid not found in map
-    if (!*block_local_net) return false; // lookup returned 'bool false'
-
+static __always_inline inline bool is_restricted_local_network(struct __sk_buff *skb,
+                                   const struct egress_bool egress, const struct kver_uint kver) {
     struct in6_addr remote_ip6;
     uint8_t ip_proto;
     uint8_t L4_off;
@@ -333,6 +313,31 @@ static __always_inline inline bool should_block_local_network_packets(struct __s
     }
 
     return !is_local_net_access_allowed(skb->ifindex, &remote_ip6, ip_proto, remote_port);
+}
+
+static __always_inline inline uint8_t
+get_chunk_permissions(const uint32_t uid) {
+    // All chunks has the same size CHUNK_INT64_COUNT
+    uint32_t chunkId = uid / CHUNK_UID_COUNT;
+    uint32_t index = uid / UIDS_PER_INT64 % CHUNK_INT64_COUNT;
+    int shift = (uid % UIDS_PER_INT64 * PERMISSION_COUNT) & 63;
+
+    UidPermissionChunk *chunk =
+        bpf_uid_permission_chunk_map_lookup_elem(&chunkId);
+    return chunk ? ((chunk->block[index] >> shift) & UID_PERMISSION_MASK)
+                 : PERMISSION_BIT_NONE;
+}
+
+static __always_inline inline bool should_block_local_network_packets(struct __sk_buff *skb,
+                                   const uint32_t uid, const struct egress_bool egress,
+                                   const struct kver_uint kver) {
+    if (is_system_uid(uid)) return false;
+
+    bool* block_local_net = bpf_local_net_blocked_uid_map_lookup_elem(&uid);
+    if (!block_local_net) return false; // uid not found in map
+    if (!*block_local_net) return false; // lookup returned 'bool false'
+
+    return is_restricted_local_network(skb, egress, kver);
 }
 
 static __always_inline inline void do_packet_tracing(
