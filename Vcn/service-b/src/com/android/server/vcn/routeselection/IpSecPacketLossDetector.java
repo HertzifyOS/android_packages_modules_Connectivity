@@ -30,6 +30,7 @@ import android.content.IntentFilter;
 import android.net.ConnectivityManager;
 import android.net.IpSecTransformState;
 import android.net.Network;
+import android.net.vcn.Flags;
 import android.os.Build;
 import android.os.Handler;
 import android.os.OutcomeReceiver;
@@ -38,6 +39,7 @@ import android.os.PowerManager;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.annotations.VisibleForTesting.Visibility;
 import com.android.modules.utils.HandlerExecutor;
+import com.android.net.module.util.HexDump;
 import com.android.server.vcn.VcnCarrierConfig;
 import com.android.server.vcn.VcnContext;
 
@@ -64,6 +66,11 @@ import java.util.concurrent.TimeUnit;
 public class IpSecPacketLossDetector extends NetworkMetricMonitor {
     private static final String TAG = IpSecPacketLossDetector.class.getSimpleName();
 
+    // This is a hardcoded value at the moment. When IpSecTransform supports configuring
+    // bitmap size, this can be a configurable field
+    @VisibleForTesting(visibility = Visibility.PRIVATE)
+    static final int IPSEC_REPLAY_BITMAP_SIZE = 4096;
+
     private static final int PACKET_LOSS_PERCENT_UNAVAILABLE = -1;
 
     // Ignore the packet loss detection result if the expected packet number is smaller than 10.
@@ -80,6 +87,7 @@ public class IpSecPacketLossDetector extends NetworkMetricMonitor {
                 LOSS_RESULT_SEQ_DIFF_TOO_SMALL,
                 LOSS_RESULT_UNUSUAL_SEQ_NUM_LEAP,
                 LOSS_RESULT_UNEXPECTED_ERROR,
+                LOSS_RESULT_PACKETS_TOO_OLD,
             })
     @Target({ElementType.TYPE_USE})
     @VisibleForTesting(visibility = Visibility.PRIVATE)
@@ -118,6 +126,13 @@ public class IpSecPacketLossDetector extends NetworkMetricMonitor {
     @VisibleForTesting(visibility = Visibility.PRIVATE)
     static final int LOSS_RESULT_UNEXPECTED_ERROR = 3;
 
+    /**
+     * Indicates that the detector cannot get a valid packet loss rate because the IpSecTransform
+     * state is too old
+     */
+    @VisibleForTesting(visibility = Visibility.PRIVATE)
+    static final int LOSS_RESULT_PACKETS_TOO_OLD = 4;
+
     // For VoIP, losses between 5% and 10% of the total packet stream will affect the quality
     // significantly (as per "Computer Networking for LANS to WANS: Hardware, Software and
     // Security"). For audio and video streaming, above 10-12% packet loss is unacceptable (as per
@@ -129,14 +144,24 @@ public class IpSecPacketLossDetector extends NetworkMetricMonitor {
     @VisibleForTesting(visibility = Visibility.PRIVATE)
     static final int IPSEC_PACKET_LOSS_PERCENT_THRESHOLD_DISABLE_DETECTOR = -1;
 
-    public static final int POLL_IPSEC_STATE_INTERVAL_SECONDS_DEFAULT = 20;
+    public static final int POLL_IPSEC_STATE_INTERVAL_SECONDS_DEFAULT = 10;
 
     // By default, there's no maximum limit enforced
     public static final int MAX_SEQ_NUM_INCREASE_DEFAULT_DISABLED = -1;
 
-    private long mPollIpSecStateIntervalMs;
+    // The minimum inbound sequence number increase required for a valid packet loss calculation.
+    // This is to ensure that enough packets are received to make the calculation reliable.
+    public static final int MIN_SEQ_NUM_INCREASE_DEFAULT = 100;
+
+    // The maximum time difference between two consecutive IpSecTransformState samples for a
+    // valid packet loss calculation. This is to avoid using stale data.
+    public static final int MAX_TIME_DIFF_SECONDS_DEFAULT = 20;
+
+    private int mPollIpSecStateIntervalSec;
     private int mPacketLossRatePercentThreshold;
-    private int mMaxSeqNumIncreasePerSecond;
+    private int mMaxSeqNumIncreasePerSec;
+    private int mMinSeqNumIncrease;
+    private int mMaxTimeDiffSec;
 
     @NonNull private final Handler mHandler;
     @NonNull private final PowerManager mPowerManager;
@@ -169,12 +194,14 @@ public class IpSecPacketLossDetector extends NetworkMetricMonitor {
 
         mPacketLossCalculator = deps.getPacketLossCalculator();
 
-        mPollIpSecStateIntervalMs =
-                TimeUnit.SECONDS.toMillis(
-                        carrierConfig.getNwSelectIpSecLossDetectPollIntervalSec());
+        mPollIpSecStateIntervalSec = carrierConfig.getNwSelectIpSecLossDetectPollIntervalSec();
         mPacketLossRatePercentThreshold =
                 carrierConfig.getNwSelectIpSecLossDetectPercentThreshold();
-        mMaxSeqNumIncreasePerSecond = getMaxSeqNumIncreasePerSecond(carrierConfig);
+        mMaxSeqNumIncreasePerSec = carrierConfig.getNwSelectIpSecLossDetectMaxSeqIncPerSec();
+        mMinSeqNumIncrease = carrierConfig.getNwSelectIpSecLossDetectMinSeqInc();
+        mMaxTimeDiffSec = carrierConfig.getNwSelectIpSecLossDetectMaxTimeDiffSec();
+
+        validate();
 
         // Register for system broadcasts to monitor idle mode change
         final IntentFilter intentFilter = new IntentFilter();
@@ -215,16 +242,34 @@ public class IpSecPacketLossDetector extends NetworkMetricMonitor {
         }
     }
 
-    @VisibleForTesting(visibility = Visibility.PRIVATE)
-    static int getMaxSeqNumIncreasePerSecond(VcnCarrierConfig vcnCarrierConfig) {
-        int maxSeqNumIncrease = vcnCarrierConfig.getNwSelectIpSecLossDetectMaxSeqIncPerSec();
+    private void validate() {
+        if (Flags.improvePacketLossDetector()) {
+            // For each VALID detection, the time diff MUST fall into [mPollIpSecStateIntervalSec,
+            // mMaxTimeDiffSec]. The following check ensures the upper bound is not smaller than the
+            // lower bound
+            if (mPollIpSecStateIntervalSec > mMaxTimeDiffSec) {
+                throw new IllegalArgumentException(
+                        "Poll interval cannot be greater than max time difference; pollInterval="
+                                + mPollIpSecStateIntervalSec
+                                + ", maxTimeDiff="
+                                + mMaxTimeDiffSec);
+            }
 
-        if (maxSeqNumIncrease < MAX_SEQ_NUM_INCREASE_DEFAULT_DISABLED) {
-            logE(TAG, "Invalid value of MAX_SEQ_NUM_INCREASE_PER_SECOND_KEY " + maxSeqNumIncrease);
-            return MAX_SEQ_NUM_INCREASE_DEFAULT_DISABLED;
+            // For each VALID detection, the seq diff MUST fall into [mMinSeqNumIncrease,
+            // maxSeqNumIncrease]. The following check ensures the upper bound is not smaller than
+            // the lower bound
+            final long maxSeqNumIncrease =
+                    (long) mMaxSeqNumIncreasePerSec * mPollIpSecStateIntervalSec;
+            if (mMaxSeqNumIncreasePerSec != MAX_SEQ_NUM_INCREASE_DEFAULT_DISABLED
+                    && mMinSeqNumIncrease > maxSeqNumIncrease) {
+                throw new IllegalArgumentException(
+                        "Minimum sequence increase cannot be greater than maximum sequence"
+                                + " increase; minSeqIncrease="
+                                + mMinSeqNumIncrease
+                                + ", maxSeqIncrease="
+                                + maxSeqNumIncrease);
+            }
         }
-
-        return maxSeqNumIncrease;
     }
 
     @Override
@@ -264,12 +309,13 @@ public class IpSecPacketLossDetector extends NetworkMetricMonitor {
     public void setCarrierConfig(@NonNull VcnCarrierConfig carrierConfig) {
         // The already scheduled event will not be affected. The followup events will be scheduled
         // with the new interval
-        mPollIpSecStateIntervalMs =
-                TimeUnit.SECONDS.toMillis(
-                        carrierConfig.getNwSelectIpSecLossDetectPollIntervalSec());
+        mPollIpSecStateIntervalSec = carrierConfig.getNwSelectIpSecLossDetectPollIntervalSec();
         mPacketLossRatePercentThreshold =
                 carrierConfig.getNwSelectIpSecLossDetectPercentThreshold();
-        mMaxSeqNumIncreasePerSecond = getMaxSeqNumIncreasePerSecond(carrierConfig);
+        mMaxSeqNumIncreasePerSec = carrierConfig.getNwSelectIpSecLossDetectMaxSeqIncPerSec();
+        mMinSeqNumIncrease = carrierConfig.getNwSelectIpSecLossDetectMinSeqInc();
+        mMaxTimeDiffSec = carrierConfig.getNwSelectIpSecLossDetectMaxTimeDiffSec();
+        validate();
 
         if (canStart() != isStarted()) {
             if (canStart()) {
@@ -356,7 +402,9 @@ public class IpSecPacketLossDetector extends NetworkMetricMonitor {
 
             // Schedule for next poll
             mHandler.postDelayed(
-                    new PollIpSecStateRunnable(), mCancellationToken, mPollIpSecStateIntervalMs);
+                    new PollIpSecStateRunnable(),
+                    mCancellationToken,
+                    TimeUnit.SECONDS.toMillis(mPollIpSecStateIntervalSec));
         }
     }
 
@@ -389,12 +437,24 @@ public class IpSecPacketLossDetector extends NetworkMetricMonitor {
             return;
         }
 
-        final PacketLossCalculationResult calculateResult =
-                mPacketLossCalculator.getPacketLossRatePercentage(
-                        mLastIpSecTransformState,
-                        state,
-                        mMaxSeqNumIncreasePerSecond,
-                        getLogPrefix());
+        final PacketLossCalculationResult calculateResult;
+        if (Flags.improvePacketLossDetector()) {
+            calculateResult =
+                    mPacketLossCalculator.getPacketLossRatePercentage(
+                            mLastIpSecTransformState,
+                            state,
+                            mMaxSeqNumIncreasePerSec,
+                            mMinSeqNumIncrease,
+                            mMaxTimeDiffSec,
+                            getLogPrefix());
+        } else {
+            calculateResult =
+                    mPacketLossCalculator.getPacketLossRatePercentageLegacy(
+                            mLastIpSecTransformState,
+                            state,
+                            mMaxSeqNumIncreasePerSec,
+                            getLogPrefix());
+        }
 
         final int packetLossResultType = calculateResult.getResultType();
         final int packetLossPercent = calculateResult.getPacketLossRatePercent();
@@ -407,6 +467,12 @@ public class IpSecPacketLossDetector extends NetworkMetricMonitor {
                         + (state.getTimestampMillis()
                                 - mLastIpSecTransformState.getTimestampMillis())
                         + "ms";
+
+        if (shouldReportValidationResult(isLossy, packetLossResultType) && isLossy) {
+            logInfo(logMsg);
+        } else {
+            logV(logMsg);
+        }
 
         if (shouldUpdateLastTransformState(packetLossResultType)) {
             mLastIpSecTransformState = state;
@@ -462,11 +528,88 @@ public class IpSecPacketLossDetector extends NetworkMetricMonitor {
 
     @VisibleForTesting(visibility = Visibility.PRIVATE)
     public static class PacketLossCalculator {
-        /** Calculate the packet loss rate between two timestamps */
+        /**
+         * Calculates the packet loss rate between two IpSecTransformState snapshots (oldState and
+         * newState), by inspecting their replay windows.
+         *
+         * <p>Expected And Actual Packet Count Determination:
+         *
+         * <ul>
+         *   <li>Non-overlapping Replay Windows: The expected packet count is the replay window
+         *       size. The actual count is derived from the entire newState replay window.
+         *   <li>Overlapping Replay Windows: The expected packet count is the change in the highest
+         *       sequence number between oldState and newState. The actual count is derived from the
+         *       subset of the newState replay window, ranging from the oldState's highest sequence
+         *       number to the newState's highest sequence number.
+         * </ul>
+         *
+         * <p>Special Cases for Invalid Results:
+         *
+         * <ul>
+         *   <li><b>Stale Data:</b> If the time between snapshots exceeds maxTimeDiffSec.
+         *   <li><b>Insufficient Sample Size:</b> If the sequence number increase is below
+         *       minSeqNumIncrease.
+         *   <li><b>Unusual Sequence Leap:</b> If the sequence number increase is unusually large
+         *       (e.g., due to server-side load balancing), the result is flagged to prevent
+         *       misinterpretation as network loss.
+         * </ul>
+         */
         public PacketLossCalculationResult getPacketLossRatePercentage(
                 @NonNull IpSecTransformState oldState,
                 @NonNull IpSecTransformState newState,
-                int maxSeqNumIncreasePerSecond,
+                int maxSeqNumIncreasePerSec,
+                int minSeqNumIncrease,
+                int maxTimeDiffSec,
+                String logPrefix) {
+            logVIpSecTransform("oldState", oldState, logPrefix);
+            logVIpSecTransform("newState", newState, logPrefix);
+            final long seqHiDiff =
+                    newState.getRxHighestSequenceNumber() - oldState.getRxHighestSequenceNumber();
+            final long timeDiffMillis =
+                    newState.getTimestampMillis() - oldState.getTimestampMillis();
+
+            // Handle Invalid Result: If the sample is too old, skip this report to avoid using
+            // stale data
+            if (timeDiffMillis > TimeUnit.SECONDS.toMillis(maxTimeDiffSec)) {
+                return PacketLossCalculationResult.packetsTooOld();
+            }
+
+            // Handle Invalid Result: If the sample size is too small, skip this report to ensure
+            // calculation reliability
+            if (seqHiDiff < minSeqNumIncrease) {
+                return PacketLossCalculationResult.seqDiffTooSmall();
+            }
+
+            // Determine the expected and actual packet count
+            final int expectedPktCnt = (int) Math.min(seqHiDiff, IPSEC_REPLAY_BITMAP_SIZE);
+            final int actualPktCnt = getRecentPacketCntInReplayWindow(newState, expectedPktCnt);
+            logV(
+                    TAG,
+                    logPrefix
+                            + " expectedPktCnt: "
+                            + expectedPktCnt
+                            + " actualPktCnt: "
+                            + actualPktCnt);
+            final int percent = 100 - (int) (actualPktCnt * 100 / expectedPktCnt);
+
+            // Handle Invalid Result: Unusual Sequence Leap
+            final boolean isUnusualSeqNumLeap =
+                    isUnusualSeqNumLeap(timeDiffMillis, maxSeqNumIncreasePerSec, seqHiDiff);
+
+            return isUnusualSeqNumLeap
+                    ? PacketLossCalculationResult.unusualSeqNumLeap(percent)
+                    : PacketLossCalculationResult.valid(percent);
+        }
+
+        /**
+         * Calculate the packet loss rate between two timestamps.
+         *
+         * <p>This is a legacy implementation.
+         */
+        public PacketLossCalculationResult getPacketLossRatePercentageLegacy(
+                @NonNull IpSecTransformState oldState,
+                @NonNull IpSecTransformState newState,
+                int maxSeqNumIncreasePerSec,
                 String logPrefix) {
             logVIpSecTransform("oldState", oldState, logPrefix);
             logVIpSecTransform("newState", newState, logPrefix);
@@ -483,20 +626,11 @@ public class IpSecPacketLossDetector extends NetworkMetricMonitor {
                 return PacketLossCalculationResult.seqDiffTooSmall();
             }
 
-            boolean isUnusualSeqNumLeap = false;
-
-            // Handle sequence number leap
-            if (maxSeqNumIncreasePerSecond != MAX_SEQ_NUM_INCREASE_DEFAULT_DISABLED) {
-                final long timeDiffMillis =
-                        newState.getTimestampMillis() - oldState.getTimestampMillis();
-                final long maxSeqNumIncrease = timeDiffMillis * maxSeqNumIncreasePerSecond / 1000;
-
-                // Sequence numbers are unsigned 32-bit values. If maxSeqNumIncrease overflows,
-                // isUnusualSeqNumLeap can never be true.
-                if (maxSeqNumIncrease >= 0 && newSeqHi - oldSeqHi >= maxSeqNumIncrease) {
-                    isUnusualSeqNumLeap = true;
-                }
-            }
+            final long timeDiffMillis =
+                    newState.getTimestampMillis() - oldState.getTimestampMillis();
+            final boolean isUnusualSeqNumLeap =
+                    isUnusualSeqNumLeap(
+                            timeDiffMillis, maxSeqNumIncreasePerSec, newSeqHi - oldSeqHi);
 
             // Get the expected packet count by assuming there is no packet loss. In this case, SA
             // should receive all packets whose sequence numbers are smaller than the lower bound of
@@ -537,6 +671,16 @@ public class IpSecPacketLossDetector extends NetworkMetricMonitor {
         }
     }
 
+    private static boolean isUnusualSeqNumLeap(
+            long timeDiffMillis, int maxSeqNumIncreasePerSec, long seqHiDiff) {
+        if (maxSeqNumIncreasePerSec == MAX_SEQ_NUM_INCREASE_DEFAULT_DISABLED) {
+            return false;
+        }
+
+        final long maxSeqNumIncrease = timeDiffMillis * maxSeqNumIncreasePerSec / 1000;
+        return Long.compareUnsigned(seqHiDiff, maxSeqNumIncrease) > 0;
+    }
+
     private static void logVIpSecTransform(
             String transformTag, IpSecTransformState state, String logPrefix) {
         final String stateString =
@@ -545,13 +689,31 @@ public class IpSecPacketLossDetector extends NetworkMetricMonitor {
                         + " | pktCnt: "
                         + state.getPacketCount()
                         + " | pktCntInWindow: "
-                        + getPacketCntInReplayWindow(state);
+                        + getPacketCntInReplayWindow(state)
+                        + " | replayWindow: "
+                        + HexDump.toHexString(state.getReplayBitmap());
         logV(TAG, logPrefix + " " + transformTag + stateString);
     }
 
     /** Get the number of received packets within the replay window */
     private static long getPacketCntInReplayWindow(@NonNull IpSecTransformState state) {
         return BitSet.valueOf(state.getReplayBitmap()).cardinality();
+    }
+
+    /**
+     * Get the number of received packets in the most recent portion of the replay window.
+     *
+     * @param state The current IpSec state containing the replay window.
+     * @param lookbackDepth The number of slots to check, counting backwards from the highest
+     *     sequence number.
+     * @return The number of packets received within that depth.
+     */
+    private static int getRecentPacketCntInReplayWindow(
+            @NonNull IpSecTransformState state, int lookbackDepth) {
+        final BitSet replayBitmap = BitSet.valueOf(state.getReplayBitmap());
+        final long highestSeq = state.getRxHighestSequenceNumber();
+        final int maxIndexExclusive = (int) Math.min(IPSEC_REPLAY_BITMAP_SIZE, highestSeq + 1);
+        return replayBitmap.get(maxIndexExclusive - lookbackDepth, maxIndexExclusive).cardinality();
     }
 
     @VisibleForTesting(visibility = Visibility.PRIVATE)
@@ -573,6 +735,12 @@ public class IpSecPacketLossDetector extends NetworkMetricMonitor {
         public static PacketLossCalculationResult seqDiffTooSmall() {
             return new PacketLossCalculationResult(
                     LOSS_RESULT_SEQ_DIFF_TOO_SMALL, PACKET_LOSS_PERCENT_UNAVAILABLE);
+        }
+
+        /** Constructs an instance indicating that the IpSecTransform state is too old */
+        public static PacketLossCalculationResult packetsTooOld() {
+            return new PacketLossCalculationResult(
+                    LOSS_RESULT_PACKETS_TOO_OLD, PACKET_LOSS_PERCENT_UNAVAILABLE);
         }
 
         /** Constructs an instance indicating that there is an unexpected error */
