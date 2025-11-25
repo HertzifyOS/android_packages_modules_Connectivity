@@ -905,10 +905,10 @@ static __always_inline inline int check_localhost(__unused struct bpf_sock_addr 
     return BPF_ALLOW;
 }
 
-static inline __always_inline int block_port(struct bpf_sock_addr *ctx) {
-    if (!ctx->user_port) return BPF_ALLOW;
+static inline __always_inline bool block_bind_port(__u32 protocol, __u32 user_port) {
+    if (!user_port) return false;
 
-    switch (ctx->protocol) {
+    switch (protocol) {
         case IPPROTO_TCP:
         case IPPROTO_MPTCP:
         case IPPROTO_UDP:
@@ -917,29 +917,29 @@ static inline __always_inline int block_port(struct bpf_sock_addr *ctx) {
         case IPPROTO_SCTP:
             break;
         default:
-            return BPF_ALLOW; // unknown protocols are allowed
+            return false; // unknown protocols are allowed
     }
 
-    int key = ctx->user_port >> 6;
-    int shift = ctx->user_port & 63;
+    int key = user_port >> 6;
+    int shift = user_port & 63;
 
     uint64_t *val = bpf_blocked_ports_map_lookup_elem(&key);
     // Lookup should never fail in reality, but if it does return here to keep the
     // BPF verifier happy.
-    if (!val) return BPF_ALLOW;
+    if (!val) return false;
 
-    if ((*val >> shift) & 1) return BPF_DISALLOW;
-    return BPF_ALLOW;
+    if ((*val >> shift) & 1) return true;
+    return false;
 }
 
 DEFINE_NETD_BPF_PROG_KVER(bind4, inet4_bind, , 4_19)
 (struct bpf_sock_addr *ctx) {
-    return block_port(ctx);
+    return block_bind_port(ctx->protocol, ctx->user_port) ? BPF_DISALLOW : BPF_ALLOW;
 }
 
 DEFINE_NETD_BPF_PROG_KVER(bind6, inet6_bind, , 4_19)
 (struct bpf_sock_addr *ctx) {
-    return block_port(ctx);
+    return block_bind_port(ctx->protocol, ctx->user_port) ? BPF_DISALLOW : BPF_ALLOW;
 }
 
 DEFINE_NETD_V_BPF_PROG_KVER_RANGE(connect4, inet4_connect, 4_19, 4_19, 5_10)
