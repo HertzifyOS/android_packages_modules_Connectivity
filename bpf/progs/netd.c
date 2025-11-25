@@ -954,22 +954,24 @@ DEFINE_NETD_BPF_PROG_KVER_RANGE(bind6, inet6_bind, 4_19, 4_19, 5_15)
     return block_bind_port(ctx->protocol, ctx->user_port) ? BPF_DISALLOW : BPF_ALLOW;
 }
 
-DEFINE_NETD_V_BPF_PROG_KVER_RANGE(connect4, inet4_connect, 4_19, 4_19, 5_10)
-(struct bpf_sock_addr *ctx) {
-    return check_localhost(ctx);
-}
+// --- CONNECT CGROUP HOOKS ---
 
 DEFINE_NETD_V_BPF_PROG_KVER(connect4, inet4_connect, 5_10, 5_10)
 (struct bpf_sock_addr *ctx) {
     return check_localhost(ctx);
 }
 
-DEFINE_NETD_V_BPF_PROG_KVER_RANGE(connect6, inet6_connect, 4_19, 4_19, 5_10)
+DEFINE_NETD_V_BPF_PROG_KVER_RANGE(connect4, inet4_connect, 4_19, 4_19, 5_10)
 (struct bpf_sock_addr *ctx) {
     return check_localhost(ctx);
 }
 
 DEFINE_NETD_V_BPF_PROG_KVER(connect6, inet6_connect, 5_10, 5_10)
+(struct bpf_sock_addr *ctx) {
+    return check_localhost(ctx);
+}
+
+DEFINE_NETD_V_BPF_PROG_KVER_RANGE(connect6, inet6_connect, 4_19, 4_19, 5_10)
 (struct bpf_sock_addr *ctx) {
     return check_localhost(ctx);
 }
