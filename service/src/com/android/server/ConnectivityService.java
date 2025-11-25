@@ -1641,7 +1641,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
          * Get a reference to the ModuleNetworkStackClient.
          */
         public NetworkStackClientBase getNetworkStack() {
-            return ModuleNetworkStackClient.getInstance(null);
+            return ModuleNetworkStackClient.getInstance();
         }
 
         /**
