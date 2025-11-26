@@ -18,6 +18,8 @@ package com.android.server.vcn.routeselection;
 
 import static android.net.vcn.Flags.FLAG_IMPROVE_PACKET_LOSS_DETECTOR;
 
+import static com.android.server.vcn.routeselection.IpSecPacketLossDetector.DETECTION_MODE_NORMAL;
+import static com.android.server.vcn.routeselection.IpSecPacketLossDetector.DETECTION_MODE_RAPID;
 import static com.android.server.vcn.routeselection.IpSecPacketLossDetector.IPSEC_PACKET_LOSS_PERCENT_THRESHOLD_DISABLE_DETECTOR;
 import static com.android.server.vcn.routeselection.IpSecPacketLossDetector.LOSS_RESULT_PACKETS_TOO_OLD;
 import static com.android.server.vcn.routeselection.IpSecPacketLossDetector.LOSS_RESULT_SEQ_DIFF_TOO_SMALL;
@@ -47,6 +49,7 @@ import static org.mockito.Mockito.when;
 import android.content.BroadcastReceiver;
 import android.content.Intent;
 import android.net.IpSecTransformState;
+import android.os.Message;
 import android.os.OutcomeReceiver;
 import android.os.PowerManager;
 import android.platform.test.annotations.EnableFlags;
@@ -93,6 +96,13 @@ public class IpSecPacketLossDetectorTest extends NetworkEvaluationTestBase {
             TimeUnit.SECONDS.toMillis(POLL_IPSEC_STATE_INTERVAL_SECONDS);
     private static final int MAX_TIME_DIFF_SECONDS = POLL_IPSEC_STATE_INTERVAL_SECONDS * 2;
 
+    private static final int RAPID_POLL_IPSEC_STATE_INTERVAL_SECONDS = 2;
+    private static final long RAPID_POLL_IPSEC_STATE_INTERVAL_MS =
+            TimeUnit.SECONDS.toMillis(RAPID_POLL_IPSEC_STATE_INTERVAL_SECONDS);
+    private static final int RAPID_MODE_EXIT_TIMER_RAPID_MODE_DISABLED = 0;
+    private static final int RAPID_MODE_EXIT_TIMER_SECONDS = 30;
+    private static final int RAPID_MODE_EXIT_NOT_LOSSY_COUNT = 3;
+
     // Used in tests where bitmap and packet count are not used and thus can be arbitrary values
     private static final byte[] REPLAY_BITMAP_DEFAULT = newReplayBitmap(0);
     private static final int PACKET_COUNT_DEFAULT = 0;
@@ -123,6 +133,10 @@ public class IpSecPacketLossDetectorTest extends NetworkEvaluationTestBase {
         when(mCarrierConfig.getNwSelectIpSecLossDetectMinSeqInc()).thenReturn(MIN_SEQ_NUM_INCREASE);
         when(mCarrierConfig.getNwSelectIpSecLossDetectMaxTimeDiffSec())
                 .thenReturn(MAX_TIME_DIFF_SECONDS);
+        when(mCarrierConfig.getNwSelectIpSecLossDetectRapidPollIntervalSec())
+                .thenReturn(RAPID_POLL_IPSEC_STATE_INTERVAL_SECONDS);
+        when(mCarrierConfig.getNwSelectIpSecLossDetectRapidDurationSec())
+                .thenReturn(RAPID_MODE_EXIT_TIMER_RAPID_MODE_DISABLED);
 
         when(mDependencies.getPacketLossCalculator()).thenReturn(mPacketLossCalculator);
 
@@ -210,8 +224,7 @@ public class IpSecPacketLossDetectorTest extends NetworkEvaluationTestBase {
         return mTransformStateReceiverCaptor.getValue();
     }
 
-    @Test
-    public void testStartMonitor() throws Exception {
+    private void verifyStartMonitor(long pollIntervalMs) {
         final OutcomeReceiver<IpSecTransformState, RuntimeException> xfrmStateReceiver =
                 startMonitorAndCaptureStateReceiver();
 
@@ -229,31 +242,104 @@ public class IpSecPacketLossDetectorTest extends NetworkEvaluationTestBase {
                 .getPacketLossRatePercentage(
                         any(), any(), anyInt(), anyInt(), anyInt(), anyString());
 
-        // Verify next poll is scheduled
+        // Verify next poll is scheduled and execute it
         assertNull(mTestLooper.nextMessage());
-        mTestLooper.moveTimeForward(POLL_IPSEC_STATE_INTERVAL_MS);
+        mTestLooper.moveTimeForward(pollIntervalMs);
+        final Message msg = mTestLooper.nextMessage();
+        msg.getTarget().dispatchMessage(msg);
+    }
+
+    @Test
+    public void testStartMonitor() throws Exception {
+        verifyStartMonitor(POLL_IPSEC_STATE_INTERVAL_MS);
+    }
+
+    private void enableRapidMode() {
+        when(mCarrierConfig.getNwSelectIpSecLossDetectRapidDurationSec())
+                .thenReturn(RAPID_MODE_EXIT_TIMER_SECONDS);
+        mIpSecPacketLossDetector.setCarrierConfig(mCarrierConfig);
+    }
+
+    private void verifyExitRapidMode() {
+        assertEquals(DETECTION_MODE_NORMAL, mIpSecPacketLossDetector.getDetectionMode());
+
+        // Execute the poll event scheduled during rapid mode
+        mTestLooper.moveTimeForward(RAPID_POLL_IPSEC_STATE_INTERVAL_MS);
+        mTestLooper.dispatchAll();
+
+        // Verify the next poll event is not scheduled at the rapid mode interval
+        mTestLooper.moveTimeForward(RAPID_POLL_IPSEC_STATE_INTERVAL_MS);
+        assertNull(mTestLooper.nextMessage());
+        mTestLooper.moveTimeForward(
+                POLL_IPSEC_STATE_INTERVAL_MS - RAPID_POLL_IPSEC_STATE_INTERVAL_MS);
         assertNotNull(mTestLooper.nextMessage());
     }
 
     @Test
-    public void testStartedMonitor_enterDozeMoze() throws Exception {
-        final OutcomeReceiver<IpSecTransformState, RuntimeException> xfrmStateReceiver =
-                startMonitorAndCaptureStateReceiver();
+    public void testStartMonitor_rapidMode() throws Exception {
+        enableRapidMode();
+        verifyStartMonitor(RAPID_POLL_IPSEC_STATE_INTERVAL_MS);
+    }
 
-        // Mock receiving a state
-        xfrmStateReceiver.onResult(mTransformStateInitial);
-        assertEquals(mTransformStateInitial, mIpSecPacketLossDetector.getLastTransformState());
+    @Test
+    public void testExitRapidMode_dueToTimerExpiry() throws Exception {
+        enableRapidMode();
 
-        // Mock entering doze mode
+        verifyStartMonitor(RAPID_POLL_IPSEC_STATE_INTERVAL_MS);
+        assertEquals(DETECTION_MODE_RAPID, mIpSecPacketLossDetector.getDetectionMode());
+
+        mTestLooper.moveTimeForward(TimeUnit.SECONDS.toMillis(RAPID_MODE_EXIT_TIMER_SECONDS));
+        mTestLooper.dispatchAll();
+
+        verifyExitRapidMode();
+    }
+
+    @Test
+    public void testExitRapidMode_dueToNotLossyReported() throws Exception {
+        enableRapidMode();
+
+        verifyStartMonitor(RAPID_POLL_IPSEC_STATE_INTERVAL_MS);
+        assertEquals(DETECTION_MODE_RAPID, mIpSecPacketLossDetector.getDetectionMode());
+
+        for (int i = 0; i < RAPID_MODE_EXIT_NOT_LOSSY_COUNT; i++) {
+            mIpSecPacketLossDetector.handleValidationResultReceivedInternal(false /* isFailed */);
+        }
+
+        verifyExitRapidMode();
+    }
+
+    private void receiveIdleModeChange(boolean isInIdleMode) throws Exception {
         final Intent intent = mock(Intent.class);
         when(intent.getAction()).thenReturn(PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED);
-        when(mPowerManagerService.isDeviceIdleMode()).thenReturn(true);
+        when(mPowerManagerService.isDeviceIdleMode()).thenReturn(isInIdleMode);
 
         verify(mContext).registerReceiver(mBroadcastReceiverCaptor.capture(), any(), any(), any());
         final BroadcastReceiver broadcastReceiver = mBroadcastReceiverCaptor.getValue();
         broadcastReceiver.onReceive(mContext, intent);
+    }
+
+    @Test
+    public void testStartedMonitor_enterIdleMode() throws Exception {
+        final OutcomeReceiver<IpSecTransformState, RuntimeException> xfrmStateReceiver =
+                startMonitorAndCaptureStateReceiver();
+
+        receiveIdleModeChange(true /* isInIdleMode */);
 
         assertNull(mIpSecPacketLossDetector.getLastTransformState());
+    }
+
+    @Test
+    public void testStartedMonitor_exitIdleMode() throws Exception {
+        enableRapidMode();
+        verifyStartMonitor(RAPID_POLL_IPSEC_STATE_INTERVAL_MS);
+
+        mTestLooper.moveTimeForward(TimeUnit.SECONDS.toMillis(RAPID_MODE_EXIT_TIMER_SECONDS));
+        mTestLooper.dispatchAll();
+        verifyExitRapidMode();
+
+        receiveIdleModeChange(false /* isInIdleMode */);
+
+        assertEquals(DETECTION_MODE_RAPID, mIpSecPacketLossDetector.getDetectionMode());
     }
 
     @Test

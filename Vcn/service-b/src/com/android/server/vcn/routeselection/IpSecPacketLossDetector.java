@@ -133,6 +133,23 @@ public class IpSecPacketLossDetector extends NetworkMetricMonitor {
     @VisibleForTesting(visibility = Visibility.PRIVATE)
     static final int LOSS_RESULT_PACKETS_TOO_OLD = 4;
 
+    @Retention(RetentionPolicy.SOURCE)
+    @IntDef(
+            prefix = {"DETECTION_MODE_"},
+            value = {
+                DETECTION_MODE_RAPID,
+                DETECTION_MODE_NORMAL,
+            })
+    @Target({ElementType.TYPE_USE})
+    @VisibleForTesting(visibility = Visibility.PRIVATE)
+    @interface DetectionMode {}
+
+    @VisibleForTesting(visibility = Visibility.PRIVATE)
+    static final int DETECTION_MODE_RAPID = 0;
+
+    @VisibleForTesting(visibility = Visibility.PRIVATE)
+    static final int DETECTION_MODE_NORMAL = 1;
+
     // For VoIP, losses between 5% and 10% of the total packet stream will affect the quality
     // significantly (as per "Computer Networking for LANS to WANS: Hardware, Software and
     // Security"). For audio and video streaming, above 10-12% packet loss is unacceptable (as per
@@ -157,16 +174,28 @@ public class IpSecPacketLossDetector extends NetworkMetricMonitor {
     // valid packet loss calculation. This is to avoid using stale data.
     public static final int MAX_TIME_DIFF_SECONDS_DEFAULT = 20;
 
+    public static final int RAPID_MODE_POLL_IPSEC_STATE_INTERVAL_SECONDS_DEFAULT = 2;
+    public static final int RAPID_MODE_EXIT_TIMER_SECONDS_DEFAULT = 30;
+    public static final int RAPID_MODE_EXIT_TIMER_RAPID_MODE_DISABLED = 0;
+    public static final int RAPID_MODE_EXIT_NOT_LOSSY_COUNT = 3;
+
     private int mPollIpSecStateIntervalSec;
     private int mPacketLossRatePercentThreshold;
     private int mMaxSeqNumIncreasePerSec;
     private int mMinSeqNumIncrease;
     private int mMaxTimeDiffSec;
+    private int mRapidModePollIpSecStateIntervalSec;
+    private int mRapidModeExitTimerSec;
+
+    private int mConsecutiveReportNotLossyCount = 0;
+
+    @DetectionMode private int mDetectionMode = DETECTION_MODE_RAPID;
 
     @NonNull private final Handler mHandler;
     @NonNull private final PowerManager mPowerManager;
     @NonNull private final ConnectivityManager mConnectivityManager;
     @NonNull private final Object mCancellationToken = new Object();
+    @NonNull private final Object mCancelExitRapidModeToken = new Object();
     @NonNull private final PacketLossCalculator mPacketLossCalculator;
 
     @Nullable private BroadcastReceiver mDeviceIdleReceiver;
@@ -200,6 +229,9 @@ public class IpSecPacketLossDetector extends NetworkMetricMonitor {
         mMaxSeqNumIncreasePerSec = carrierConfig.getNwSelectIpSecLossDetectMaxSeqIncPerSec();
         mMinSeqNumIncrease = carrierConfig.getNwSelectIpSecLossDetectMinSeqInc();
         mMaxTimeDiffSec = carrierConfig.getNwSelectIpSecLossDetectMaxTimeDiffSec();
+        mRapidModePollIpSecStateIntervalSec =
+                carrierConfig.getNwSelectIpSecLossDetectRapidPollIntervalSec();
+        mRapidModeExitTimerSec = carrierConfig.getNwSelectIpSecLossDetectRapidDurationSec();
 
         validate();
 
@@ -207,16 +239,24 @@ public class IpSecPacketLossDetector extends NetworkMetricMonitor {
         final IntentFilter intentFilter = new IntentFilter();
         intentFilter.addAction(PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED);
 
-        mDeviceIdleReceiver = new BroadcastReceiver() {
-            @Override
-            public void onReceive(Context context, Intent intent) {
-                if (PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED.equals(
-                                intent.getAction())
-                        && mPowerManager.isDeviceIdleMode()) {
-                    mLastIpSecTransformState = null;
-                }
-            }
-        };
+        mDeviceIdleReceiver =
+                new BroadcastReceiver() {
+                    @Override
+                    public void onReceive(Context context, Intent intent) {
+                        if (!PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED.equals(
+                                intent.getAction())) {
+                            return;
+                        }
+
+                        if (mPowerManager.isDeviceIdleMode()) {
+                            mLastIpSecTransformState = null;
+                        } else if (Flags.improvePacketLossDetector()) {
+                            if (canStart()) {
+                                start();
+                            }
+                        }
+                    }
+                };
         getVcnContext()
                 .getContext()
                 .registerReceiver(
@@ -315,6 +355,10 @@ public class IpSecPacketLossDetector extends NetworkMetricMonitor {
         mMaxSeqNumIncreasePerSec = carrierConfig.getNwSelectIpSecLossDetectMaxSeqIncPerSec();
         mMinSeqNumIncrease = carrierConfig.getNwSelectIpSecLossDetectMinSeqInc();
         mMaxTimeDiffSec = carrierConfig.getNwSelectIpSecLossDetectMaxTimeDiffSec();
+        mRapidModePollIpSecStateIntervalSec =
+                carrierConfig.getNwSelectIpSecLossDetectRapidPollIntervalSec();
+        mRapidModeExitTimerSec = carrierConfig.getNwSelectIpSecLossDetectRapidDurationSec();
+
         validate();
 
         if (canStart() != isStarted()) {
@@ -349,6 +393,17 @@ public class IpSecPacketLossDetector extends NetworkMetricMonitor {
         super.start();
         clearTransformStateAndPollingEvents();
         mHandler.postDelayed(new PollIpSecStateRunnable(), mCancellationToken, 0L);
+
+        if (Flags.improvePacketLossDetector()
+                && mRapidModeExitTimerSec > RAPID_MODE_EXIT_TIMER_RAPID_MODE_DISABLED) {
+            mDetectionMode = DETECTION_MODE_RAPID;
+            mHandler.postDelayed(
+                    new ExitRapidModeRunnable(),
+                    mCancelExitRapidModeToken,
+                    TimeUnit.SECONDS.toMillis(mRapidModeExitTimerSec));
+        } else {
+            mDetectionMode = DETECTION_MODE_NORMAL;
+        }
     }
 
     @Override
@@ -360,6 +415,11 @@ public class IpSecPacketLossDetector extends NetworkMetricMonitor {
     private void clearTransformStateAndPollingEvents() {
         mHandler.removeCallbacksAndEqualMessages(mCancellationToken);
         mLastIpSecTransformState = null;
+
+        if (Flags.improvePacketLossDetector()) {
+            mConsecutiveReportNotLossyCount = 0;
+            mHandler.removeCallbacksAndEqualMessages(mCancelExitRapidModeToken);
+        }
     }
 
     @Override
@@ -382,6 +442,17 @@ public class IpSecPacketLossDetector extends NetworkMetricMonitor {
         return mLastIpSecTransformState;
     }
 
+    @VisibleForTesting(visibility = Visibility.PRIVATE)
+    @DetectionMode
+    public int getDetectionMode() {
+        return mDetectionMode;
+    }
+
+    @VisibleForTesting(visibility = Visibility.PRIVATE)
+    public int getConsecutiveReportNotLossyCount() {
+        return mConsecutiveReportNotLossyCount;
+    }
+
     @VisibleForTesting(visibility = Visibility.PROTECTED)
     @Nullable
     public IpSecTransformWrapper getInboundTransformInternal() {
@@ -400,11 +471,23 @@ public class IpSecPacketLossDetector extends NetworkMetricMonitor {
                     .requestIpSecTransformState(
                             new HandlerExecutor(mHandler), new IpSecTransformStateReceiver());
 
+            final int pollIntervalSeconds =
+                    mDetectionMode == DETECTION_MODE_RAPID
+                            ? mRapidModePollIpSecStateIntervalSec
+                            : mPollIpSecStateIntervalSec;
+
             // Schedule for next poll
             mHandler.postDelayed(
                     new PollIpSecStateRunnable(),
                     mCancellationToken,
-                    TimeUnit.SECONDS.toMillis(mPollIpSecStateIntervalSec));
+                    TimeUnit.SECONDS.toMillis(pollIntervalSeconds));
+        }
+    }
+
+    private class ExitRapidModeRunnable implements Runnable {
+        @Override
+        public void run() {
+            mDetectionMode = DETECTION_MODE_NORMAL;
         }
     }
 
@@ -479,12 +562,30 @@ public class IpSecPacketLossDetector extends NetworkMetricMonitor {
         }
 
         if (shouldReportValidationResult(isLossy, packetLossResultType)) {
-            onValidationResultReceivedInternal(!isLossy /* isSucceeded */);
+            handleValidationResultReceivedInternal(isLossy);
         }
 
         if (shouldReportNetworkConnectivity(isLossy, packetLossResultType)) {
             mConnectivityManager.reportNetworkConnectivity(
                     getNetwork(), false /* hasConnectivity */);
+        }
+    }
+
+    @VisibleForTesting(visibility = Visibility.PRIVATE)
+    void handleValidationResultReceivedInternal(boolean isLossy) {
+        onValidationResultReceivedInternal(!isLossy /* isSucceeded */);
+
+        if (Flags.improvePacketLossDetector()) {
+            if (isLossy) {
+                mConsecutiveReportNotLossyCount = 0;
+            } else {
+                mConsecutiveReportNotLossyCount++;
+                if (mDetectionMode == DETECTION_MODE_RAPID
+                        && mConsecutiveReportNotLossyCount >= RAPID_MODE_EXIT_NOT_LOSSY_COUNT) {
+                    mHandler.removeCallbacksAndEqualMessages(mCancelExitRapidModeToken);
+                    mDetectionMode = DETECTION_MODE_NORMAL;
+                }
+            }
         }
     }
 

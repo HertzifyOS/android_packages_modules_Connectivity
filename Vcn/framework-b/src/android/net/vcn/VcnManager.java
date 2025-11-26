@@ -188,6 +188,33 @@ public class VcnManager {
             CC_KEY_PREFIX + "key_network_selection_ipsec_loss_detect_max_time_diff_sec_int";
 
     /**
+     * Key for the interval to poll IpSecTransformState for packet loss monitoring during rapid
+     * detection phase
+     *
+     * <p>The detector will enter rapid detection mode right after being started or after the device
+     * exit idle mode. The detector will exit rapid mode when being reported not lossy consistently
+     * or hitting a timeout
+     *
+     * <p>Defaults to 2 seconds, unless overridden by carrier config
+     *
+     * @hide
+     */
+    @NonNull
+    public static final String KEY_NETWORK_SELECTION_IPSEC_LOSS_DETECT_RAPID_POLL_INTERVAL_SEC_INT =
+            CC_KEY_PREFIX + "key_network_selection_ipsec_loss_detect_rapid_poll_interval_sec_int";
+
+    /**
+     * Key for the timer to exit the rapid packet loss detection mode.
+     *
+     * <p>Defaults to 30 seconds, unless overridden by carrier config
+     *
+     * @hide
+     */
+    @NonNull
+    public static final String KEY_NETWORK_SELECTION_IPSEC_LOSS_DETECT_RAPID_DURATION_SEC_INT =
+            CC_KEY_PREFIX + "key_network_selection_ipsec_loss_detect_rapid_duration_sec_int";
+
+    /**
      * Key for the list of timeouts in minute to stop penalizing an underlying network candidate
      *
      * <p>Defaults to [5], unless overridden by carrier config
@@ -253,6 +280,8 @@ public class VcnManager {
                 KEY_NETWORK_SELECTION_IPSEC_LOSS_DETECT_MAX_SEQ_INC_PER_SEC_INT,
                 KEY_NETWORK_SELECTION_IPSEC_LOSS_DETECT_MIN_SEQ_INC_INT,
                 KEY_NETWORK_SELECTION_IPSEC_LOSS_DETECT_MAX_TIME_DIFF_SEC_INT,
+                KEY_NETWORK_SELECTION_IPSEC_LOSS_DETECT_RAPID_POLL_INTERVAL_SEC_INT,
+                KEY_NETWORK_SELECTION_IPSEC_LOSS_DETECT_RAPID_DURATION_SEC_INT,
                 KEY_NETWORK_SELECTION_PENALTY_TIMEOUT_MIN_INT_ARRAY,
                 KEY_RESTRICTED_TRANSPORTS_INT_ARRAY,
                 KEY_SAFE_MODE_TIMEOUT_SEC_INT,
