@@ -84,6 +84,7 @@ import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
@@ -1317,6 +1318,45 @@ public class NsdServiceTest {
         client.unregisterServiceInfoCallback(serviceInfoCallback);
         waitForIdle();
         verify(mPermissionManager, never()).finishDataDelivery(any(), any());
+    }
+
+    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    public void testPickerStartIntent_AppNameNotFound() throws Exception {
+        setMdnsDiscoveryManagerEnabled();
+        final NsdManager client = connectClient(mService);
+
+        doThrow(new PackageManager.NameNotFoundException()).when(mPackageManager)
+                .getApplicationInfoAsUser(anyString(), anyInt(), any());
+
+        startDiscoveryWithPicker(client);
+        final ArgumentCaptor<Intent> intentCaptor = ArgumentCaptor.forClass(Intent.class);
+        verify(mContext).startActivityAsUser(intentCaptor.capture(), any());
+
+        final Intent intent = intentCaptor.getValue();
+        assertEquals(NsdPickerConnector.ACTION_PICKER, intent.getAction());
+        assertEquals(getInstrumentation().getContext().getPackageName(),
+                intent.getStringExtra(NsdPickerConnector.EXTRA_APP_NAME));
+    }
+
+    @Test
+    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    public void testPickerStartIntent_EmptyAppName() throws Exception {
+        setMdnsDiscoveryManagerEnabled();
+        final NsdManager client = connectClient(mService);
+
+        final String packageName = getInstrumentation().getContext().getPackageName();
+        final ApplicationInfo testAppInfo = new ApplicationInfo();
+        doReturn(testAppInfo).when(mPackageManager).getApplicationInfoAsUser(
+                eq(packageName), /* flags= */ anyInt(), /* userHandle= */ any());
+        doReturn("").when(mPackageManager).getApplicationLabel(testAppInfo);
+
+        startDiscoveryWithPicker(client);
+        final ArgumentCaptor<Intent> intentCaptor = ArgumentCaptor.forClass(Intent.class);
+        verify(mContext).startActivityAsUser(intentCaptor.capture(), any());
+
+        final Intent intent = intentCaptor.getValue();
+        assertEquals(NsdPickerConnector.ACTION_PICKER, intent.getAction());
+        assertEquals(packageName, intent.getStringExtra(NsdPickerConnector.EXTRA_APP_NAME));
     }
 
     private void setMdnsDiscoveryManagerEnabled() {
