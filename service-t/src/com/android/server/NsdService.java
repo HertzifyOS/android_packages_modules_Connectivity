@@ -44,6 +44,7 @@ import static android.provider.DeviceConfig.NAMESPACE_TETHERING;
 
 import static com.android.modules.utils.build.SdkLevel.isAtLeastB;
 import static com.android.modules.utils.build.SdkLevel.isAtLeastU;
+import static com.android.net.module.util.PermissionUtils.enforcePackageNameMatchesUid;
 import static com.android.networkstack.apishim.ConstantsShim.REGISTER_NSD_OFFLOAD_ENGINE;
 import static com.android.server.connectivity.mdns.MdnsAdvertiser.AdvertiserMetrics;
 import static com.android.server.connectivity.mdns.MdnsConstants.NO_PACKET;
@@ -67,6 +68,7 @@ import android.app.compat.CompatChanges;
 import android.content.AttributionSource;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
 import android.net.INetd;
@@ -289,6 +291,7 @@ public class NsdService extends INsdManager.Stub {
             new RemoteCallbackList<>();
     @NonNull
     private final MdnsFeatureFlags mMdnsFeatureFlags;
+    private final boolean mEnablePicker;
 
     private static class OffloadEngineInfo {
         @NonNull final String mInterfaceName;
@@ -453,8 +456,24 @@ public class NsdService extends INsdManager.Stub {
             intent.setPackage(mDeps.getConnectivityResourcesPackageName(mContext));
             final Bundle bundle = new Bundle();
             bundle.putBinder(NsdPickerConnector.EXTRA_CONNECTOR, mConnector);
+            bundle.putString(NsdPickerConnector.EXTRA_APP_NAME, getAppName());
             intent.putExtras(bundle);
             mContext.startActivityAsUser(intent, UserHandle.CURRENT);
+        }
+
+        private String getAppName() {
+            final ApplicationInfo appInfo;
+            final PackageManager pm = mContext.getPackageManager();
+            try {
+                appInfo = pm.getApplicationInfoAsUser(
+                        mClientInfo.mPackageName, /* flags= */0,
+                        UserHandle.getUserHandleForUid(mClientInfo.mUid));
+            } catch (PackageManager.NameNotFoundException e) {
+                mServiceLogs.e("Failed to find app name for " + mClientInfo.mPackageName);
+                return "";
+            }
+            CharSequence appName = pm.getApplicationLabel(appInfo);
+            return (appName != null) ? appName.toString() : "";
         }
 
         @Override
@@ -1154,7 +1173,7 @@ public class NsdService extends INsdManager.Stub {
         final boolean useJavaBackend = clientInfo.mUseJavaBackend
                 || mDeps.isMdnsDiscoveryManagerEnabled(mContext)
                 || useDiscoveryManagerForType(serviceType);
-        final boolean noPicker = !mDeps.isAconfigFlagEnabled(FLAG_NSD_SERVICE_PICKER)
+        final boolean noPicker = !mEnablePicker
                 || ((discoveryRequest.getFlags() & FLAG_NO_PICKER) != 0);
         final boolean usingPermission = checkDataDeliveryPermissions(
                 clientInfo.mUid, clientInfo.mPid) == PERMISSION_GRANTED;
@@ -1736,7 +1755,7 @@ public class NsdService extends INsdManager.Stub {
             final NetworkNsdReportedMetrics metrics =
                     mDeps.makeNetworkNsdReportedMetrics(
                             (int) mClock.elapsedRealtime(), arg.uid);
-            final ClientInfo clientInfo = new ClientInfo(cb, arg.uid, arg.pid,
+            final ClientInfo clientInfo = new ClientInfo(cb, arg.uid, arg.pid, arg.packageName,
                     arg.useJavaBackend, mServiceLogs.forSubComponent(tag), metrics);
             mClients.put(arg.connector, clientInfo);
         } catch (RemoteException e) {
@@ -2425,6 +2444,7 @@ public class NsdService extends INsdManager.Stub {
                     }
                 })
                 .build();
+        mEnablePicker = mDeps.isAconfigFlagEnabled(FLAG_NSD_SERVICE_PICKER);
 
         mMdnsSocketProvider = deps.makeMdnsSocketProvider(ctx, looper,
                 LOGGER.forSubComponent("MdnsSocketProvider"), new SocketRequestMonitor(),
@@ -2833,29 +2853,38 @@ public class NsdService extends INsdManager.Stub {
         public final boolean useJavaBackend;
         public final int uid;
         public final int pid;
+        @NonNull public final String packageName;
 
         ConnectorArgs(@NonNull NsdServiceConnector connector, @NonNull INsdManagerCallback callback,
-                boolean useJavaBackend, int uid, int pid) {
+                boolean useJavaBackend, int uid, int pid, @NonNull String packageName) {
             this.connector = connector;
             this.callback = callback;
             this.useJavaBackend = useJavaBackend;
             this.uid = uid;
             this.pid = pid;
+            this.packageName = packageName;
         }
     }
 
     @Override
-    public INsdServiceConnector connect(INsdManagerCallback cb, boolean useJavaBackend) {
+    public INsdServiceConnector connect(INsdManagerCallback cb, boolean useJavaBackend,
+            String packageName) {
         mContext.enforceCallingOrSelfPermission(android.Manifest.permission.INTERNET, "NsdService");
         final int uid = mDeps.getCallingUid();
         final int pid = mDeps.getCallingPid();
+        if (mEnablePicker) {
+            enforcePackageNameMatchesUid(mContext, uid, packageName);
+        } else {
+            packageName = "";
+        }
         if (cb == null) {
             throw new IllegalArgumentException("Unknown client callback from uid=" + uid);
         }
         if (DBG) Log.d(TAG, "New client connect. useJavaBackend=" + useJavaBackend);
         final INsdServiceConnector connector = new NsdServiceConnector();
         mHandler.sendMessage(mHandler.obtainMessage(NsdManager.REGISTER_CLIENT,
-                new ConnectorArgs((NsdServiceConnector) connector, cb, useJavaBackend, uid, pid)));
+                new ConnectorArgs((NsdServiceConnector) connector, cb, useJavaBackend, uid, pid,
+                        packageName)));
         return connector;
     }
 
@@ -3436,6 +3465,8 @@ public class NsdService extends INsdManager.Stub {
         private boolean mIsPreSClient = false;
         private final int mUid;
         private final int mPid;
+        @NonNull
+        private final String mPackageName;
         // The flag of using java backend if the client's target SDK >= U
         private final boolean mUseJavaBackend;
         // Store client logs
@@ -3444,11 +3475,12 @@ public class NsdService extends INsdManager.Stub {
         private final NetworkNsdReportedMetrics mMetrics;
         private boolean mIsOffloadEngine = false;
 
-        private ClientInfo(INsdManagerCallback cb, int uid, int pid, boolean useJavaBackend,
-                SharedLog sharedLog, NetworkNsdReportedMetrics metrics) {
+        private ClientInfo(INsdManagerCallback cb, int uid, int pid, @NonNull String packageName,
+                boolean useJavaBackend, SharedLog sharedLog, NetworkNsdReportedMetrics metrics) {
             mCb = cb;
             mUid = uid;
             mPid = pid;
+            mPackageName = packageName;
             mUseJavaBackend = useJavaBackend;
             mClientLogs = sharedLog;
             mClientLogs.log("New client. useJavaBackend=" + useJavaBackend);
@@ -3459,6 +3491,8 @@ public class NsdService extends INsdManager.Stub {
         public String toString() {
             StringBuilder sb = new StringBuilder();
             sb.append("mUid ").append(mUid).append(", ");
+            sb.append("mPid ").append(mPid).append(", ");
+            sb.append("mPackageName ").append(mPackageName).append(", ");
             sb.append("mResolvedService ").append(mResolvedService).append(", ");
             sb.append("mIsLegacy ").append(mIsPreSClient).append(", ");
             sb.append("mUseJavaBackend ").append(mUseJavaBackend).append(", ");

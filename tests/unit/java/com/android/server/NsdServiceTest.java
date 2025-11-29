@@ -48,6 +48,8 @@ import static android.net.nsd.OffloadEngine.OFFLOAD_CAPABILITY_BYPASS_MULTICAST_
 import static android.net.nsd.OffloadEngine.OFFLOAD_TYPE_FILTER_REPLIES;
 import static android.net.nsd.OffloadEngine.OFFLOAD_TYPE_REPLY;
 
+import static androidx.test.platform.app.InstrumentationRegistry.getInstrumentation;
+
 import static com.android.networkstack.apishim.api33.ConstantsShim.REGISTER_NSD_OFFLOAD_ENGINE;
 import static com.android.server.NsdService.DEFAULT_RUNNING_APP_ACTIVE_IMPORTANCE_CUTOFF;
 import static com.android.server.NsdService.MdnsListener;
@@ -96,6 +98,7 @@ import android.content.AttributionSource;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.net.INetd;
 import android.net.Network;
@@ -271,6 +274,13 @@ public class NsdServiceTest {
         doReturn(mPackageManager).when(mContext).getPackageManager();
         doReturn(PERMISSION_DENIED).when(mContext)
                 .checkPermission(eq(CONNECTIVITY_USE_RESTRICTED_NETWORKS), anyInt(), anyInt());
+        doReturn(mContext).when(mContext).createContextAsUser(any(), anyInt());
+        final String packageName = getInstrumentation().getContext().getPackageName();
+        doReturn(packageName).when(mContext).getPackageName();
+        // Some tests mock getCallingUid, ensure getPackageUid follows the return value
+        doAnswer(inv -> mDeps.getCallingUid()).when(mPackageManager).getPackageUid(
+                eq(getInstrumentation().getContext().getPackageName()),
+                anyInt());
         if (mContext.getSystemService(MDnsManager.class) == null) {
             // Test is using mockito-extended
             doCallRealMethod().when(mContext).getSystemService(MDnsManager.class);
@@ -1516,6 +1526,7 @@ public class NsdServiceTest {
     public void testDiscoveryWithMdnsDiscoveryManager_NoPermissionWithPickerDisabled_Fails() {
         setMdnsDiscoveryManagerEnabled();
         doReturn(false).when(mDeps).isAconfigFlagEnabled(FLAG_NSD_SERVICE_PICKER);
+        mService = makeService();
         runMissingLocalNetworkPermissionDiscoveryFailsTest(/* discoveryFlags=*/0);
     }
 
@@ -1530,6 +1541,12 @@ public class NsdServiceTest {
         doReturn(PermissionManager.PERMISSION_SOFT_DENIED).when(
                 mPermissionManager).checkPermissionForStartDataDelivery(
                 ACCESS_LOCAL_NETWORK, attributionSource, null);
+        final String testAppName = "Test App";
+        final ApplicationInfo testAppInfo = new ApplicationInfo();
+        doReturn(testAppInfo).when(mPackageManager).getApplicationInfoAsUser(
+                eq(getInstrumentation().getContext().getPackageName()),
+                /* flags= */ anyInt(), /* userHandle= */ any());
+        doReturn(testAppName).when(mPackageManager).getApplicationLabel(testAppInfo);
 
         final NsdManager client = connectClient(mService);
         final DiscoveryListener discListener = mock(DiscoveryListener.class);
@@ -1584,6 +1601,8 @@ public class NsdServiceTest {
         connector.notifyServiceSelected(selectedService);
         waitForIdle();
 
+        assertEquals(testAppName,
+                intentCaptor.getValue().getStringExtra(NsdPickerConnector.EXTRA_APP_NAME));
         final InOrder inOrder = inOrder(discListener);
         inOrder.verify(discListener, timeout(TIMEOUT_MS)).onDiscoveryStarted(SERVICE_TYPE);
         inOrder.verify(discListener, timeout(TIMEOUT_MS)).onServiceFound(argThat(info ->
@@ -2717,13 +2736,27 @@ public class NsdServiceTest {
                 mContext, mThread.getLooper(), CLEANUP_DELAY_MS, mDeps) {
             @Override
             public INsdServiceConnector connect(INsdManagerCallback baseCb,
-                    boolean runNewMdnsBackend) {
+                    boolean runNewMdnsBackend, String packageName) {
                 // Pass null INsdManagerCallback
-                return super.connect(null /* cb */, runNewMdnsBackend);
+                return super.connect(null /* cb */, runNewMdnsBackend, packageName);
             }
         };
 
         assertThrows(IllegalArgumentException.class, () -> new NsdManager(mContext, service));
+    }
+
+    @Test
+    public void testInvalidPackageName() {
+        final NsdService service = new NsdService(
+                mContext, mThread.getLooper(), CLEANUP_DELAY_MS, mDeps) {
+            @Override
+            public INsdServiceConnector connect(INsdManagerCallback baseCb,
+                    boolean runNewMdnsBackend, String packageName) {
+                return super.connect(baseCb, runNewMdnsBackend, "some.other.package");
+            }
+        };
+
+        assertThrows(SecurityException.class, () -> new NsdManager(mContext, service));
     }
 
     @Test
@@ -2877,7 +2910,7 @@ public class NsdServiceTest {
                 mContext, mThread.getLooper(), CLEANUP_DELAY_MS, mDeps) {
             @Override
             public INsdServiceConnector connect(INsdManagerCallback baseCb,
-                    boolean runNewMdnsBackend) {
+                    boolean runNewMdnsBackend, String packageName) {
                 // Wrap the callback in a transparent mock, to mock asBinder returning a
                 // LinkToDeathRecorder. This will allow recording the binder death recipient
                 // registered on the callback. Use a transparent mock and not a spy as the actual
@@ -2886,7 +2919,7 @@ public class NsdServiceTest {
                         AdditionalAnswers.delegatesTo(baseCb));
                 doReturn(new LinkToDeathRecorder()).when(cb).asBinder();
                 mCreatedCallbacks.add(cb);
-                return super.connect(cb, runNewMdnsBackend);
+                return super.connect(cb, runNewMdnsBackend, packageName);
             }
         };
         return service;
