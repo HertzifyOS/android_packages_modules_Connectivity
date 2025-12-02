@@ -910,7 +910,7 @@ static __always_inline inline int check_localhost(__unused struct bpf_sock_addr 
 
 // --- BIND CGROUP HOOKS ---
 
-static inline __always_inline bool block_bind_port(__u32 protocol, __u32 user_port) {
+static inline __always_inline bool block_bind_port(__u32 protocol, __be16 user_port) {
     if (!user_port) return false;
 
     switch (protocol) {
@@ -925,6 +925,7 @@ static inline __always_inline bool block_bind_port(__u32 protocol, __u32 user_po
             return false; // unknown protocols are allowed
     }
 
+    // Note: user_port is in network byte order, so bitmap ordering is funky.
     int key = user_port >> 6;
     int shift = user_port & 63;
 
