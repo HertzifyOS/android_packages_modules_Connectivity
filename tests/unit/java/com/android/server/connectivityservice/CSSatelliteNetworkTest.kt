@@ -390,14 +390,12 @@ class CSSatelliteNetworkTest : CSTest() {
         satelliteAgent2.connect()
         val satelliteNetwork2 = satelliteAgent2.network
 
-        // BUG: The default network for the system uid should still fallback to the satellite network
-        // systemUidCb.expectAvailableCallbacks(satelliteNetwork2, validated = false)
+        systemUidCb.expectAvailableCallbacks(satelliteNetwork2, validated = false)
 
         // Remove the system uid from the satellite Opt-in
         updateAppOptInDefaultNetworkPolicies(emptyList())
 
-        // BUG: The default network for the system uid should be lost here
-        // systemUidCb.expect<Lost>(satelliteNetwork2)
+        systemUidCb.expect<Lost>(satelliteNetwork2)
 
         systemUidCb.assertNoCallback()
         defaultCb.assertNoCallback()

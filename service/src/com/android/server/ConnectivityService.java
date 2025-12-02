@@ -15749,6 +15749,12 @@ public class ConnectivityService extends IConnectivityManager.Stub
         // same nri in the map's values for each of its NetworkRequest objects.
         final ArraySet<NetworkRequestInfo> nris = new ArraySet<>(mNetworkRequests.values());
         for (final NetworkRequestInfo nri : nris) {
+            // This method finds app requests that track the default network in order to update them
+            // and send callbacks for the correct default networks.
+            // The default network requests themselves should not be updated by this logic.
+            if (mDefaultNetworkRequests.contains(nri)) {
+                continue;
+            }
             // Include this nri if it is currently being tracked.
             if (isPerAppTrackedNri(nri)) {
                 defaultCallbackRequests.add(nri);
