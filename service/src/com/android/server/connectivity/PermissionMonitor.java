@@ -47,7 +47,6 @@ import static com.android.server.connectivity.NetworkPermissions.TRAFFIC_PERMISS
 import static com.android.server.connectivity.NetworkPermissions.TRAFFIC_PERMISSION_UNINSTALLED;
 import static com.android.server.connectivity.NetworkPermissions.TRAFFIC_PERMISSION_UPDATE_DEVICE_STATS;
 
-import android.annotation.ChecksSdkIntAtLeast;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.annotation.SuppressLint;
@@ -298,7 +297,6 @@ public class PermissionMonitor {
         /**
          * Check whether the UID is opted-in to the RESTRICT_LOCAL_NETWORK compat flag.
          */
-        @ChecksSdkIntAtLeast(api = Build.VERSION_CODES.BAKLAVA)
         public boolean isOptedInToLocalNetworkRestrictions(int uid) {
             // TODO(b/394567896): Update compat change checks for enforcement
             return isAtLeastB()
@@ -361,13 +359,11 @@ public class PermissionMonitor {
         /**
          * @see android.permission.flags.Flags#accessLocalNetworkPermissionEnabled()
          */
-        @ChecksSdkIntAtLeast(api = Build.VERSION_CODES.BAKLAVA)
         public boolean isAccessLocalNetworkPermissionEnabled() {
             return accessLocalNetworkPermissionEnabled();
         }
     }
 
-    @ChecksSdkIntAtLeast(api = Build.VERSION_CODES.BAKLAVA)
     private boolean shouldEnforceLocalNetRestrictions(int uid) {
         return mDeps.isOptedInToLocalNetworkRestrictions(uid)
             || mDeps.isAccessLocalNetworkPermissionEnabled();
@@ -496,15 +492,8 @@ public class PermissionMonitor {
         final String permission = mDeps.isAccessLocalNetworkPermissionEnabled()
                 ? ACCESS_LOCAL_NETWORK
                 : NEARBY_WIFI_DEVICES;
-        int permissionState = mPermissionManager.checkPermissionForPreflight(
+        final int permissionState = mPermissionManager.checkPermissionForPreflight(
                 permission, attributionSource);
-        // Temp workaround for apps in development still having only restricted networks permission
-        // TODO: remove this workaround
-        if (mDeps.isAccessLocalNetworkPermissionEnabled()
-                && permissionState != PermissionManager.PERMISSION_GRANTED) {
-            permissionState = mPermissionManager.checkPermissionForPreflight(
-                    CONNECTIVITY_USE_RESTRICTED_NETWORKS, attributionSource);
-        }
         if (permissionState == PermissionManager.PERMISSION_GRANTED) {
             mBpfNetMaps.removeUidFromLocalNetBlockMap(attributionSource.getUid());
         } else {

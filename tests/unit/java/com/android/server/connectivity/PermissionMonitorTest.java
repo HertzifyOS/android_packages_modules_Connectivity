@@ -1886,8 +1886,6 @@ public class PermissionMonitorTest {
     @Test
     public void testLocalNetRestrictions_restrictLocalNetworkPermGrant() throws Exception {
         doReturn(true).when(mDeps).isAccessLocalNetworkPermissionEnabled();
-        mockCheckPermissionForPreflight(CONNECTIVITY_USE_RESTRICTED_NETWORKS, MOCK_UID11,
-                PERMISSION_DENIED);
         doTestLocalNetRestrictionsPermGrant(ACCESS_LOCAL_NETWORK);
     }
 
@@ -1895,27 +1893,7 @@ public class PermissionMonitorTest {
     @Test
     public void testLocalNetRestrictions_restrictLocalNetworkPermDeny() throws Exception {
         doReturn(true).when(mDeps).isAccessLocalNetworkPermissionEnabled();
-        mockCheckPermissionForPreflight(CONNECTIVITY_USE_RESTRICTED_NETWORKS, MOCK_UID11,
-                PERMISSION_DENIED);
         doTestLocalNetRestrictionsPermDeny(ACCESS_LOCAL_NETWORK);
-    }
-
-    @IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
-    @Test
-    @EnableCompatChanges(RESTRICT_LOCAL_NETWORK)
-    public void testLocalNetRestrictions_restrictedNetworksPermGrant() throws Exception {
-        doReturn(true).when(mDeps).isAccessLocalNetworkPermissionEnabled();
-        mockCheckPermissionForPreflight(ACCESS_LOCAL_NETWORK, MOCK_UID11, PERMISSION_DENIED);
-        doTestLocalNetRestrictionsPermGrant(CONNECTIVITY_USE_RESTRICTED_NETWORKS);
-    }
-
-    @IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
-    @Test
-    @EnableCompatChanges(RESTRICT_LOCAL_NETWORK)
-    public void testLocalNetRestrictions_restrictedNetworksPermDeny() throws Exception {
-        doReturn(true).when(mDeps).isAccessLocalNetworkPermissionEnabled();
-        mockCheckPermissionForPreflight(ACCESS_LOCAL_NETWORK, MOCK_UID11, PERMISSION_DENIED);
-        doTestLocalNetRestrictionsPermDeny(CONNECTIVITY_USE_RESTRICTED_NETWORKS);
     }
 
     private void addUserAndVerifyAppIdsPermissions(UserHandle user, List<PackageInfo> pkgs,
