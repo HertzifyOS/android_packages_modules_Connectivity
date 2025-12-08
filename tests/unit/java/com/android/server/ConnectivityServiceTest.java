@@ -31,6 +31,7 @@ import static android.Manifest.permission.NETWORK_SETUP_WIZARD;
 import static android.Manifest.permission.NETWORK_STACK;
 import static android.Manifest.permission.PACKET_KEEPALIVE_OFFLOAD;
 import static android.Manifest.permission.READ_DEVICE_CONFIG;
+import static android.Manifest.permission.SCHEDULE_PRIORITIZED_ALARM;
 import static android.Manifest.permission.STATUS_BAR_SERVICE;
 import static android.app.ActivityManager.UidFrozenStateChangedCallback.UID_FROZEN_STATE_FROZEN;
 import static android.app.ActivityManager.UidFrozenStateChangedCallback.UID_FROZEN_STATE_UNFROZEN;
@@ -400,6 +401,7 @@ import com.android.net.module.util.BaseNetdUnsolicitedEventListener;
 import com.android.net.module.util.CollectionUtils;
 import com.android.net.module.util.LocationPermissionChecker;
 import com.android.net.module.util.NetworkMonitorUtils;
+import com.android.net.module.util.SdkUtil;
 import com.android.networkstack.apishim.ConstantsShim;
 import com.android.networkstack.apishim.NetworkAgentConfigShimImpl;
 import com.android.networkstack.apishim.common.BroadcastOptionsShim;
@@ -1917,7 +1919,11 @@ public class ConnectivityServiceTest {
         mServiceContext.setPermission(NETWORK_FACTORY, PERMISSION_GRANTED);
         mServiceContext.setPermission(NETWORK_STACK, PERMISSION_GRANTED);
         mServiceContext.setPermission(CONTROL_OEM_PAID_NETWORK_PREFERENCE, PERMISSION_GRANTED);
-        mServiceContext.setPermission(PACKET_KEEPALIVE_OFFLOAD, PERMISSION_GRANTED);
+        if (SdkUtil.isAtLeast26Q2()) {
+            mServiceContext.setPermission(PACKET_KEEPALIVE_OFFLOAD, PERMISSION_GRANTED);
+        } else {
+            mServiceContext.setPermission(SCHEDULE_PRIORITIZED_ALARM, PERMISSION_GRANTED);
+        }
         mServiceContext.setPermission(CONNECTIVITY_USE_RESTRICTED_NETWORKS, PERMISSION_GRANTED);
         mServiceContext.setPermission(READ_DEVICE_CONFIG, PERMISSION_GRANTED);
 

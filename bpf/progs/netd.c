@@ -79,6 +79,7 @@ DEFINE_BPF_MAP_RO_NETD(uid_permission_map, HASH, uint32_t, uint8_t, 6000)
 DEFINE_BPF_MAP_RO_NETD(uid_permission_chunk_map, HASH, uint32_t, UidPermissionChunk, -400)
 DEFINE_BPF_MAP_NO_NETD(ingress_discard_map, HASH, IngressDiscardKey, IngressDiscardValue, 100)
 
+DEFINE_BPF_MAP_RW_NETD(netd_pid_map, ARRAY, uint32_t, uint32_t, 1)
 DEFINE_BPF_MAP_RW_NETD(lock_array_test_map, ARRAY, uint32_t, bool, 1)
 DEFINE_BPF_MAP_RW_NETD(lock_hash_test_map, HASH, uint32_t, bool, 1)
 
@@ -332,6 +333,27 @@ get_chunk_permissions(const uint32_t uid) {
 
 #define NS_PER_MINUTE (60ULL * 1000ULL * 1000ULL * 1000ULL)
 
+static __always_inline inline bool is_local_network_access_blocked(const uint32_t uid) {
+    uint32_t mapKey = 0;
+    bool *permissionPropagationEnabled =
+        bpf_permission_propagation_enabled_map_lookup_elem(&mapKey);
+    if (permissionPropagationEnabled && *permissionPropagationEnabled) {
+        // TODO: stop exempting system uids once the test failure is fixed
+        if (is_system_uid(uid)) return false;
+        if (get_chunk_permissions(uid) & PERMISSION_BIT_ACCESS_LOCAL_NETWORK)
+            return false;
+    } else {
+        // System uid has access to restricted local network
+        if (is_system_uid(uid)) return false;
+
+        // Uid that is not in the blocked uid map has access to restricted local network
+        bool* block_local_net = bpf_local_net_blocked_uid_map_lookup_elem(&uid);
+        if (!block_local_net) return false; // uid not found in map
+        if (!*block_local_net) return false; // lookup returned 'bool false'
+    }
+    return true;
+}
+
 static __always_inline inline bool should_block_local_network_packets(struct __sk_buff *skb,
                                    const uint32_t uid, const struct egress_bool egress,
                                    const struct kver_uint kver) {
@@ -362,13 +384,9 @@ static __always_inline inline bool should_block_local_network_packets(struct __s
         }
     }
 
-    // System uid has access to restricted local network
-    if (is_system_uid(uid)) return false;
-
-    // Uid that is not in the blocked uid map has access to restricted local network
-    bool* block_local_net = bpf_local_net_blocked_uid_map_lookup_elem(&uid);
-    if (!block_local_net) return false; // uid not found in map
-    if (!*block_local_net) return false; // lookup returned 'bool false'
+    if (!is_local_network_access_blocked(uid)) {
+        return false;
+    }
 
     if (!reportLocalAccess) {
         isRestricted = is_restricted_local_network(skb, egress, kver);
@@ -909,7 +927,7 @@ static __always_inline inline int check_localhost(__unused struct bpf_sock_addr 
 
 // --- BIND CGROUP HOOKS ---
 
-static inline __always_inline bool block_bind_port(__u32 protocol, __u32 user_port) {
+static inline __always_inline bool block_bind_port(__u32 protocol, __be16 user_port) {
     if (!user_port) return false;
 
     switch (protocol) {
@@ -924,6 +942,7 @@ static inline __always_inline bool block_bind_port(__u32 protocol, __u32 user_po
             return false; // unknown protocols are allowed
     }
 
+    // Note: user_port is in network byte order, so bitmap ordering is funky.
     int key = user_port >> 6;
     int shift = user_port & 63;
 
@@ -936,24 +955,50 @@ static inline __always_inline bool block_bind_port(__u32 protocol, __u32 user_po
     return false;
 }
 
+static inline __always_inline bool is_netd() {
+    uint32_t uid = bpf_get_current_uid_gid();  // low 32 bits is uid
+    if (uid) return false;  // netd runs as root
+
+    const uint32_t key = 0;
+    uint32_t *pid = bpf_netd_pid_map_lookup_elem(&key);
+    if (!pid) return false;
+
+    // userspace system call 'getpid()' returns what kernel/ebpf calls 'tgid' (thread group id)
+    // (while what kernel/ebpf calls 'pid' is returned by linux specific system call 'gettid()')
+    uint32_t tgid = bpf_get_current_pid_tgid() >> 32;  // high 32 bits is tgid
+    return tgid == *pid;
+}
+
+// kernel's include/linux/bpf.h defines flag BPF_RET_BIND_NO_CAP_NET_BIND_SERVICE as (1 << 0) == 1,
+// as a flag, it must be shifted up by 1 (making it == 2) and combined with 'generic' ALLOW (== 1)
+static const int BPF_ALLOW_IGNORING_CAP_NET_BIND = BPF_ALLOW + 2;
+
+static inline __always_inline int inet_bind(struct bpf_sock_addr *ctx,
+                                            const struct kver_uint kver) {
+    const bool is5_15 = KVER_IS_AT_LEAST(kver, 5, 15, 0);
+    if (block_bind_port(ctx->protocol, ctx->user_port)) return BPF_DISALLOW;
+    if (is5_15 && ctx->user_port == htons(53) && is_netd()) return BPF_ALLOW_IGNORING_CAP_NET_BIND;
+    return BPF_ALLOW;
+}
+
 DEFINE_NETD_BPF_PROG_KVER(bind4, inet4_bind, 5_15, 5_15)
 (struct bpf_sock_addr *ctx) {
-    return block_bind_port(ctx->protocol, ctx->user_port) ? BPF_DISALLOW : BPF_ALLOW;
+    return inet_bind(ctx, KVER_5_15);
 }
 
 DEFINE_NETD_BPF_PROG_KVER_RANGE(bind4, inet4_bind, 4_19, 4_19, 5_15)
 (struct bpf_sock_addr *ctx) {
-    return block_bind_port(ctx->protocol, ctx->user_port) ? BPF_DISALLOW : BPF_ALLOW;
+    return inet_bind(ctx, KVER_4_19);
 }
 
 DEFINE_NETD_BPF_PROG_KVER(bind6, inet6_bind, 5_15, 5_15)
 (struct bpf_sock_addr *ctx) {
-    return block_bind_port(ctx->protocol, ctx->user_port) ? BPF_DISALLOW : BPF_ALLOW;
+    return inet_bind(ctx, KVER_5_15);
 }
 
 DEFINE_NETD_BPF_PROG_KVER_RANGE(bind6, inet6_bind, 4_19, 4_19, 5_15)
 (struct bpf_sock_addr *ctx) {
-    return block_bind_port(ctx->protocol, ctx->user_port) ? BPF_DISALLOW : BPF_ALLOW;
+    return inet_bind(ctx, KVER_4_19);
 }
 
 // --- CONNECT CGROUP HOOKS ---
