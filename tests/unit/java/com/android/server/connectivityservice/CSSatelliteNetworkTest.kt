@@ -742,10 +742,9 @@ class CSSatelliteNetworkTest : CSTest() {
         // The app's default network should switch to Wi-Fi.
         defaultCb.expectAvailableCallbacks(wifiNetwork , validated = false)
 
-       // BUG: UFC network should be released here.
-        // allNetworksCb.eventuallyExpect<Losing> { it.network == ufcCellNetwork }
-        // allNetworksCb.eventuallyExpect<Lost> { it.network == ufcCellNetwork }
-        allNetworksCb.assertNoCallback(timeoutMs = 500) { it is Lost }
+       // UFC network is released.
+        allNetworksCb.eventuallyExpect<Losing> { it.network == ufcCellNetwork }
+        allNetworksCb.eventuallyExpect<Lost> { it.network == ufcCellNetwork }
 
         // Now Cleanup
         updateAppOptInDefaultNetworkPolicies(emptyList())
