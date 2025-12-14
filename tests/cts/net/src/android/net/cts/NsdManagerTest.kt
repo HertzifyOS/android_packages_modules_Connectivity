@@ -967,7 +967,8 @@ class NsdManagerTest {
 
             discoveryRecord3.expectCallback<DiscoveryStarted>()
 
-            val nsdServiceInfo = NsdServiceInfo("MyService", serviceType.plus(".local"))
+            val serviceTypeWithDotSuffix = serviceType + "."
+            val nsdServiceInfo = NsdServiceInfo("MyService", serviceTypeWithDotSuffix)
                 .also { it ->
                     it.subtypes = setOf("_subtype1", "_subtype2")
             }
@@ -989,7 +990,7 @@ class NsdManagerTest {
 
             val nsdServiceInfoWithHostname = NsdServiceInfo(
                 foundInfo1.serviceName,
-                serviceType.plus(".local")
+                serviceType
             ).also { it ->
                 it.hostname = "My.TestHost"
                 it.port = 5353
@@ -1022,6 +1023,7 @@ class NsdManagerTest {
                 val actualVal = serviceInfoCb.serviceInfo.attributes[key]
                 assertContentEquals(expectedVal, actualVal)
             }
+            nsdServiceInfoWithHostname.serviceType = serviceTypeWithDotSuffix
             runAsShell(NETWORK_SETTINGS) {
                 offloadSession?.onServiceLost(nsdServiceInfoWithHostname)
             }
