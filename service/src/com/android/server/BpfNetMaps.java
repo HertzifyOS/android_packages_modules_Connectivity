@@ -66,6 +66,8 @@ import static com.android.server.ConnectivityStatsLog.CORE_NETWORKING_CRITICAL_C
 import static com.android.server.ConnectivityStatsLog.CORE_NETWORKING_CRITICAL_COUNTS_EVENT_OCCURRED__EVENT_TYPE__CRITICAL_COUNTS_EVENT_TYPE_NETD_SET_PERMISSION_NONE;
 import static com.android.server.ConnectivityStatsLog.CORE_NETWORKING_CRITICAL_COUNTS_EVENT_OCCURRED__EVENT_TYPE__CRITICAL_COUNTS_EVENT_TYPE_NETD_SET_PERMISSION_UPDATE_DEVICE_STATS;
 import static com.android.server.ConnectivityStatsLog.CORE_NETWORKING_CRITICAL_COUNTS_EVENT_OCCURRED__EVENT_TYPE__CRITICAL_COUNTS_EVENT_TYPE_NETD_SET_PERMISSION_UNINSTALLED;
+import static com.android.server.ConnectivityStatsLog.CORE_NETWORKING_TERRIBLE_ERROR_OCCURRED;
+import static com.android.server.ConnectivityStatsLog.CORE_NETWORKING_TERRIBLE_ERROR_OCCURRED__ERROR_TYPE__TYPE_INVALID_NET_PERM_SENT_TO_NETD;
 import static com.android.server.ConnectivityStatsLog.NETWORK_BPF_MAP_INFO;
 import static com.android.server.connectivity.NetworkPermissions.PERMISSION_NONE;
 import static com.android.server.connectivity.NetworkPermissions.TRAFFIC_PERMISSION_ACCESS_LOCAL_NETWORK;
@@ -649,6 +651,16 @@ public class BpfNetMaps {
                     eventType,
                     count);
         }
+
+        /**
+         * Write CORE_NETWORKING_TERRIBLE_ERROR_OCCURRED metrics
+         */
+        public void terribleError(final int errorType) {
+            ConnectivityStatsLog.write(
+                    CORE_NETWORKING_TERRIBLE_ERROR_OCCURRED,
+                    errorType
+            );
+        }
     }
 
     /** Constructor used after T that doesn't need to use netd anymore. */
@@ -1181,9 +1193,10 @@ public class BpfNetMaps {
             final int netdSupportedTrafficPerm = TRAFFIC_PERMISSION_INTERNET
                     | TRAFFIC_PERMISSION_UPDATE_DEVICE_STATS;
             final int clearMask = ~netdSupportedTrafficPerm;
-            // TODO(436242702) add unit test for un-supported permission types
             if (permissions != TRAFFIC_PERMISSION_UNINSTALLED && (permissions & clearMask) != 0) {
                 Log.e(TAG, "unknown permission type: " + permissions);
+                mDeps.terribleError(CORE_NETWORKING_TERRIBLE_ERROR_OCCURRED__ERROR_TYPE__TYPE_INVALID_NET_PERM_SENT_TO_NETD);
+                continue;
             }
             logAndSendNetPermToNetd(permissions, CollectionUtils.toIntArray(appIds));
         }
