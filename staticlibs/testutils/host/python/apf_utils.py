@@ -183,6 +183,38 @@ def get_exclude_all_host_ipv6_multicast_addresses(
     return []
 
 
+def get_ipv4_multicast_addresses(
+    ad: android_device.AndroidDevice, iface_name: str
+) -> list[str]:
+  """Retrieves the IPv4 multicast addresses of a given interface on an Android device.
+
+  This function executes an ADB shell command (`ip -4 maddr show`) to get the
+  network interface information and extracts the IPv4 multicast address from the
+  output.
+
+  Args:
+      ad: The Android device object.
+      iface_name: The name of the network interface (e.g., "wlan0").
+
+  Returns:
+      The IPv4 multicast addresses of the interface as a list of string.
+      Return empty list if no IPv4 multicast address.
+  """
+  # output format
+  # 2:      enp1s0
+  #         inet  239.255.255.250 users 24
+  #         inet  224.0.0.251 users 25
+  #         inet  224.0.0.1
+  output = adb_utils.adb_shell(ad, f'ip -4 maddr show {iface_name}')
+  pattern = r'inet\s+(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'
+  matches = re.findall(pattern, output)
+
+  if matches:
+    return [addr for addr in matches if addr != '224.0.0.1']
+  else:
+    return []
+
+
 def get_hop_limit(ad: android_device.AndroidDevice, iface_name: str) -> int:
   """Retrieves the hop limit of a given interface on an Android device.
 
