@@ -299,8 +299,6 @@ fun PollPacketReader.pollForReply(
 }
 
 class TestDnsPacket(data: ByteArray, val dstAddr: InetAddress) : DnsPacket(data) {
-    val header: DnsHeader
-        get() = mHeader
     val records: Array<List<DnsRecord>>
         get() = mRecords
     fun isProbeFor(name: String): Boolean = mRecords[QDSECTION].any {
