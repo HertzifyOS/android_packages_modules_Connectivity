@@ -41,6 +41,7 @@ flag {
     namespace: "com_android_tethering"
     description: "Enable new ECH-related DNS resolver changes"
     bug: "419020719"
+    is_exported: true
 }
 
 flag {
