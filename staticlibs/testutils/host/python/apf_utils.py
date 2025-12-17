@@ -14,6 +14,7 @@
 
 from dataclasses import dataclass
 import functools
+import os
 import re
 from mobly import asserts
 from mobly.controllers import android_device
@@ -517,6 +518,41 @@ def assume_apf_version_support_at_least(
       f'Supported apf version {caps.apf_version_supported} < expected version'
       f' {expected_version}',
   )
+
+
+def start_tcpdump_capture(
+    ad: android_device.AndroidDevice, iface_name: str, output_file: str
+) -> None:
+  adb_utils.adb_shell(
+      ad,
+      f'nohup su 0 tcpdump -i {iface_name} -U -w {output_file} > /dev/null'
+      ' 2>&1 &',
+  )
+
+
+def stop_tcpdump_capture(
+    ad: android_device.AndroidDevice, iface_name: str
+) -> None:
+  try:
+    adb_utils.adb_shell(ad, f'su 0 pkill -f "tcpdump -i {iface_name}"')
+  except AdbError:
+    # Ignore errors when stopping tcpdump, as the process might have already exited
+    # or pkill might return a non-zero exit code (e.g., 143).
+    pass
+
+
+def pull_file_from_device(
+    ad: android_device.AndroidDevice,
+    file_name: str,
+    extension_name: str,
+    src_path: str,
+    dst_path: str,
+) -> None:
+  filename = ad.generate_filename(
+      file_type=file_name, extension_name=extension_name
+  )
+  fullpath_file = os.path.join(dst_path, filename)
+  ad.adb.pull([src_path, fullpath_file])
 
 
 def at_least_B():
