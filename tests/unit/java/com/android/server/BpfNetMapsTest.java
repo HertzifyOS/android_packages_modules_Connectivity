@@ -74,6 +74,8 @@ import static com.android.net.module.util.bpf.UidPermissionChunk.PERMISSION_BIT_
 import static com.android.net.module.util.bpf.UidPermissionChunk.PERMISSION_BIT_NONE;
 import static com.android.net.module.util.bpf.UidPermissionChunk.PERMISSION_BIT_UPDATE_DEVICE_STATS;
 import static com.android.net.module.util.bpf.UidPermissionChunk.UIDS_PER_INT64;
+import static com.android.server.ConnectivityStatsLog.CORE_NETWORKING_CRITICAL_COUNTS_EVENT_OCCURRED__EVENT_TYPE__CRITICAL_COUNTS_EVENT_TYPE_NETD_SET_PERMISSION_INTERNET;
+import static com.android.server.ConnectivityStatsLog.CORE_NETWORKING_CRITICAL_COUNTS_EVENT_OCCURRED__EVENT_TYPE__CRITICAL_COUNTS_EVENT_TYPE_NETD_SET_PERMISSION_UNINSTALLED;
 import static com.android.server.connectivity.NetworkPermissions.TRAFFIC_PERMISSION_ACCESS_LOCAL_NETWORK;
 import static com.android.server.connectivity.NetworkPermissions.TRAFFIC_PERMISSION_INTERNET;
 import static com.android.server.connectivity.NetworkPermissions.TRAFFIC_PERMISSION_UNINSTALLED;
@@ -278,6 +280,10 @@ public final class BpfNetMapsTest {
         verify(mNetd).firewallRemoveUidInterfaceRules(TEST_UIDS);
         mBpfNetMaps.setNetPermForUids(PERMISSION_INTERNET, TEST_UIDS);
         verify(mNetd).trafficSetNetPermForUids(PERMISSION_INTERNET, TEST_UIDS);
+        verify(mDeps).writeStats(
+                CORE_NETWORKING_CRITICAL_COUNTS_EVENT_OCCURRED__EVENT_TYPE__CRITICAL_COUNTS_EVENT_TYPE_NETD_SET_PERMISSION_INTERNET,
+                TEST_UIDS.length
+        );
     }
 
     private long getMatch(final List<Integer> chains) {
@@ -1782,6 +1788,10 @@ public final class BpfNetMapsTest {
         verify(mNetd).trafficSetNetPermForUids(
                 TRAFFIC_PERMISSION_ACCESS_LOCAL_NETWORK | PERMISSION_INTERNET,
                 new int[]{TEST_APP_ID_1});
+        verify(mDeps).writeStats(
+                CORE_NETWORKING_CRITICAL_COUNTS_EVENT_OCCURRED__EVENT_TYPE__CRITICAL_COUNTS_EVENT_TYPE_NETD_SET_PERMISSION_INTERNET,
+                1 /* count */
+        );
     }
 
     @Test
@@ -1809,6 +1819,10 @@ public final class BpfNetMapsTest {
         mBpfNetMaps.setPermListForUids(permissionsUids);
         verify(mNetd).trafficSetNetPermForUids(
             TRAFFIC_PERMISSION_UNINSTALLED, new int[]{TEST_APP_ID_1});
+        verify(mDeps).writeStats(
+                CORE_NETWORKING_CRITICAL_COUNTS_EVENT_OCCURRED__EVENT_TYPE__CRITICAL_COUNTS_EVENT_TYPE_NETD_SET_PERMISSION_UNINSTALLED,
+                1 /* count */
+        );
     }
 
     @Test
@@ -1824,6 +1838,10 @@ public final class BpfNetMapsTest {
             PERMISSION_INTERNET, new int[]{TEST_APP_ID_1});
         verify(mNetd).trafficSetNetPermForUids(
             TRAFFIC_PERMISSION_ACCESS_LOCAL_NETWORK, new int[]{TEST_APP_ID_2});
+        verify(mDeps).writeStats(
+                CORE_NETWORKING_CRITICAL_COUNTS_EVENT_OCCURRED__EVENT_TYPE__CRITICAL_COUNTS_EVENT_TYPE_NETD_SET_PERMISSION_INTERNET,
+                1 /* count */
+        );
     }
 
     @Test
