@@ -66,6 +66,7 @@ import androidx.test.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 
 import com.android.net.module.util.DnsPacket;
+import com.android.net.module.util.SdkUtil;
 import com.android.tethering.flags.Flags;
 import com.android.testutils.AutoReleaseNetworkCallbackRule;
 import com.android.testutils.ConnectivityDiagnosticsCollector;
@@ -883,11 +884,11 @@ public class DnsResolverTest {
             assertFalse(msg + " returned 0 results", callback.isAnswerEmpty());
             callback.assertHasIpAddressAnswer();
             callback.assertHasHttpsAnswer();
-            runAsShell(READ_DEVICE_CONFIG, () -> {
-                if (com.android.org.conscrypt.net.flags.Flags.encryptedClientHelloPlatform()) {
-                    callback.assertHasEchAnswer();
-                }
-            });
+            // Because of trunk stable flag weirdness, check for the SDK version instead of reading
+            // the Conscrypt platform flag.
+            if (SdkUtil.isAtLeast26Q2()) {
+                callback.assertHasEchAnswer();
+            }
         }
     }
 
