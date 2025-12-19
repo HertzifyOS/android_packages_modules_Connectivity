@@ -69,6 +69,7 @@ import com.android.net.module.util.DnsPacket;
 import com.android.tethering.flags.Flags;
 import com.android.testutils.AutoReleaseNetworkCallbackRule;
 import com.android.testutils.ConnectivityDiagnosticsCollector;
+import com.android.testutils.ConnectivityModuleTest;
 import com.android.testutils.DevSdkIgnoreRule;
 import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo;
 import com.android.testutils.DeviceConfigRule;
@@ -852,22 +853,18 @@ public class DnsResolverTest {
     }
 
     @Test
-    @DnsResolverModuleTest
+    @ConnectivityModuleTest
     public void testQueryForHttpsRecord() throws Exception {
-        // Because these tests also run on S & T, they require the READ_DEVICE_CONFIG permission
-        // to read flag values.
-        assumeTrue(runAsShell(READ_DEVICE_CONFIG, () -> Flags.encryptedClientHelloDns()));
-
+        // Because this test is annotated with @ConnectivityModuleTest, it will use the latest
+        // tethering code. There is no need for a flag read.
         doTestQueryForHttpsRecord(mExecutor);
     }
 
     @Test
-    @DnsResolverModuleTest
+    @ConnectivityModuleTest
     public void testQueryForHttpsRecordInline() throws Exception {
-        // Because these tests also run on S & T, they require the READ_DEVICE_CONFIG permission
-        // to read flag values.
-        assumeTrue(runAsShell(READ_DEVICE_CONFIG, () -> Flags.encryptedClientHelloDns()));
-
+        // Because this test is annotated with @ConnectivityModuleTest, it will use the latest
+        // tethering code. There is no need for a flag read.
         doTestQueryForHttpsRecord(mExecutorInline);
     }
 
