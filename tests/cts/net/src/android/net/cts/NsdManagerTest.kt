@@ -169,6 +169,7 @@ private const val FLAG_ACCESS_LOCAL_NETWORK_PERMISSION_ENABLED =
 private const val FLAG_NSD_MDNS_SCAN_OFFLOAD =
     "com.android.tethering.flags.nsd_mdns_scan_offload"
 private const val NOT_MDNS_CAPABLE_INTERFACE = "lo"
+private const val NO_SUBTYPE = ""
 private val multicastIpv6Addr = parseNumericAddress("ff02::fb") as Inet6Address
 private val testSrcAddr = parseNumericAddress("2001:db8::123") as Inet6Address
 
@@ -958,8 +959,13 @@ class NsdManagerTest {
 
             val addOrUpdateEvent4 = offloadEngine
                 .expectCallback<TestNsdOffloadEngine.OffloadEvent.AddOrUpdateEvent>()
+
             assertThat(addOrUpdateEvent4.info.key.serviceName).isEmpty()
-            assertEquals(0, addOrUpdateEvent4.info.subtypes.size)
+            assertEquals(3, addOrUpdateEvent4.info.subtypes.size)
+            assertContentEquals(
+                listOf("subtype1", "subtype2", NO_SUBTYPE),
+                addOrUpdateEvent4.info.subtypes
+            )
 
             discoveryRecord3.expectCallback<DiscoveryStarted>()
 
