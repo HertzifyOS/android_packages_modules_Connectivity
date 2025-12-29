@@ -95,6 +95,7 @@ import com.android.net.module.util.NetdUtils;
 import com.android.net.module.util.RoutingCoordinatorManager;
 import com.android.net.module.util.SdkUtil;
 import com.android.net.module.util.SharedLog;
+import com.android.net.module.util.SyncStateMachine;
 import com.android.net.module.util.SyncStateMachine.StateInfo;
 import com.android.net.module.util.ip.InterfaceController;
 import com.android.net.module.util.netlink.NetlinkUtils;
@@ -103,7 +104,6 @@ import com.android.networkstack.tethering.TetheringConfiguration;
 import com.android.networkstack.tethering.metrics.TetheringMetrics;
 import com.android.networkstack.tethering.util.InterfaceSet;
 import com.android.networkstack.tethering.util.PrefixUtils;
-import com.android.networkstack.tethering.util.StateMachineShim;
 import com.android.tethering.mainline.beta.Flags;
 
 import java.net.Inet4Address;
@@ -125,7 +125,7 @@ import java.util.Set;
  *
  * @hide
  */
-public class IpServer extends StateMachineShim {
+public class IpServer extends SyncStateMachine {
     public static final int STATE_UNAVAILABLE = 0;
     public static final int STATE_AVAILABLE   = 1;
     public static final int STATE_TETHERED    = 2;
@@ -379,7 +379,7 @@ public class IpServer extends StateMachineShim {
             RoutingCoordinatorManager routingCoordinatorManager, Callback callback,
             TetheringConfiguration config,
             TetheringMetrics tetheringMetrics, Dependencies deps) {
-        super(ifaceName);
+        super(ifaceName, Thread.currentThread());
         mContext = Objects.requireNonNull(context);
         mHandler = handler;
         mLog = log.forSubComponent(ifaceName);
@@ -524,6 +524,26 @@ public class IpServer extends StateMachineShim {
      */
     public void unwanted() {
         sendMessage(CMD_TETHER_UNREQUESTED);
+    }
+
+    /** Send message to state machine. */
+    public void sendMessage(int what) {
+        processMessage(what, 0, 0, null);
+    }
+
+    /** Send message to state machine. */
+    public void sendMessage(int what, Object obj) {
+        processMessage(what, 0, 0, obj);
+    }
+
+    /** Send message to state machine. */
+    public void sendMessage(int what, int arg1) {
+        processMessage(what, arg1, 0, null);
+    }
+
+    /** Send message to state machine. */
+    public void sendMessage(int what, int arg1, int arg2, Object obj) {
+        processMessage(what, arg1, arg2, obj);
     }
 
     /** Internals. */
@@ -1202,7 +1222,7 @@ public class IpServer extends StateMachineShim {
                 // message (and generally ignores them). It is difficult to know for sure whether
                 // this is correct in all cases, but this is equivalent to what IpServer was doing
                 // in previous versions of the mainline module.
-                sendSelfMessageToSyncSM(CMD_SERVICE_FAILED_TO_START, mLastError);
+                sendSelfMessage(CMD_SERVICE_FAILED_TO_START, 0, 0, mLastError);
             }
 
             if (DBG) Log.d(TAG, getStateString(mDesiredInterfaceState) + " serve " + mIfaceName);
