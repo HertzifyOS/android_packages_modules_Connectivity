@@ -474,6 +474,7 @@ log_loopback_access(struct __sk_buff *const skb,
     } else {
         return;
     }
+    if (!local_sk) return;
 
     SkStorageValue *v = bpf_sk_storage_get(local_sk, 0, 0);
     const uint32_t receiver_uid = v ? v->uid : 0;
