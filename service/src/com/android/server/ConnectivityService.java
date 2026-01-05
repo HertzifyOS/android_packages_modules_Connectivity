@@ -6467,14 +6467,14 @@ public class ConnectivityService extends IConnectivityManager.Stub
                 continue;
             }
 
-            if (isNetworkPotentialSatisfier(nai, nri)) {
+            if (isNetworkPotentialBest(nai, nri)) {
                 return false;
             }
         }
         return true;
     }
 
-    private boolean isNetworkPotentialSatisfier(
+    private boolean isNetworkPotentialBest(
             @NonNull final NetworkAgentInfo candidate, @NonNull final NetworkRequestInfo nri) {
         // While destroyed network sometimes satisfy requests (including occasionally newly
         // satisfying requests), *potential* satisfiers are networks that might beat a current
@@ -6494,6 +6494,16 @@ public class ConnectivityService extends IConnectivityManager.Stub
             // if they are not currently active (e.g., they might currently be satisfied by another
             // network with a higher score than this one).
             if (!req.isRequest() && nri.getActiveRequest() == req) {
+                return false;
+            }
+            // If the network does not satisfy the active request, then it can never become the
+            // satisfier for this multilayer request.
+            // - The network cannot have satisfied an earlier request in the list, because
+            //   otherwise that request would be the active request: the first request in
+            //   a multilayer request to be satisfied is always the active request.
+            // - Even if the network satisfies later requests in the list, they cannot become the
+            //   active request, and therefore, cannot cause this network to be kept up.
+            if (!candidate.satisfies(req) && nri.getActiveRequest() == req) {
                 return false;
             }
 
