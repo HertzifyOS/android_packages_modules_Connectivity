@@ -4213,8 +4213,14 @@ public class ConnectivityService extends IConnectivityManager.Stub
     private boolean hasCreateAppSpecificNetworkPermission() {
         // The CREATE_APP_SPECIFIC_NETWORK permission was introduced in 25Q4.
         // It must not be granted on earlier platform versions, even if an app declares it.
-        return mDeps.isAtLeast25Q4() && hasAnyPermissionOf(mContext,
+        if (mDeps.isAtLeast25Q4()) {
+            return hasAnyPermissionOf(mContext,
                 android.Manifest.permission.CREATE_APP_SPECIFIC_NETWORK);
+        }
+        if (mDeps.isAtLeastB()) {
+            return hasConnectivityRestrictedNetworksPermission(Binder.getCallingUid(), false);
+        }
+        return false;
     }
 
     private boolean hasNetworkFactoryPermission() {
@@ -10166,7 +10172,11 @@ public class ConnectivityService extends IConnectivityManager.Stub
         } else {
             throw new SecurityException("Requires one of the following permissions: "
                     + "NETWORK_FACTORY, MAINLINE_NETWORK_STACK"
-                    + (mDeps.isAtLeast25Q4() ? ", CREATE_APP_SPECIFIC_NETWORK" : ""));
+                    + (mDeps.isAtLeast25Q4()
+                            ? ", CREATE_APP_SPECIFIC_NETWORK"
+                            : (mDeps.isAtLeastB()
+                                    ? ", CONNECTIVITY_USE_RESTRICTED_NETWORKS"
+                                    : "")));
         }
         final boolean hasLocalCap =
                 networkCapabilities.hasCapability(NET_CAPABILITY_LOCAL_NETWORK);
