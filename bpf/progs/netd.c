@@ -1218,12 +1218,22 @@ DEFINE_NETD_V_BPF_PROG_KVER(sendmsg6, udp6_sendmsg, , 4_19)
 
 // --- GETSOCKOPT HOOK ---
 
-DEFINE_NETD_V_BPF_PROG_KVER(getsockopt, prog, , 5_4)
-(struct bpf_sockopt *ctx) {
+static inline __always_inline int inet_getsockopt(struct bpf_sockopt *ctx,
+                                                  __unused const struct kver_uint kver) {
     // Tell kernel to return 'original' kernel reply (instead of the bpf modified buffer)
     // This is important if the answer is larger than PAGE_SIZE (max size this bpf hook can provide)
     ctx->optlen = 0;
     return BPF_ALLOW;
+}
+
+DEFINE_NETD_V_BPF_PROG_KVER(getsockopt, prog, 5_10, 5_10)
+(struct bpf_sockopt *ctx) {
+    return inet_getsockopt(ctx, KVER_5_10);
+}
+
+DEFINE_NETD_V_BPF_PROG_KVER_RANGE(getsockopt, prog, 5_4, 5_4, 5_10)
+(struct bpf_sockopt *ctx) {
+    return inet_getsockopt(ctx, KVER_5_4);
 }
 
 // --- SETSOCKOPT HOOK ---
