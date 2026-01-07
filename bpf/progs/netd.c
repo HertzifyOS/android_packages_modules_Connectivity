@@ -20,6 +20,7 @@
 #define DEFAULT_BPF_PIN_SUBDIR "netd_shared"
 
 #include "bpf_net_helpers.h"
+#include "internal_net_api.h"
 #include "netd.h"
 
 // This is defined for cgroup bpf filter only.
@@ -835,7 +836,15 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb,
 
     if (SDK_LEVEL_IS_AT_LEAST(lvl, 25Q2) && (match != DROP)) {
         // TODO(b/467964186): use the parsed skb
-        if (should_block_local_network_packets(skb, statsUid, egress, kver)) match = DROP;
+        if (should_block_local_network_packets(skb, statsUid, egress, kver)) {
+            if (KVER_IS_AT_LEAST(kver, 5, 10, 0) && skb->sk) {
+                SkStorageValue *v = bpf_sk_storage_get(skb->sk, 0, 0);
+                if (v) {
+                    v->dropReasons |= DROP_REASON_LNP;
+                }
+            }
+            match = DROP;
+        }
     }
 
     // If an outbound packet is going to be dropped, we do not count that traffic.
