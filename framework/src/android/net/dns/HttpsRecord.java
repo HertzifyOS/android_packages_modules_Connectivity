@@ -89,8 +89,8 @@ public class HttpsRecord {
     /**
      * Returns the target name of the HTTPS record.
      *
-     * <p>If the target name is `.`, RFC 9460 2.5 specifies that this indicates special rules.
-     * For AliasMode RRs, this indicates that the service is not available or does not exist.
+     * <p>If the target name is an empty string, RFC 9460 2.5 specifies that this indicates special
+     * rules. For AliasMode RRs, this indicates that the service is not available or does not exist.
      * For ServiceMode RRs, this indicates the record's owner name is the effective target name.
      */
     public @NonNull String getTargetName() {
@@ -100,7 +100,8 @@ public class HttpsRecord {
     /**
      * Returns the owner name of the HTTPS record.
      *
-     * <p>This should be used as the effective target name if the HTTPS record target name is `.`.
+     * <p>This should be used as the effective target name if the HTTPS record target name is an
+     * empty string.
      */
     public @NonNull String getOwnerName() {
         return mRecord.getOwnerName();

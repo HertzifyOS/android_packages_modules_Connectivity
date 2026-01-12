@@ -145,7 +145,7 @@ class DnsHttpsRecordTest {
             DnsSvcbTestUtils.toByteBuffer(FakeDnsRecord(targetName = ""))
         )
 
-        assertEquals(DnsHttpsRecord.ZERO_LENGTH_TARGET_NAME, record.targetName)
+        assertEquals("", record.targetName)
     }
 
     @Test

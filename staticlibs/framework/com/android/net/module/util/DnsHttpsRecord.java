@@ -82,9 +82,6 @@ public class DnsHttpsRecord extends DnsRecord {
     @NonNull private final String mTargetName;
     @NonNull private final SparseArray<SvcParam> mSvcParams = new SparseArray<>();
 
-    // TODO(b/454544870): move this to SvcParamUtils so it can be reused by DnsSvcbRecord
-    @VisibleForTesting(visibility = PACKAGE)
-    public static final String ZERO_LENGTH_TARGET_NAME = ".";
     @VisibleForTesting(visibility = PACKAGE)
     public static final int DEFAULT_PORT_VALUE = -1;
 
@@ -108,16 +105,8 @@ public class DnsHttpsRecord extends DnsRecord {
         ByteBuffer buf = ByteBuffer.wrap(rdata).asReadOnlyBuffer();
         mSvcPriority = Short.toUnsignedInt(buf.getShort());
 
-        // Mark the buffer so that we can reset it later.
-        buf.mark();
-        // If the target name is `"." (zero-length)`, RFC 9460 2.5 specifies special rules apply.
-        if (buf.get() == 0) {
-            mTargetName = ZERO_LENGTH_TARGET_NAME;
-        } else {
-            buf.reset(); // Reset the buffer to the start of the target name.
-            mTargetName = DnsPacketUtils.DnsRecordParser.parseName(buf, /* depth= */ 0,
-                /* isNameCompressionSupported= */ true);
-        }
+        mTargetName = DnsPacketUtils.DnsRecordParser.parseName(buf, /* depth= */ 0,
+            /* isNameCompressionSupported= */ true);
 
         if (mTargetName.length() > DnsPacket.DnsRecord.MAXNAMESIZE) {
             throw new ParseException(
