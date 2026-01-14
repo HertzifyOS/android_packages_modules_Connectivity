@@ -3191,6 +3191,15 @@ public class NsdServiceTest {
         doTestBuildNsdServiceInfoFromMdnsEvent_localNetwork(false /* expectNetwork */);
     }
 
+    @FeatureFlag(name = com.android.tethering.mainline.beta.Flags
+            .FLAG_TETHERING_AND_P2P_GO_LOCAL_AGENT, enabled = true)
+    @FeatureFlag(name = Flags.FLAG_NSD_USE_NETWORK_CALLBACK_FOR_LOCAL_NETWORKS, enabled = true)
+    @DisableCompatChanges(ENABLE_MATCH_NON_THREAD_LOCAL_NETWORKS)
+    @Test
+    public void testBuildNsdServiceInfoFromMdnsEvent_localNetwork_compatChangeDisabled() {
+        doTestBuildNsdServiceInfoFromMdnsEvent_localNetwork(false /* expectNetwork */);
+    }
+
     private void doTestBuildNsdServiceInfoFromMdnsEvent_localNetwork(boolean expectNetwork) {
         setMdnsDiscoveryManagerEnabled();
 
