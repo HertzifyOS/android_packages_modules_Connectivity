@@ -51,8 +51,7 @@ public class HttpsRecord {
     private final DnsHttpsRecord mRecord;
     private final List<InetAddress> mIpHints;
 
-    public static final String DEFAULT_ALPN_ID = "http/1.1";
-    private static final int DEFAULT_HTTPS_PORT_VALUE = 443;
+    public static final String DEFAULT_ALPN_ID = DnsHttpsRecord.DEFAULT_HTTPS_ALPN_ID;
 
     /**
      * Used by the platform to construct a {@link HttpsRecord}.
@@ -117,13 +116,7 @@ public class HttpsRecord {
      * <p>See RFC 9460 7.1 for more details.
      */
     public @NonNull List<String> getAlpnIds() {
-        // DnsHttpsRecord returns an unmodifiable list, so we need to make a copy to add the default
-        // ALPN if it is not explicitly set.
-        List<String> specifiedAlpns = new ArrayList<>(mRecord.getAlpnIds());
-        if (!mRecord.isNoDefaultAlpn()) {
-            specifiedAlpns.add(DEFAULT_ALPN_ID);
-        }
-        return Collections.unmodifiableList(specifiedAlpns);
+        return mRecord.getAlpnIds();
     }
 
     /**
@@ -132,12 +125,7 @@ public class HttpsRecord {
      * <p>See RFC 9460 7.2 for more details.
      */
     public int getPort() {
-        int port = mRecord.getPort();
-        // If no port is specified in the record, use the default HTTPS port.
-        if (port == -1) {
-            return DEFAULT_HTTPS_PORT_VALUE;
-        }
-        return port;
+        return mRecord.getPort();
     }
 
     /**
