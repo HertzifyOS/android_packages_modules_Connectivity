@@ -176,10 +176,10 @@ class NsdPickerActivityTest {
 
     @Test
     fun testDiscoveryCancelled() {
-        onView(withText(R.string.connect_to_service_title)).check(matches(isDisplayed()))
+        onView(withText(R.string.choose_device_title)).check(matches(isDisplayed()))
         mServiceReceiver.onCancelled()
 
-        onView(withText(R.string.connect_to_service_title)).check(doesNotExist())
+        onView(withText(R.string.choose_device_title)).check(doesNotExist())
         verifyNoMoreInteractions(mMockConnector)
     }
 
@@ -196,16 +196,16 @@ class NsdPickerActivityTest {
 
         // First dialog should still be visible
         onDialogView(
-            withText(mContext.getString(R.string.connect_to_service_summary, TEST_APP_NAME))
+            withText(mContext.getString(R.string.choose_device_summary, TEST_APP_NAME))
         )
             .check(matches(isDisplayed()))
 
         // Close the first dialog
-        onDialogView(withText(android.R.string.cancel)).perform(click())
+        onDialogView(withText(R.string.choose_device_cancel)).perform(click())
 
         // Second dialog should now be shown
         onDialogView(
-            withText(mContext.getString(R.string.connect_to_service_summary, otherAppName))
+            withText(mContext.getString(R.string.choose_device_summary, otherAppName))
         )
             .check(matches(isDisplayed()))
 
@@ -235,16 +235,16 @@ class NsdPickerActivityTest {
         // Recreate the activity: the first dialog should still be shown with the next intent queued
         mScenario.recreate()
         onDialogView(
-            withText(mContext.getString(R.string.connect_to_service_summary, TEST_APP_NAME))
+            withText(mContext.getString(R.string.choose_device_summary, TEST_APP_NAME))
         )
             .check(matches(isDisplayed()))
 
         // Close the first dialog
-        onDialogView(withText(android.R.string.cancel)).perform(click())
+        onDialogView(withText(R.string.choose_device_cancel)).perform(click())
 
         // Second dialog should now be shown
         onDialogView(
-            withText(mContext.getString(R.string.connect_to_service_summary, otherAppName))
+            withText(mContext.getString(R.string.choose_device_summary, otherAppName))
         )
             .check(matches(isDisplayed()))
     }

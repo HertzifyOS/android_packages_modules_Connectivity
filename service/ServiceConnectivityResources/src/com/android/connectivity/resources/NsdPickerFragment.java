@@ -185,14 +185,14 @@ public class NsdPickerFragment extends DialogFragment {
         final LayoutInflater inflater = LayoutInflater.from(getContext());
         final View customTitle = inflater.inflate(R.layout.nsd_picker_title, null);
         customTitle.<TextView>findViewById(android.R.id.summary).setText(
-                getString(R.string.connect_to_service_summary, mState.mAppName));
+                getString(R.string.choose_device_summary, mState.mAppName));
 
         final DialogInterface.OnClickListener serviceSelectedListener =
                 (dialogInterface, itemPosition) -> onServiceSelected(itemPosition);
         final AlertDialog dialog = new AlertDialog.Builder(getContext())
                 .setCustomTitle(customTitle)
                 .setAdapter(mAdapter, serviceSelectedListener)
-                .setNegativeButton(android.R.string.cancel, (d, which) -> onCancel(d))
+                .setNegativeButton(R.string.choose_device_cancel, (d, which) -> onCancel(d))
                 .create();
 
         final ServiceReceiver receiver = makeOrGetServiceReceiver(
