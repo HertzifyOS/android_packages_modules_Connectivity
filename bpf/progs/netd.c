@@ -20,6 +20,7 @@
 #define DEFAULT_BPF_PIN_SUBDIR "netd_shared"
 
 #include "bpf_net_helpers.h"
+#include "internal_net_api.h"
 #include "netd.h"
 
 // This is defined for cgroup bpf filter only.
@@ -835,7 +836,13 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb,
 
     if (SDK_LEVEL_IS_AT_LEAST(lvl, 25Q2) && (match != DROP)) {
         // TODO(b/467964186): use the parsed skb
-        if (should_block_local_network_packets(skb, statsUid, egress, kver)) match = DROP;
+        if (should_block_local_network_packets(skb, statsUid, egress, kver)) {
+            if (KVER_IS_AT_LEAST(kver, 5, 10, 0) && skb->sk && egress.egress) {
+                SkStorageValue *v = bpf_sk_storage_get(skb->sk, 0, 0);
+                if (v) v->dropReasons |= DROP_REASON_LNP;
+            }
+            match = DROP;
+        }
     }
 
     // If an outbound packet is going to be dropped, we do not count that traffic.
@@ -1218,12 +1225,22 @@ DEFINE_NETD_V_BPF_PROG_KVER(sendmsg6, udp6_sendmsg, , 4_19)
 
 // --- GETSOCKOPT HOOK ---
 
-DEFINE_NETD_V_BPF_PROG_KVER(getsockopt, prog, , 5_4)
-(struct bpf_sockopt *ctx) {
+static inline __always_inline int inet_getsockopt(struct bpf_sockopt *ctx,
+                                                  __unused const struct kver_uint kver) {
     // Tell kernel to return 'original' kernel reply (instead of the bpf modified buffer)
     // This is important if the answer is larger than PAGE_SIZE (max size this bpf hook can provide)
     ctx->optlen = 0;
     return BPF_ALLOW;
+}
+
+DEFINE_NETD_V_BPF_PROG_KVER(getsockopt, prog, 5_10, 5_10)
+(struct bpf_sockopt *ctx) {
+    return inet_getsockopt(ctx, KVER_5_10);
+}
+
+DEFINE_NETD_V_BPF_PROG_KVER_RANGE(getsockopt, prog, 5_4, 5_4, 5_10)
+(struct bpf_sockopt *ctx) {
+    return inet_getsockopt(ctx, KVER_5_4);
 }
 
 // --- SETSOCKOPT HOOK ---

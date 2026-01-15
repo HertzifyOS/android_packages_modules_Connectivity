@@ -96,8 +96,10 @@ typedef struct {
     // support `bpf_get_socket_uid`
     uint32_t gid;
     uint32_t uid;
+    // A bitmask of enum values in DropReasonType.
+    uint64_t dropReasons;
 } SkStorageValue;
-STRUCT_SIZE(SkStorageValue, 8 + 4 + 4);
+STRUCT_SIZE(SkStorageValue, 8 + 4 + 4 + 8);
 
 enum LoopbackAccessResult : uint32_t {
   LOOPBACK_ACCESS_ALLOWED = 0,
