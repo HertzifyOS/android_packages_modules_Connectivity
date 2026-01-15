@@ -471,18 +471,19 @@ public class NsdService extends INsdManager.Stub {
         }
 
         private String getAppName() {
-            final ApplicationInfo appInfo;
+            CharSequence appName;
             final PackageManager pm = mContext.getPackageManager();
             try {
-                appInfo = pm.getApplicationInfoAsUser(
+                final ApplicationInfo appInfo = pm.getApplicationInfoAsUser(
                         mClientInfo.mPackageName, /* flags= */0,
                         UserHandle.getUserHandleForUid(mClientInfo.mUid));
+                appName = pm.getApplicationLabel(appInfo);
             } catch (PackageManager.NameNotFoundException e) {
                 mServiceLogs.e("Failed to find app name for " + mClientInfo.mPackageName);
-                return "";
+                appName = null;
+                // Fall through
             }
-            CharSequence appName = pm.getApplicationLabel(appInfo);
-            return (appName != null) ? appName.toString() : "";
+            return TextUtils.isEmpty(appName) ? mClientInfo.mPackageName : appName.toString();
         }
 
         @Override

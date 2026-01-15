@@ -84,6 +84,7 @@ import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
@@ -1319,6 +1320,45 @@ public class NsdServiceTest {
         verify(mPermissionManager, never()).finishDataDelivery(any(), any());
     }
 
+    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    public void testPickerStartIntent_AppNameNotFound() throws Exception {
+        setMdnsDiscoveryManagerEnabled();
+        final NsdManager client = connectClient(mService);
+
+        doThrow(new PackageManager.NameNotFoundException()).when(mPackageManager)
+                .getApplicationInfoAsUser(anyString(), anyInt(), any());
+
+        startDiscoveryWithPicker(client);
+        final ArgumentCaptor<Intent> intentCaptor = ArgumentCaptor.forClass(Intent.class);
+        verify(mContext).startActivityAsUser(intentCaptor.capture(), any());
+
+        final Intent intent = intentCaptor.getValue();
+        assertEquals(NsdPickerConnector.ACTION_PICKER, intent.getAction());
+        assertEquals(getInstrumentation().getContext().getPackageName(),
+                intent.getStringExtra(NsdPickerConnector.EXTRA_APP_NAME));
+    }
+
+    @Test
+    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    public void testPickerStartIntent_EmptyAppName() throws Exception {
+        setMdnsDiscoveryManagerEnabled();
+        final NsdManager client = connectClient(mService);
+
+        final String packageName = getInstrumentation().getContext().getPackageName();
+        final ApplicationInfo testAppInfo = new ApplicationInfo();
+        doReturn(testAppInfo).when(mPackageManager).getApplicationInfoAsUser(
+                eq(packageName), /* flags= */ anyInt(), /* userHandle= */ any());
+        doReturn("").when(mPackageManager).getApplicationLabel(testAppInfo);
+
+        startDiscoveryWithPicker(client);
+        final ArgumentCaptor<Intent> intentCaptor = ArgumentCaptor.forClass(Intent.class);
+        verify(mContext).startActivityAsUser(intentCaptor.capture(), any());
+
+        final Intent intent = intentCaptor.getValue();
+        assertEquals(NsdPickerConnector.ACTION_PICKER, intent.getAction());
+        assertEquals(packageName, intent.getStringExtra(NsdPickerConnector.EXTRA_APP_NAME));
+    }
+
     private void setMdnsDiscoveryManagerEnabled() {
         doReturn(true).when(mDeps).isMdnsDiscoveryManagerEnabled(any(Context.class));
     }
@@ -1616,6 +1656,45 @@ public class NsdServiceTest {
         deathRecipient.binderDied();
         waitForIdle();
         verify(receiver).onCancelled();
+    }
+
+
+    @Test
+    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    public void testDiscovery_pickerConnectsLate_callbacksAndMetricsRecorded() throws Exception {
+        setMdnsDiscoveryManagerEnabled();
+        final NsdManager client = connectClient(mService);
+        final DiscoveryListener listener = startDiscoveryWithPicker(client);
+        final NsdPickerConnector connector = verifyPickerStarted();
+
+        // Find and lose a service before the picker receiver is set
+        final ArgumentCaptor<MdnsListener> listenerCaptor =
+                ArgumentCaptor.forClass(MdnsListener.class);
+        verify(mDiscoveryManager).registerListener(eq(SERVICE_TYPE + ".local"),
+                listenerCaptor.capture(), any());
+        final MdnsListener mdnsListener = listenerCaptor.getValue();
+        final MdnsServiceInfo mdnsServiceInfo = makeTestServiceInfo();
+        mdnsListener.onServiceNameDiscovered(mdnsServiceInfo, false /* isServiceFromCache */);
+        mdnsListener.onServiceNameRemoved(mdnsServiceInfo, SERVICE_REMOVED_BY_GOODBYE_RECEIVED);
+        waitForIdle();
+
+        // Find it again after the picker receiver is set
+        final NsdServiceReceiver receiver = setMockPickerReceiver(connector);
+        mdnsListener.onServiceNameDiscovered(mdnsServiceInfo, false /* isServiceFromCache */);
+        doReturn(TEST_TIME_MS + 10L).when(mClock).elapsedRealtime();
+        client.stopServiceDiscovery(listener);
+        waitForIdle();
+
+        // Ensure callbacks and metrics for all events are received
+        final InOrder inOrder = inOrder(receiver, mMetrics);
+        inOrder.verify(receiver).onServiceFound(any());
+        inOrder.verify(receiver).onServiceLost(any());
+        inOrder.verify(receiver).onServiceFound(any());
+        inOrder.verify(mMetrics).reportServiceDiscoveryStop(eq(false) /* isLegacy */,
+                eq(mdnsListener.mTransactionId), eq(10L) /* durationMs */,
+                eq(2) /* foundCallbackCount */, eq(1) /* lostCallbackCount */,
+                eq(1) /* servicesCount */, eq(0) /* sentQueryCount */,
+                eq(false) /* isServiceFromCache */, eq(0) /* cachedServiceExpiredCount */);
     }
 
     @Test
