@@ -2992,7 +2992,7 @@ public class NsdServiceTest {
     @Test
     @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     public void testInjectProxyOffloadEngineResponse() {
-        NsdServiceInfo serviceInfo = new NsdServiceInfo(SERVICE_NAME, SERVICE_TYPE);
+        NsdServiceInfo serviceInfo = new NsdServiceInfo(SERVICE_NAME, SERVICE_TYPE + ".");
         boolean isServiceLost = false;
         String interfaceName = "lo";
         final OffloadEngine offloadEngine = mock(OffloadEngine.class);
