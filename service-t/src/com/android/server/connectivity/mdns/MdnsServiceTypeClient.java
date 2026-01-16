@@ -292,7 +292,8 @@ public class MdnsServiceTypeClient {
                     // advance). Because the result of "makeResponsesForResolve" depends on answers
                     // that were received before it is called, so to take into account all answers
                     // before sending the query, it needs to be called just before sending it.
-                    final List<MdnsResponse> servicesToResolve = makeResponsesForResolve();
+                    final List<MdnsResponse> servicesToResolve = makeResponsesForResolve(
+                            /* resolveAllInCache= */hasResolveAllQuery());
                     final QueryTask queryTask = new QueryTask(taskArgs, servicesToResolve,
                             getAllDiscoverySubtypes(), needSendDiscoveryQueries(listeners),
                             getExistingServices(), searchOptions.onlyUseIpv6OnIpv6OnlyNetworks(),
@@ -691,7 +692,8 @@ public class MdnsServiceTypeClient {
                         timeToNextTaskMs);
             }
         } else {
-            final List<MdnsResponse> servicesToResolve = makeResponsesForResolve();
+            final List<MdnsResponse> servicesToResolve = makeResponsesForResolve(
+                    /* resolveAllInCache= */hasResolveAllQuery());
             final QueryTask queryTask = new QueryTask(
                     mdnsQueryScheduler.scheduleFirstRun(taskConfig, now,
                             minRemainingTtl, currentSessionId), servicesToResolve,
@@ -977,6 +979,15 @@ public class MdnsServiceTypeClient {
         return searchOptions != null && searchOptions.removeExpiredService();
     }
 
+    private boolean hasResolveAllQuery() {
+        for (int i = 0; i < listeners.size(); i++) {
+            if (listeners.valueAt(i).searchOptions.resolveAllServices()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * Generate a list of {@link MdnsResponse} representing services to resolve.
      *
@@ -992,13 +1003,17 @@ public class MdnsServiceTypeClient {
      * <p>The list can be used to track which SRV/TXT/address records need to be queried for
      * resolving.
      */
-    private List<MdnsResponse> makeResponsesForResolve() {
+    private List<MdnsResponse> makeResponsesForResolve(boolean resolveAllInCache) {
         // Known responses are used by queries to understand what information the cache already
         // holds, allowing it to determine which records need to be renewed. Therefore, expired
         // services should always be included in the returned responses to ensure all their records
         // are renewed.
         final List<MdnsResponse> cachedServices =
                 serviceCache.getCachedServices(cacheKey, false /* excludeExpiredServices */);
+        if (resolveAllInCache) {
+            return makeResponsesFromCacheAndResolveQueries(cachedServices);
+        }
+
         final ArrayMap<String, MdnsResponse> resolveResponses = new ArrayMap<>();
         addUniqueResponsesForResolveListeners(resolveResponses, serviceName -> {
             MdnsResponse response = findMatchedResponse(cachedServices, serviceName);
@@ -1015,7 +1030,7 @@ public class MdnsServiceTypeClient {
      * Generate a map of (uppercase service name) -> MdnsResponse representing all known services.
      *
      * <p>Services may be known by being in cache, or be inferred as documented in
-     * {@link #makeResponsesForResolve()}.
+     * {@link #makeResponsesForResolve(boolean)}.
      *
      * <p>The list can be used as a base list of services to update with the received records and
      * add to the cache. Expired services in the cache are also included as the received records
