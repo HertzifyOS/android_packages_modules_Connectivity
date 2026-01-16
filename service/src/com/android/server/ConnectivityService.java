@@ -11198,6 +11198,16 @@ public class ConnectivityService extends IConnectivityManager.Stub
         // LOCAL_NETWORK routing table, which has no corresponding local table for
         // local routes to be added to.
         if (netId == LOCAL_NET_ID) return false;
+
+        // TODO: this code assumes that local routes can *only* be directly-connected routes created
+        // by IP addresses being assigned on the interface. This is not the case - for example:
+        // - A ULA routed to a Thread network is a local route.
+        // - On a home network that is assigned a 2001:db8:aaaa::/56, if the router announces an RIO
+        //   for the whole /56 and also announces a PIO for, e.g.,  2001:db8:aaaa:1::/64, then
+        //   getEffectiveLocalPrefixes will include 2001:db8:aaaa::/56 in the list of prefixes, but
+        //   isLocalRoute will return false.
+        // Not clear how to fix tis. This code could call getEffectiveLocalPrefixes, which is more
+        // sophisticated, but that method is not cheap.
         IpPrefix routeDestination = new IpPrefix(route.destination);
         return isPrefixLocal(routeDestination);
     }
