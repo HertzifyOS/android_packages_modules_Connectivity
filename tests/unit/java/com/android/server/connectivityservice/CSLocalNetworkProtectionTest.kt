@@ -113,8 +113,11 @@ class CSLocalNetworkProtectionTest : CSTest() {
     private val IPV6_DEFAULT_ROUTE_PREFIX = IpPrefix("::/0")
 
     private val IPV4_ADDRESS_1 = LinkAddress("10.0.0.184/24")
+    private val IPV4_PREFIX_1 = IpPrefix("10.0.0.0/24")
     private val IPV4_ADDRESS_2 = LinkAddress("10.0.255.184/24")
+    private val IPV4_PREFIX_2 = IpPrefix("10.0.255.0/24")
     private val IPV4_ADDRESS_3 = LinkAddress("10.255.255.184/24")
+    private val IPV4_PREFIX_3 = IpPrefix("10.255.255.0/24")
     private val IPV4_COVERING_PREFIX = IpPrefix("10.255.0.0/16")
     private val IPV4_DEFAULT_ROUTE_PREFIX = IpPrefix("0.0.0.0/0")
 
@@ -192,8 +195,8 @@ class CSLocalNetworkProtectionTest : CSTest() {
         // Multicast and Broadcast address should always be populated in local_net_access map
         verifyPopulationOfMulticastAndBroadcastAddress()
 
-        // Verifying IPv4 matching prefix(10.0.0.0/8) should be populated in local_net_access map
-        verifyAddedToLocal(IpPrefix("10.0.0.0/8"))
+        // Verifying IPv4 matching prefix should be populated in local_net_access map
+        verifyAddedToLocal(IPV4_PREFIX_1)
     }
 
     @Test
@@ -221,8 +224,8 @@ class CSLocalNetworkProtectionTest : CSTest() {
         // Multicast and Broadcast address should always be populated in local_net_access map
         verifyPopulationOfMulticastAndBroadcastAddress()
 
-        // Verifying IPv4 matching prefix(10.0.0.0/8) should be populated in local_net_access map
-        verifyAddedToLocal(IpPrefix("10.0.0.0/8"))
+        // BUG: the directly-connected route to IPV4_COVERING_PREFIX should be marked local.
+        verifyAddedToLocal(IPV4_PREFIX_3)
     }
 
     @Test
@@ -249,7 +252,7 @@ class CSLocalNetworkProtectionTest : CSTest() {
         verifyPopulationOfMulticastAndBroadcastAddress()
 
         // Verifying default route(0.0.0.0/0) should not be populated in local_net_access map
-        verifyNeverAddedToLocal(IpPrefix("0.0.0.0/0"))
+        verifyNeverAddedToLocal(IPV4_DEFAULT_ROUTE_PREFIX)
     }
 
     @Test
@@ -273,8 +276,8 @@ class CSLocalNetworkProtectionTest : CSTest() {
         wifiAgent.sendLinkProperties(wifiLp2)
         cb.expect<LinkPropertiesChanged>(wifiAgent.network)
 
-        // Verifying IPv4 matching prefix(10.0.0.0/8) should be populated in local_net_access map
-        verifyAddedToLocal(IpPrefix("10.0.0.0/8"))
+        // Verifying IPv4 matching prefix should be populated in local_net_access map
+        verifyAddedToLocal(IPV4_PREFIX_1)
         // Verifying IPv6 address should be removed from local_net_access map
         verifyRemovedFromLocal(LINK_LOCAL_PREFIX)
     }
@@ -301,9 +304,8 @@ class CSLocalNetworkProtectionTest : CSTest() {
         // Multicast and Broadcast address should always be populated on stacked link
         // in local_net_access map
         verifyPopulationOfMulticastAndBroadcastAddress(WIFI_IFNAME_2)
-        // Verifying IPv4 matching prefix(10.0.0.0/8) should be populated as part of stacked link
-        // in local_net_access map
-        verifyAddedToLocal(IpPrefix("10.0.0.0/8"), WIFI_IFNAME_2)
+        // Verifying IPv4 prefix should be populated as part of stacked link in local_net_access map
+        verifyAddedToLocal(IPV4_PREFIX_1, WIFI_IFNAME_2)
         // As both addresses are in stacked links, so no address should be removed from the map.
         verifyNothingRemovedFromLocal()
 
@@ -312,8 +314,8 @@ class CSLocalNetworkProtectionTest : CSTest() {
         wifiAgent.sendLinkProperties(wifiLp_3)
         cb.expect<LinkPropertiesChanged>(wifiAgent.network)
 
-        // As both stacked links is removed, 10.0.0.0/8 should be removed from local_net_access map.
-        verifyRemovedFromLocal(IpPrefix("10.0.0.0/8"), WIFI_IFNAME_2)
+        // As both stacked links is removed, the IPv4 prefix should be removed from local_net_access map.
+        verifyRemovedFromLocal(IPV4_PREFIX_1, WIFI_IFNAME_2)
     }
 
     @Test
@@ -338,9 +340,9 @@ class CSLocalNetworkProtectionTest : CSTest() {
         // Multicast and Broadcast address should always be populated on stacked link
         // in local_net_access map
         verifyPopulationOfMulticastAndBroadcastAddress(WIFI_IFNAME_2)
-        // Verifying IPv4 matching prefix(10.0.0.0/8) should be populated as part of stacked link
+        // Verifying IPv4 matching prefix should be populated as part of stacked link
         // in local_net_access map
-        verifyAddedToLocal(IpPrefix("10.0.0.0/8"), WIFI_IFNAME_2)
+        verifyAddedToLocal(IPV4_PREFIX_1, WIFI_IFNAME_2)
         // As both addresses are in stacked links, so no address should be removed from the map.
         verifyNothingRemovedFromLocal()
 
@@ -357,24 +359,13 @@ class CSLocalNetworkProtectionTest : CSTest() {
         // in local_net_access map
         verifyPopulationOfMulticastAndBroadcastAddress(WIFI_IFNAME_3)
         // Verifying new base IPv6 address should be populated in local_net_access map
-        verifyAddedToLocal(IPV6_ONLINK_PREFIX)
-        // Verifying IPv4 matching prefix(10.0.0.0/8) should be populated as part of stacked link
-        // in local_net_access map
-        verify(bpfNetMaps, times(2)).addLocalNetAccess(
-            eq(PREFIX_LENGTH_IPV4 + 8),
-            eq(WIFI_IFNAME_2),
-            eq(InetAddresses.parseNumericAddress("10.0.0.0")),
-            eq(0),
-            eq(0),
-            eq(false)
-        )
+        verifyAddedToLocal(IPV6_ONLINK_PREFIX, WIFI_IFNAME)
+        verifyRemovedFromLocal(IPV4_PREFIX_1, WIFI_IFNAME_2)
+        verifyAddedToLocal(IPV4_PREFIX_2, WIFI_IFNAME_2)
         // Verifying newly stacked IPv6 address should be populated in local_net_access map
         verifyAddedToLocal(LINK_LOCAL_PREFIX, WIFI_IFNAME_3)
         // Verifying old base IPv6 address should be removed from local_net_access map
-        verifyRemovedFromLocal(LINK_LOCAL_PREFIX)
-        // As both stacked links is had same prefix, 10.0.0.0/8 should not be removed from
-        // local_net_access map.
-        verifyNeverRemovedFromLocal(IpPrefix("10.0.0.0/8"), WIFI_IFNAME_2)
+        verifyRemovedFromLocal(LINK_LOCAL_PREFIX, WIFI_IFNAME)
     }
 
     @Test
@@ -390,17 +381,17 @@ class CSLocalNetworkProtectionTest : CSTest() {
 
         // Multicast and Broadcast address should always be populated in local_net_access map
         verifyPopulationOfMulticastAndBroadcastAddress()
-        // Verifying IPv4 matching prefix(10.0.0.0/8) should be populated in local_net_access map
-        verifyAddedToLocal(IpPrefix("10.0.0.0/8"))
+        // Verifying IPv4 matching prefix should be populated in local_net_access map
+        verifyAddedToLocal(IPV4_PREFIX_1)
 
-        // Updating Link Property from one IPv4 to another IPv4 within same range(10.0.0.0/8)
+        // Updating Link Property from one IPv4 to another IPv4.
         val wifiLp2 = lp(WIFI_IFNAME, IPV4_ADDRESS_2)
         wifiAgent.sendLinkProperties(wifiLp2)
         cb.expect<LinkPropertiesChanged>(wifiAgent.network)
 
-        // As both stacked links is had same prefix, 10.0.0.0/8 should not be removed from
-        // local_net_access map.
-        verifyNeverRemovedFromLocal(IpPrefix("10.0.0.0/8"))
+        // Check that the old prefix is removed and the new one is added.
+        verifyRemovedFromLocal(IPV4_PREFIX_1)
+        verifyAddedToLocal(IPV4_PREFIX_2)
     }
 
     @Test
@@ -427,8 +418,8 @@ class CSLocalNetworkProtectionTest : CSTest() {
         // Multicast and Broadcast address should be populated in local_net_access map for
         // new interface
         verifyPopulationOfMulticastAndBroadcastAddress(WIFI_IFNAME_2)
-        // Verifying IPv4 matching prefix(10.0.0.0/8) should be populated in local_net_access map
-        verifyAddedToLocal(IpPrefix("10.0.0.0/8"), WIFI_IFNAME_2)
+        // Verifying IPv4 matching prefix should be populated in local_net_access map
+        verifyAddedToLocal(IPV4_PREFIX_1, WIFI_IFNAME_2)
         // Multicast and Broadcast address should be removed in local_net_access map for
         // old interface
         verifyRemovalOfMulticastAndBroadcastAddress()
@@ -459,8 +450,8 @@ class CSLocalNetworkProtectionTest : CSTest() {
 
         // Multicast and Broadcast address should always be populated in local_net_access map
         verifyPopulationOfMulticastAndBroadcastAddress(WIFI_IFNAME_2)
-        // Verifying IPv4 matching prefix(10.0.0.0/8) should be populated in local_net_access map
-        verifyAddedToLocal(IpPrefix("10.0.0.0/8"), WIFI_IFNAME_2)
+        // Verifying IPv4 matching prefix should be populated in local_net_access map
+        verifyAddedToLocal(IPV4_PREFIX_1, WIFI_IFNAME_2)
         // Verifying nothing should be removed from local_net_access map
         verifyNothingRemovedFromLocal()
     }
@@ -627,6 +618,7 @@ class CSLocalNetworkProtectionTest : CSTest() {
 
         verifyAddedToLocal(IpPrefix("2001:db8:a:b::/64"), VPN_IFNAME)
         verifyNeverAddedToLocal(IpPrefix("2001:db8::/32"), VPN_IFNAME)
-        verifyAddedToLocal(IpPrefix("10.0.0.0/8"), VPN_IFNAME)
+        verifyAddedToLocal(IpPrefix("10.1.2.0/24"), VPN_IFNAME)
+        verifyNeverAddedToLocal(IpPrefix("10.0.0.0/8"), VPN_IFNAME)
     }
 }

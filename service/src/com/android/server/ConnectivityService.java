@@ -10879,10 +10879,10 @@ public class ConnectivityService extends IConnectivityManager.Stub
         // Get the on-link prefixes for all addresses on the link.
         final Set<IpPrefix> prefixes = new ArraySet<>();
         for (LinkAddress linkAddress : lp.getLinkAddresses()) {
-            IpPrefix prefix = getLocalNetworkPrefixForAddress(linkAddress.getAddress(),
+            final IpPrefix onlinkPrefix = new IpPrefix(linkAddress.getAddress(),
                     linkAddress.getPrefixLength());
-            if (prefix != null) {
-                prefixes.add(prefix);
+            if (isPrefixLocal(onlinkPrefix)) {
+                prefixes.add(onlinkPrefix);
             }
         }
 
@@ -10985,31 +10985,19 @@ public class ConnectivityService extends IConnectivityManager.Stub
     }
 
     /**
-     * Gets the local network prefix, if any, corresponding to the specified prefix.
-     * @param prefix address used for filtering
-     * @param prefixLength prefix length of address
-     * @return IpPrefix that is local address.
+     * @return whether a prefix is local for the purposes of Local Network Protection.
      */
-    // TODO: just return a boolean that specifies whether the prefix is local.
-    @Nullable
-    public static IpPrefix getLocalNetworkPrefixForAddress(InetAddress prefix,
-            int prefixLength) {
-        if (prefix instanceof Inet6Address) {
-            // For IPv6, if the prefix length is greater than zero then they are part of local
-            // network
-            if (prefixLength != 0) {
-                return new IpPrefix(prefix, prefixLength);
-            }
-        } else {
-            // For IPv4, if the linkAddress is part of IpPrefix adding prefix to result.
-            for (IpPrefix ipv4LocalPrefix : IPV4_LOCAL_PREFIXES) {
-                if (ipv4LocalPrefix.containsPrefix(new IpPrefix(prefix, prefixLength))) {
-                    // TODO: return prefix instead.
-                    return ipv4LocalPrefix;
-                }
+    private static boolean isPrefixLocal(IpPrefix prefix) {
+        if (prefix.getAddress() instanceof Inet6Address) {
+            return prefix.getPrefixLength() != 0;
+        }
+
+        for (IpPrefix ipv4LocalPrefix : IPV4_LOCAL_PREFIXES) {
+            if (ipv4LocalPrefix.containsPrefix(prefix)) {
+                return true;
             }
         }
-        return null;
+        return false;
     }
 
     /**
@@ -11211,8 +11199,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
         // local routes to be added to.
         if (netId == LOCAL_NET_ID) return false;
         IpPrefix routeDestination = new IpPrefix(route.destination);
-        return getLocalNetworkPrefixForAddress(routeDestination.getAddress(),
-                routeDestination.getPrefixLength()) != null;
+        return isPrefixLocal(routeDestination);
     }
 
     private void updateVpnFiltering(@NonNull LinkProperties newLp, @Nullable LinkProperties oldLp,
