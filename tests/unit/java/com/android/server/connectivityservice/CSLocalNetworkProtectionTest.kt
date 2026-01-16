@@ -625,8 +625,8 @@ class CSLocalNetworkProtectionTest : CSTest() {
         vpnAgent.connect()
         cb.expectAvailableCallbacks(vpnAgent.network, validated = false)
 
-        // BUG: should only add 2001:db8:a:b::/64.
-        verifyAddedToLocal(IpPrefix("2001:db8::/32"), VPN_IFNAME)
+        verifyAddedToLocal(IpPrefix("2001:db8:a:b::/64"), VPN_IFNAME)
+        verifyNeverAddedToLocal(IpPrefix("2001:db8::/32"), VPN_IFNAME)
         verifyAddedToLocal(IpPrefix("10.0.0.0/8"), VPN_IFNAME)
     }
 }
