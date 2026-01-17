@@ -1260,7 +1260,12 @@ static inline __always_inline int inet_getsockopt(struct bpf_sockopt *ctx,
     return BPF_ALLOW;
 }
 
-DEFINE_NETD_V_BPF_PROG_KVER(getsockopt, prog, 5_10, 5_10)
+DEFINE_NETD_V_BPF_PROG_KVER(getsockopt, prog, 6_1, 6_1)
+(struct bpf_sockopt *ctx) {
+    return inet_getsockopt(ctx, KVER_6_1);
+}
+
+DEFINE_NETD_V_BPF_PROG_KVER_RANGE(getsockopt, prog, 5_10, 5_10, 6_1)
 (struct bpf_sockopt *ctx) {
     return inet_getsockopt(ctx, KVER_5_10);
 }
