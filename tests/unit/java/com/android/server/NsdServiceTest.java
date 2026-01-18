@@ -192,6 +192,10 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 // TODOs:
 //  - test client can send requests and receive replies
@@ -2846,7 +2850,7 @@ public class NsdServiceTest {
         return offloadEngine;
     }
 
-    private OffloadSession registerOffloadSession(
+    private void registerOffloadEngine(
             String interfaceName,
             OffloadEngine offloadEngine,
             @OffloadEngine.OffloadType long offloadType
@@ -2854,12 +2858,11 @@ public class NsdServiceTest {
         final NsdManager client = connectClient(mService);
         doReturn(PERMISSION_GRANTED).when(mContext).checkCallingOrSelfPermission(
                 REGISTER_NSD_OFFLOAD_ENGINE);
-        OffloadSession offloadSession = client.registerOffloadSession(interfaceName,
+        client.registerOffloadEngine(interfaceName,
                 offloadType,
                 OFFLOAD_CAPABILITY_BYPASS_MULTICAST_LOCK, Runnable::run,
                 offloadEngine);
         waitForIdle();
-        return offloadSession;
     }
 
     @Test
@@ -2966,8 +2969,7 @@ public class NsdServiceTest {
                 );
         doReturn(List.of(discoveryOffloadInfo)).when(mDiscoveryManager)
                 .notifyOffloadStart(eq(interfaceName));
-        final OffloadEngine offloadEngine = mock(OffloadEngine.class);
-        registerOffloadSession(interfaceName, offloadEngine, offloadType);
+        final OffloadEngine offloadEngine = registerOffloadEngine(interfaceName, offloadType);
         // Verify that the OffloadServiceInfo retrieves from the advertiser and discoveryManager and
         // then sends it to the OffloadEngine.
         verify(mAdvertiser).notifyOffloadStart(interfaceName);
@@ -2977,18 +2979,38 @@ public class NsdServiceTest {
 
     @Test
     @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-    public void testInjectProxyOffloadEngineResponse() {
+    public void testInjectProxyOffloadEngineResponse()
+            throws ExecutionException, InterruptedException, TimeoutException {
         NsdServiceInfo serviceInfo = new NsdServiceInfo(SERVICE_NAME, SERVICE_TYPE + ".");
         boolean isServiceLost = false;
         String interfaceName = "lo";
-        final OffloadEngine offloadEngine = mock(OffloadEngine.class);
-        OffloadSession offloadSession = registerOffloadSession(
+        final CompletableFuture<OffloadSession> sessionFuture = new CompletableFuture<>();
+
+
+        OffloadEngine offloadEngine = new OffloadEngine() {
+            @Override
+            public void onOffloadServiceUpdated(@NonNull OffloadServiceInfo info) {
+
+            }
+
+            @Override
+            public void onOffloadServiceRemoved(@NonNull OffloadServiceInfo info) {
+
+            }
+
+            @Override
+            public void onOffloadSessionCreated(@NonNull OffloadSession offloadSession) {
+                sessionFuture.complete(offloadSession);
+            }
+        };
+        registerOffloadEngine(
                 interfaceName,
                 offloadEngine,
                 OFFLOAD_TYPE_QUERY
         );
 
-        offloadSession.onServiceFound(serviceInfo);
+        OffloadSession offloadSession = sessionFuture.get(TIMEOUT_MS, TimeUnit.MILLISECONDS);
+        offloadSession.notifyServiceFound(serviceInfo);
 
         ArgumentCaptor<NsdServiceInfo> serviceInfoCaptor =
                 ArgumentCaptor.forClass(NsdServiceInfo.class);
@@ -3073,10 +3095,8 @@ public class NsdServiceTest {
                 OFFLOAD_TYPE_FILTER_REPLIES | OFFLOAD_TYPE_QUERY);
         doReturn(Collections.emptyList()).when(mDiscoveryManager)
                 .notifyOffloadStart(eq(interfaceName));
-        final OffloadEngine offloadEngine = mock(OffloadEngine.class);
-        registerOffloadSession(
+        final OffloadEngine offloadEngine = registerOffloadEngine(
                 interfaceName,
-                offloadEngine,
                 OFFLOAD_TYPE_FILTER_REPLIES | OFFLOAD_TYPE_QUERY
         );
         // Verify that the OffloadServiceInfo retrieved from the DiscoveryManager and that no info
