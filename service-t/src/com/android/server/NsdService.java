@@ -47,8 +47,11 @@ import static android.provider.DeviceConfig.NAMESPACE_TETHERING;
 
 import static com.android.modules.utils.build.SdkLevel.isAtLeastB;
 import static com.android.modules.utils.build.SdkLevel.isAtLeastU;
+import static com.android.net.module.util.DnsUtils.toDnsUpperCase;
 import static com.android.net.module.util.PermissionUtils.enforcePackageNameMatchesUid;
 import static com.android.networkstack.apishim.ConstantsShim.REGISTER_NSD_OFFLOAD_ENGINE;
+import static com.android.server.ConnectivityStatsLog.CORE_NETWORKING_CRITICAL_COUNTS_EVENT_OCCURRED;
+import static com.android.server.ConnectivityStatsLog.CORE_NETWORKING_CRITICAL_COUNTS_EVENT_OCCURRED__EVENT_TYPE__CRITICAL_COUNTS_EVENT_TYPE_INVALID_SERVICE_TYPE_FROM_NSD_PICKER;
 import static com.android.server.connectivity.mdns.MdnsAdvertiser.AdvertiserMetrics;
 import static com.android.server.connectivity.mdns.MdnsConstants.NO_PACKET;
 import static com.android.server.connectivity.mdns.MdnsConstants.NO_SERVICE_REMOVED;
@@ -104,6 +107,7 @@ import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.Message;
+import android.os.PatternMatcher;
 import android.os.Process;
 import android.os.RemoteCallbackList;
 import android.os.RemoteException;
@@ -125,7 +129,6 @@ import com.android.metrics.NetworkNsdReportedMetrics;
 import com.android.modules.utils.build.SdkLevel;
 import com.android.net.module.util.CollectionUtils;
 import com.android.net.module.util.DeviceConfigUtils;
-import com.android.net.module.util.DnsUtils;
 import com.android.net.module.util.HandlerUtils;
 import com.android.net.module.util.InetAddressUtils;
 import com.android.net.module.util.PermissionUtils;
@@ -505,6 +508,14 @@ public class NsdService extends INsdManager.Stub {
         public void onServiceNameDiscovered(@NonNull MdnsServiceInfo serviceInfo,
                 boolean isServiceFromCache) {
             mHandler.post(() -> {
+                final DiscoveryManagerRequest request = getRequest();
+                if (request == null) {
+                    // The request was unregistered, no need to update the picker
+                    return;
+                }
+                if (isServiceFilteredOut(serviceInfo, request.mDiscoveryRequest)) {
+                    return;
+                }
                 recordEventMetric(serviceInfo, NsdManager.SERVICE_FOUND, isServiceFromCache,
                         NO_SERVICE_REMOVED);
                 handleServiceNameDiscoveredOrRemoved(serviceInfo, NsdManager.SERVICE_FOUND);
@@ -515,6 +526,14 @@ public class NsdService extends INsdManager.Stub {
         public void onServiceNameRemoved(@NonNull MdnsServiceInfo serviceInfo,
                 int serviceRemovedReason) {
             mHandler.post(() -> {
+                final DiscoveryManagerRequest request = getRequest();
+                if (request == null) {
+                    // The request was unregistered, no need to update the picker
+                    return;
+                }
+                if (isServiceFilteredOut(serviceInfo, request.mDiscoveryRequest)) {
+                    return;
+                }
                 recordEventMetric(serviceInfo, NsdManager.SERVICE_LOST,
                         /* isServiceFromCache=*/false, serviceRemovedReason);
                 handleServiceNameDiscoveredOrRemoved(serviceInfo, NsdManager.SERVICE_LOST);
@@ -590,8 +609,21 @@ public class NsdService extends INsdManager.Stub {
                 Log.d(TAG, "Client request unregistered, ignoring selected service");
                 return;
             }
+            final String serviceType = service.getServiceType();
+            // Service types from discovery have an extra dot at the end
+            if (!serviceType.endsWith(".")) {
+                Log.wtf(TAG, "Invalid service type format (expected dot suffix), ignoring");
+                ConnectivityStatsLog.write_non_chained(
+                        CORE_NETWORKING_CRITICAL_COUNTS_EVENT_OCCURRED,
+                        mClientInfo.mUid,
+                        null,
+                        CORE_NETWORKING_CRITICAL_COUNTS_EVENT_OCCURRED__EVENT_TYPE__CRITICAL_COUNTS_EVENT_TYPE_INVALID_SERVICE_TYPE_FROM_NSD_PICKER,
+                        1);
+                return;
+            }
+            final String serviceTypeNoDot = serviceType.substring(0, serviceType.length() - 1);
             mAccessRepository.addAllowedService(mClientInfo.mUid, service.getServiceName(),
-                    service.getServiceType());
+                    serviceTypeNoDot);
             mClientInfo.log("Service selected for request " + mClientRequestId + ": " + service);
             // Metrics are already recorded when the service was discovered; only call the
             // client callbacks without recording metrics.
@@ -611,8 +643,8 @@ public class NsdService extends INsdManager.Stub {
             }
         }
 
-        private ClientRequest getRequest() {
-            return mClientInfo.mClientRequests.get(mClientRequestId);
+        private DiscoveryManagerRequest getRequest() {
+            return (DiscoveryManagerRequest) mClientInfo.mClientRequests.get(mClientRequestId);
         }
 
         @NonNull
@@ -748,6 +780,23 @@ public class NsdService extends INsdManager.Stub {
         if (modified) {
             updateMulticastLock();
         }
+    }
+
+    private boolean isServiceFilteredOut(@NonNull MdnsServiceInfo service,
+            @NonNull DiscoveryRequest request) {
+        if (request.getServiceNameFilter() != null) {
+            // PatternMatcher glob tokens/modifiers do not include any character that would be
+            // changed by toDnsUpperCase, so toDnsUpperCase can be applied to the pattern to make it
+            // match an uppercase service name
+            final PatternMatcher uppercaseMatcher = new PatternMatcher(
+                    toDnsUpperCase(request.getServiceNameFilter().getPath()),
+                    request.getServiceNameFilter().getType());
+            if (!uppercaseMatcher.match(toDnsUpperCase(service.getServiceInstanceName()))) {
+                return true;
+            }
+        }
+        // TODO: check for other properties here
+        return false;
     }
 
     /**
@@ -1023,9 +1072,11 @@ public class NsdService extends INsdManager.Stub {
 
     private ClientRequest storeDiscoveryManagerRequestMap(int clientRequestId,
             int transactionId, MdnsListener listener, ClientInfo clientInfo,
-            @Nullable Network requestedNetwork, boolean usingPermissionExemption) {
+            @Nullable Network requestedNetwork, boolean usingPermissionExemption,
+            @Nullable DiscoveryRequest discoveryRequest) {
         final DiscoveryManagerRequest request = new DiscoveryManagerRequest(transactionId,
-                listener, requestedNetwork, mClock.elapsedRealtime(), usingPermissionExemption);
+                listener, requestedNetwork, mClock.elapsedRealtime(), usingPermissionExemption,
+                discoveryRequest);
         clientInfo.mClientRequests.put(clientRequestId, request);
         mTransactionIdToClientInfoMap.put(transactionId, clientInfo);
         updateMulticastLock();
@@ -1079,7 +1130,7 @@ public class NsdService extends INsdManager.Stub {
     private Set<String> dedupSubtypeLabels(Collection<String> subtypes) {
         final Map<String, String> subtypeMap = new LinkedHashMap<>(subtypes.size());
         for (String subtype : subtypes) {
-            subtypeMap.put(DnsUtils.toDnsUpperCase(subtype), subtype);
+            subtypeMap.put(toDnsUpperCase(subtype), subtype);
         }
         return new ArraySet<>(subtypeMap.values());
     }
@@ -1263,7 +1314,8 @@ public class NsdService extends INsdManager.Stub {
                 clientInfo.log("Register a PickerListener " + transactionId
                         + " for service type:" + listenServiceType);
             } else {
-                listener = new DiscoveryListener(clientRequestId, transactionId, listenServiceType);
+                listener = new DiscoveryListener(clientRequestId, transactionId, listenServiceType
+                );
                 clientInfo.log("Register a DiscoveryListener " + transactionId
                         + " for service type:" + listenServiceType);
             }
@@ -1284,7 +1336,8 @@ public class NsdService extends INsdManager.Stub {
                     listenServiceType, listener, optionsBuilder.build());
             final ClientRequest clientRequest = storeDiscoveryManagerRequestMap(
                     clientRequestId, transactionId, listener, clientInfo,
-                    discoveryRequest.getNetwork(), usingFallbackPermission);
+                    discoveryRequest.getNetwork(), usingFallbackPermission,
+                    discoveryRequest);
             clientInfo.onDiscoverServicesStarted(clientRequestId, discoveryRequest, clientRequest);
         } else {
             maybeStartDaemon();
@@ -1643,7 +1696,8 @@ public class NsdService extends INsdManager.Stub {
         mMdnsDiscoveryManager.registerListener(
                 resolveServiceType, listener, options);
         storeDiscoveryManagerRequestMap(clientRequestId, transactionId,
-                listener, clientInfo, info.getNetwork(), usingPermissionExemption);
+                listener, clientInfo, info.getNetwork(), usingPermissionExemption,
+                /* discoveryRequest= */null);
         clientInfo.log("Register a ResolutionListener " + transactionId
                 + " for service type:" + resolveServiceType);
     }
@@ -1764,7 +1818,8 @@ public class NsdService extends INsdManager.Stub {
                 .build();
         mMdnsDiscoveryManager.registerListener(resolveServiceType, listener, options);
         storeDiscoveryManagerRequestMap(clientRequestId, transactionId, listener,
-                clientInfo, info.getNetwork(), usingPermissionExemption);
+                clientInfo, info.getNetwork(), usingPermissionExemption,
+                /* discoveryRequest= */null);
         clientInfo.onServiceInfoCallbackRegistered(transactionId);
         clientInfo.log("Register a ServiceInfoListener " + transactionId
                 + " for service type:" + resolveServiceType);
@@ -2188,34 +2243,42 @@ public class NsdService extends INsdManager.Stub {
         return servInfo;
     }
 
-    private boolean handleMdnsDiscoveryManagerEvent(
+    private void handleMdnsDiscoveryManagerEvent(
             int transactionId, int code, Object obj) {
         final ClientInfo clientInfo = mTransactionIdToClientInfoMap.get(transactionId);
         if (clientInfo == null) {
             Log.e(TAG, String.format(
                     "id %d for %d has no client mapping", transactionId, code));
-            return false;
+            return;
         }
 
         final MdnsEvent event = (MdnsEvent) obj;
         final int clientRequestId = event.mClientRequestId;
         final ClientRequest request = clientInfo.mClientRequests.get(clientRequestId);
-        if (request == null) {
-            Log.e(TAG, "Unknown client request. clientRequestId=" + clientRequestId);
-            return false;
+        if (!(request instanceof DiscoveryManagerRequest)) {
+            Log.e(TAG, "Unknown or invalid client request. clientRequestId=" + clientRequestId);
+            return;
         }
 
         // Deal with the discovery sent callback
         if (code == DISCOVERY_QUERY_SENT_CALLBACK) {
             request.onQuerySent();
-            return true;
+            return;
+        }
+
+        final DiscoveryRequest discReq = ((DiscoveryManagerRequest) request).mDiscoveryRequest;
+        if (discReq != null && isServiceFilteredOut(event.mMdnsServiceInfo, discReq)) {
+            if (DBG) {
+                Log.d(TAG, "Service " + event.mMdnsServiceInfo + " filtered out for " + discReq);
+            }
+            return;
         }
 
         // Deal with other callbacks.
         final NsdServiceInfo info = buildNsdServiceInfoFromMdnsEvent(event.mMdnsServiceInfo,
                 code, clientInfo);
         // Errors are already logged if null
-        if (info == null) return false;
+        if (info == null) return;
         mServiceLogs.log(String.format(
                 "MdnsDiscoveryManager event code=%s transactionId=%d",
                 NsdManager.nameOf(code), transactionId));
@@ -2233,11 +2296,7 @@ public class NsdService extends INsdManager.Stub {
                     info, event);
             case NsdManager.SERVICE_UPDATED_LOST -> handleDiscoveryManagerServiceUpdatedLost(
                     clientInfo, clientRequestId, request, event.mServiceRemovedReason);
-            default -> {
-                return false;
-            }
         }
-        return true;
     }
 
     private void handleDiscoveryManagerServiceFound(ClientInfo clientInfo,
@@ -3693,12 +3752,16 @@ public class NsdService extends INsdManager.Stub {
     private static class DiscoveryManagerRequest extends JavaBackendClientRequest {
         @NonNull
         private final MdnsListener mListener;
+        // Only set for discovery requests, not for resolve / serviceInfoCallback
+        @Nullable
+        private final DiscoveryRequest mDiscoveryRequest;
 
         private DiscoveryManagerRequest(int transactionId, @NonNull MdnsListener listener,
                 @Nullable Network requestedNetwork, long startTimeMs,
-                boolean usingPermissionExemption) {
+                boolean usingPermissionExemption, DiscoveryRequest discoveryRequest) {
             super(transactionId, requestedNetwork, startTimeMs, usingPermissionExemption);
             mListener = listener;
+            mDiscoveryRequest = discoveryRequest;
         }
 
         @NonNull
