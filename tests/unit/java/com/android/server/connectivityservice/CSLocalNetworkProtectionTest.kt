@@ -36,6 +36,7 @@ import com.android.testutils.DevSdkIgnoreRunner
 import com.android.testutils.TestableNetworkCallback
 import com.android.testutils.TestableNetworkCallback.Event.LinkPropertiesChanged
 import com.android.testutils.TestableNetworkCallback.Event.Lost
+import java.net.Inet6Address
 import java.net.InetAddress
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -89,6 +90,7 @@ private fun nr(transport: Int) = NetworkRequest.Builder()
             }
         }.build()
 
+
 @DevSdkIgnoreRunner.MonitorThreadLeak
 @RunWith(DevSdkIgnoreRunner::class)
 @SmallTest
@@ -105,15 +107,56 @@ class CSLocalNetworkProtectionTest : CSTest() {
     private val IPV6_HOME_PREFIX_2 = IpPrefix("2001:db8:1:a00::/56")
     private val IPV6_DEFAULT_ROUTE_PREFIX = IpPrefix("::/0")
 
-    private val IPV4_PREFIX_1 = IpPrefix("10.0.0.0/24")
     private val IPV4_ADDRESS_1 = LinkAddress("10.0.0.184/24")
     private val IPV4_ADDRESS_2 = LinkAddress("10.0.255.184/24")
     private val IPV4_ADDRESS_3 = LinkAddress("10.255.255.184/24")
     private val IPV4_COVERING_PREFIX = IpPrefix("10.255.0.0/16")
     private val IPV4_DEFAULT_ROUTE_PREFIX = IpPrefix("0.0.0.0/0")
 
+    private fun triePrefixLength(prefix: IpPrefix) = if (prefix.address is Inet6Address)
+                prefix.prefixLength + PREFIX_LENGTH_IPV6
+            else
+                prefix.prefixLength + PREFIX_LENGTH_IPV4
+    private fun verifyAddedToLocal(prefix: IpPrefix, iface: String = WIFI_IFNAME) {
+        verify(bpfNetMaps).addLocalNetAccess(triePrefixLength(prefix), iface,
+            prefix.address, 0 /* protocol */, 0 /* remoteport */, false)
+    }
+
+    private fun verifyNeverAddedToLocal(prefix: IpPrefix, iface: String = WIFI_IFNAME) =
+        verify(bpfNetMaps, never()).addLocalNetAccess(triePrefixLength(prefix),
+            iface, prefix.address, 0 /* protocol */, 0 /* remoteport */, false)
+
+    private fun verifyRemovedFromLocal(prefix: IpPrefix, iface: String) {
+        verify(bpfNetMaps).removeLocalNetAccess(triePrefixLength(prefix), iface,
+            prefix.address, 0 /* protocol */, 0 /* remoteport */)
+
+    }
+
+    private fun verifyNeverRemovedFromLocal(prefix: IpPrefix, iface: String = WIFI_IFNAME) =
+        verify(bpfNetMaps, never()).removeLocalNetAccess(triePrefixLength(prefix),
+            iface, prefix.address, 0 /* protocol */, 0 /* remoteport */)
+
+    private fun verifyNothingRemovedFromLocal() {
+        verify(bpfNetMaps,never()).removeLocalNetAccess(anyInt(), anyString(),
+            any(InetAddress::class.java), anyInt(), anyInt())
+    }
+
+    // Verify if multicast and broadcast addresses have been added using addLocalNetAccess
+    fun verifyPopulationOfMulticastAndBroadcastAddress(iface: String = WIFI_IFNAME) {
+        verifyAddedToLocal(IpPrefix("224.0.0.0/4"), iface)
+        verifyAddedToLocal(IpPrefix("ff00::/8"), iface)
+        verifyAddedToLocal(IpPrefix("255.255.255.255/32"), iface)
+    }
+
+    // Verify if multicast and broadcast addresses have been removed using removeLocalNetAccess
+    fun verifyRemovalOfMulticastAndBroadcastAddress(iface: String = WIFI_IFNAME) {
+        verifyRemovedFromLocal(IpPrefix("224.0.0.0/4"), iface)
+        verifyRemovedFromLocal(IpPrefix("ff00::/8"), iface)
+        verifyRemovedFromLocal(IpPrefix("255.255.255.255/32"), iface)
+    }
+
     @Test
-    fun testNetworkWithIPv6LocalAddress_AddressAddedToBpfMap() {
+    fun testNetworkWithLinkLocalAddress_AddressAddedToBpfMap() {
         val nr = nr(TRANSPORT_WIFI)
         val cb = TestableNetworkCallback()
         cm.requestNetwork(nr, cb)
@@ -127,18 +170,11 @@ class CSLocalNetworkProtectionTest : CSTest() {
         // Multicast and Broadcast address should always be populated in local_net_access map
         verifyPopulationOfMulticastAndBroadcastAddress()
         // Verifying IPv6 address should be populated in local_net_access map
-        verify(bpfNetMaps).addLocalNetAccess(
-            eq(PREFIX_LENGTH_IPV6 + LINK_LOCAL_PREFIX.getPrefixLength()),
-            eq(WIFI_IFNAME),
-            eq(LINK_LOCAL_PREFIX.getAddress()),
-            eq(0),
-            eq(0),
-            eq(false)
-        )
+        verifyAddedToLocal(LINK_LOCAL_PREFIX, WIFI_IFNAME)
     }
 
     @Test
-    fun testNetworkWithIPv4LocalAddress_AddressAddedToBpfMap() {
+    fun testNetworkWithIPv4Address_AddressAddedToBpfMap() {
         val nr = nr(TRANSPORT_WIFI)
         val cb = TestableNetworkCallback()
         cm.requestNetwork(nr, cb)
@@ -152,14 +188,7 @@ class CSLocalNetworkProtectionTest : CSTest() {
         verifyPopulationOfMulticastAndBroadcastAddress()
 
         // Verifying IPv4 matching prefix(10.0.0.0/8) should be populated in local_net_access map
-        verify(bpfNetMaps).addLocalNetAccess(
-            eq(PREFIX_LENGTH_IPV4 + 8),
-            eq(WIFI_IFNAME),
-            eq(InetAddresses.parseNumericAddress("10.0.0.0")),
-            eq(0),
-            eq(0),
-            eq(false)
-        )
+        verifyAddedToLocal(IpPrefix("10.0.0.0/8"))
     }
 
     @Test
@@ -168,6 +197,8 @@ class CSLocalNetworkProtectionTest : CSTest() {
         val cb = TestableNetworkCallback()
         cm.requestNetwork(nr, cb)
 
+        // This can't really happen, since there is no way to create an IPv4 route pointed directly
+        // at an interface without a nexthop.  Still, arguably it should work.
         val routes = listOf(RouteInfo(
             IPV4_COVERING_PREFIX,
             null,
@@ -186,14 +217,7 @@ class CSLocalNetworkProtectionTest : CSTest() {
         verifyPopulationOfMulticastAndBroadcastAddress()
 
         // Verifying IPv4 matching prefix(10.0.0.0/8) should be populated in local_net_access map
-        verify(bpfNetMaps).addLocalNetAccess(
-            eq(PREFIX_LENGTH_IPV4 + 8),
-            eq(WIFI_IFNAME),
-            eq(InetAddresses.parseNumericAddress("10.0.0.0")),
-            eq(0),
-            eq(0),
-            eq(false)
-        )
+        verifyAddedToLocal(IpPrefix("10.0.0.0/8"))
     }
 
     @Test
@@ -220,14 +244,7 @@ class CSLocalNetworkProtectionTest : CSTest() {
         verifyPopulationOfMulticastAndBroadcastAddress()
 
         // Verifying default route(0.0.0.0/0) should not be populated in local_net_access map
-        verify(bpfNetMaps, never()).addLocalNetAccess(
-                eq(PREFIX_LENGTH_IPV4),
-                eq(WIFI_IFNAME),
-                eq(IPV4_DEFAULT_ROUTE_PREFIX.address),
-                eq(0),
-                eq(0),
-                eq(false)
-        )
+        verifyNeverAddedToLocal(IpPrefix("0.0.0.0/0"))
     }
 
     @Test
@@ -244,14 +261,7 @@ class CSLocalNetworkProtectionTest : CSTest() {
         // Multicast and Broadcast address should always be populated in local_net_access map
         verifyPopulationOfMulticastAndBroadcastAddress()
         // Verifying IPv6 address should be populated in local_net_access map
-        verify(bpfNetMaps).addLocalNetAccess(
-            eq(PREFIX_LENGTH_IPV6 + LINK_LOCAL_PREFIX.getPrefixLength()),
-            eq(WIFI_IFNAME),
-            eq(LINK_LOCAL_PREFIX.getAddress()),
-            eq(0),
-            eq(0),
-            eq(false)
-        )
+        verifyAddedToLocal(LINK_LOCAL_PREFIX, WIFI_IFNAME)
 
         // Updating Link Property from IPv6 in Link Address to IPv4 in Link Address
         val wifiLp2 = lp(WIFI_IFNAME, IPV4_ADDRESS_1)
@@ -259,22 +269,9 @@ class CSLocalNetworkProtectionTest : CSTest() {
         cb.expect<LinkPropertiesChanged>(wifiAgent.network)
 
         // Verifying IPv4 matching prefix(10.0.0.0/8) should be populated in local_net_access map
-        verify(bpfNetMaps).addLocalNetAccess(
-            eq(PREFIX_LENGTH_IPV4 + 8),
-            eq(WIFI_IFNAME),
-            eq(InetAddresses.parseNumericAddress("10.0.0.0")),
-            eq(0),
-            eq(0),
-            eq(false)
-        )
+        verifyAddedToLocal(IpPrefix("10.0.0.0/8"))
         // Verifying IPv6 address should be removed from local_net_access map
-        verify(bpfNetMaps).removeLocalNetAccess(
-            eq(PREFIX_LENGTH_IPV6 + LINK_LOCAL_PREFIX.getPrefixLength()),
-            eq(WIFI_IFNAME),
-            eq(LINK_LOCAL_PREFIX.getAddress()),
-            eq(0),
-            eq(0)
-        )
+        verifyRemovedFromLocal(LINK_LOCAL_PREFIX, WIFI_IFNAME)
     }
 
     @Test
@@ -294,39 +291,16 @@ class CSLocalNetworkProtectionTest : CSTest() {
         // Multicast and Broadcast address should always be populated in local_net_access map
         verifyPopulationOfMulticastAndBroadcastAddress()
         // Verifying IPv6 address should be populated in local_net_access map
-        verify(bpfNetMaps).addLocalNetAccess(
-                eq(PREFIX_LENGTH_IPV6 + LINK_LOCAL_PREFIX.getPrefixLength()),
-                eq(WIFI_IFNAME),
-                eq(LINK_LOCAL_PREFIX.getAddress()),
-                eq(0),
-                eq(0),
-                eq(false)
-        )
+        verifyAddedToLocal(LINK_LOCAL_PREFIX)
 
         // Multicast and Broadcast address should always be populated on stacked link
         // in local_net_access map
         verifyPopulationOfMulticastAndBroadcastAddress(WIFI_IFNAME_2)
         // Verifying IPv4 matching prefix(10.0.0.0/8) should be populated as part of stacked link
         // in local_net_access map
-        verify(bpfNetMaps).addLocalNetAccess(
-                eq(PREFIX_LENGTH_IPV4 + 8),
-                eq(WIFI_IFNAME_2),
-                eq(InetAddresses.parseNumericAddress("10.0.0.0")),
-                eq(0),
-                eq(0),
-                eq(false)
-        )
+        verifyAddedToLocal(IpPrefix("10.0.0.0/8"), WIFI_IFNAME_2)
         // As both addresses are in stacked links, so no address should be removed from the map.
-        verify(
-            bpfNetMaps,
-            never()
-        ).removeLocalNetAccess(
-            anyInt(),
-            anyString(),
-            any(InetAddress::class.java),
-            anyInt(),
-            anyInt()
-        )
+        verifyNothingRemovedFromLocal()
 
         // replacing link properties without stacked links
         val wifiLp_3 = lp(WIFI_IFNAME, LINK_LOCAL_ADDRESS)
@@ -334,13 +308,7 @@ class CSLocalNetworkProtectionTest : CSTest() {
         cb.expect<LinkPropertiesChanged>(wifiAgent.network)
 
         // As both stacked links is removed, 10.0.0.0/8 should be removed from local_net_access map.
-        verify(bpfNetMaps).removeLocalNetAccess(
-                eq(PREFIX_LENGTH_IPV4 + 8),
-                eq(WIFI_IFNAME_2),
-                eq(InetAddresses.parseNumericAddress("10.0.0.0")),
-                eq(0),
-                eq(0)
-        )
+        verifyRemovedFromLocal(IpPrefix("10.0.0.0/8"), WIFI_IFNAME_2)
     }
 
     @Test
@@ -360,39 +328,16 @@ class CSLocalNetworkProtectionTest : CSTest() {
         // Multicast and Broadcast address should always be populated in local_net_access map
         verifyPopulationOfMulticastAndBroadcastAddress()
         // Verifying IPv6 address should be populated in local_net_access map
-        verify(bpfNetMaps).addLocalNetAccess(
-                eq(PREFIX_LENGTH_IPV6 + LINK_LOCAL_PREFIX.getPrefixLength()),
-                eq(WIFI_IFNAME),
-                eq(LINK_LOCAL_PREFIX.getAddress()),
-                eq(0),
-                eq(0),
-                eq(false)
-        )
+        verifyAddedToLocal(LINK_LOCAL_PREFIX, WIFI_IFNAME)
 
         // Multicast and Broadcast address should always be populated on stacked link
         // in local_net_access map
         verifyPopulationOfMulticastAndBroadcastAddress(WIFI_IFNAME_2)
         // Verifying IPv4 matching prefix(10.0.0.0/8) should be populated as part of stacked link
         // in local_net_access map
-        verify(bpfNetMaps).addLocalNetAccess(
-                eq(PREFIX_LENGTH_IPV4 + 8),
-                eq(WIFI_IFNAME_2),
-                eq(InetAddresses.parseNumericAddress("10.0.0.0")),
-                eq(0),
-                eq(0),
-                eq(false)
-        )
+        verifyAddedToLocal(IpPrefix("10.0.0.0/8"), WIFI_IFNAME_2)
         // As both addresses are in stacked links, so no address should be removed from the map.
-        verify(
-            bpfNetMaps,
-            never()
-        ).removeLocalNetAccess(
-            anyInt(),
-            anyString(),
-            any(InetAddress::class.java),
-            anyInt(),
-            anyInt()
-        )
+        verifyNothingRemovedFromLocal()
 
         // replacing link properties multiple stacked links
         val wifiLp_3 = lp(WIFI_IFNAME, IPV6_GLOBAL_ADDRESS)
@@ -407,50 +352,24 @@ class CSLocalNetworkProtectionTest : CSTest() {
         // in local_net_access map
         verifyPopulationOfMulticastAndBroadcastAddress(WIFI_IFNAME_3)
         // Verifying new base IPv6 address should be populated in local_net_access map
-        verify(bpfNetMaps).addLocalNetAccess(
-                eq(PREFIX_LENGTH_IPV6 + IPV6_ONLINK_PREFIX.getPrefixLength()),
-                eq(WIFI_IFNAME),
-                eq(IPV6_ONLINK_PREFIX.getAddress()),
-                eq(0),
-                eq(0),
-                eq(false)
-        )
+        verifyAddedToLocal(IPV6_ONLINK_PREFIX, WIFI_IFNAME)
         // Verifying IPv4 matching prefix(10.0.0.0/8) should be populated as part of stacked link
         // in local_net_access map
         verify(bpfNetMaps, times(2)).addLocalNetAccess(
-                eq(PREFIX_LENGTH_IPV4 + 8),
-                eq(WIFI_IFNAME_2),
-                eq(InetAddresses.parseNumericAddress("10.0.0.0")),
-                eq(0),
-                eq(0),
-                eq(false)
+            eq(PREFIX_LENGTH_IPV4 + 8),
+            eq(WIFI_IFNAME_2),
+            eq(InetAddresses.parseNumericAddress("10.0.0.0")),
+            eq(0),
+            eq(0),
+            eq(false)
         )
         // Verifying newly stacked IPv6 address should be populated in local_net_access map
-        verify(bpfNetMaps).addLocalNetAccess(
-                eq(PREFIX_LENGTH_IPV6 + LINK_LOCAL_PREFIX.getPrefixLength()),
-                eq(WIFI_IFNAME_3),
-                eq(LINK_LOCAL_PREFIX.getAddress()),
-                eq(0),
-                eq(0),
-                eq(false)
-        )
+        verifyAddedToLocal(LINK_LOCAL_PREFIX, WIFI_IFNAME_3)
         // Verifying old base IPv6 address should be removed from local_net_access map
-        verify(bpfNetMaps).removeLocalNetAccess(
-                eq(PREFIX_LENGTH_IPV6 + LINK_LOCAL_PREFIX.getPrefixLength()),
-                eq(WIFI_IFNAME),
-                eq(LINK_LOCAL_PREFIX.getAddress()),
-                eq(0),
-                eq(0)
-        )
+        verifyRemovedFromLocal(LINK_LOCAL_PREFIX, WIFI_IFNAME)
         // As both stacked links is had same prefix, 10.0.0.0/8 should not be removed from
         // local_net_access map.
-        verify(bpfNetMaps, never()).removeLocalNetAccess(
-                eq(PREFIX_LENGTH_IPV4 + 8),
-                eq(WIFI_IFNAME_2),
-                eq(InetAddresses.parseNumericAddress("10.0.0.0")),
-                eq(0),
-                eq(0)
-        )
+        verifyNeverRemovedFromLocal(IpPrefix("10.0.0.0/8"), WIFI_IFNAME_2)
     }
 
     @Test
@@ -467,14 +386,7 @@ class CSLocalNetworkProtectionTest : CSTest() {
         // Multicast and Broadcast address should always be populated in local_net_access map
         verifyPopulationOfMulticastAndBroadcastAddress()
         // Verifying IPv4 matching prefix(10.0.0.0/8) should be populated in local_net_access map
-        verify(bpfNetMaps).addLocalNetAccess(
-            eq(PREFIX_LENGTH_IPV4 + 8),
-            eq(WIFI_IFNAME),
-            eq(IPV4_PREFIX_1.getAddress()),
-            eq(0),
-            eq(0),
-            eq(false)
-        )
+        verifyAddedToLocal(IpPrefix("10.0.0.0/8"), WIFI_IFNAME)
 
         // Updating Link Property from one IPv4 to another IPv4 within same range(10.0.0.0/8)
         val wifiLp2 = lp(WIFI_IFNAME, IPV4_ADDRESS_2)
@@ -483,13 +395,7 @@ class CSLocalNetworkProtectionTest : CSTest() {
 
         // As both stacked links is had same prefix, 10.0.0.0/8 should not be removed from
         // local_net_access map.
-        verify(bpfNetMaps, never()).removeLocalNetAccess(
-            eq(PREFIX_LENGTH_IPV4 + 8),
-            eq(WIFI_IFNAME),
-            eq(InetAddresses.parseNumericAddress("10.0.0.0")),
-            eq(0),
-            eq(0)
-        )
+        verifyNeverRemovedFromLocal(IpPrefix("10.0.0.0/8"), WIFI_IFNAME)
     }
 
     @Test
@@ -506,14 +412,7 @@ class CSLocalNetworkProtectionTest : CSTest() {
         // Multicast and Broadcast address should always be populated in local_net_access map
         verifyPopulationOfMulticastAndBroadcastAddress()
         // Verifying IPv6 address should be populated in local_net_access map
-        verify(bpfNetMaps).addLocalNetAccess(
-            eq(PREFIX_LENGTH_IPV6 + LINK_LOCAL_PREFIX.getPrefixLength()),
-            eq(WIFI_IFNAME),
-            eq(LINK_LOCAL_PREFIX.getAddress()),
-            eq(0),
-            eq(0),
-            eq(false)
-        )
+        verifyAddedToLocal(LINK_LOCAL_PREFIX, WIFI_IFNAME)
 
         // Updating Link Property by changing interface name which has IPv4 instead of IPv6
         val wifiLp2 = lp(WIFI_IFNAME_2, IPV4_ADDRESS_1)
@@ -524,25 +423,12 @@ class CSLocalNetworkProtectionTest : CSTest() {
         // new interface
         verifyPopulationOfMulticastAndBroadcastAddress(WIFI_IFNAME_2)
         // Verifying IPv4 matching prefix(10.0.0.0/8) should be populated in local_net_access map
-        verify(bpfNetMaps).addLocalNetAccess(
-            eq(PREFIX_LENGTH_IPV4 + 8),
-            eq(WIFI_IFNAME_2),
-            eq(InetAddresses.parseNumericAddress("10.0.0.0")),
-            eq(0),
-            eq(0),
-            eq(false)
-        )
+        verifyAddedToLocal(IpPrefix("10.0.0.0/8"), WIFI_IFNAME_2)
         // Multicast and Broadcast address should be removed in local_net_access map for
         // old interface
         verifyRemovalOfMulticastAndBroadcastAddress()
         // Verifying IPv6 address should be removed from local_net_access map
-        verify(bpfNetMaps).removeLocalNetAccess(
-            eq(PREFIX_LENGTH_IPV6 + LINK_LOCAL_PREFIX.getPrefixLength()),
-            eq(WIFI_IFNAME),
-            eq(LINK_LOCAL_PREFIX.getAddress()),
-            eq(0),
-            eq(0)
-        )
+        verifyRemovedFromLocal(LINK_LOCAL_PREFIX, WIFI_IFNAME)
     }
 
     @Test
@@ -559,14 +445,7 @@ class CSLocalNetworkProtectionTest : CSTest() {
         // Multicast and Broadcast address should always be populated in local_net_access map
         verifyPopulationOfMulticastAndBroadcastAddress()
         // Verifying IPv6 address should be populated in local_net_access map
-        verify(bpfNetMaps).addLocalNetAccess(
-            eq(PREFIX_LENGTH_IPV6 + LINK_LOCAL_PREFIX.getPrefixLength()),
-            eq(WIFI_IFNAME),
-            eq(LINK_LOCAL_PREFIX.getAddress()),
-            eq(0),
-            eq(0),
-            eq(false)
-        )
+        verifyAddedToLocal(LINK_LOCAL_PREFIX, WIFI_IFNAME)
 
         // Adding another network with LinkProperty having IPv4 in LinkAddress
         val wifiLp2 = lp(WIFI_IFNAME_2, IPV4_ADDRESS_1)
@@ -576,25 +455,9 @@ class CSLocalNetworkProtectionTest : CSTest() {
         // Multicast and Broadcast address should always be populated in local_net_access map
         verifyPopulationOfMulticastAndBroadcastAddress(WIFI_IFNAME_2)
         // Verifying IPv4 matching prefix(10.0.0.0/8) should be populated in local_net_access map
-        verify(bpfNetMaps).addLocalNetAccess(
-            eq(PREFIX_LENGTH_IPV4 + 8),
-            eq(WIFI_IFNAME_2),
-            eq(InetAddresses.parseNumericAddress("10.0.0.0")),
-            eq(0),
-            eq(0),
-            eq(false)
-        )
+        verifyAddedToLocal(IpPrefix("10.0.0.0/8"), WIFI_IFNAME_2)
         // Verifying nothing should be removed from local_net_access map
-        verify(
-            bpfNetMaps,
-            never()
-        ).removeLocalNetAccess(
-            anyInt(),
-            anyString(),
-            any(InetAddress::class.java),
-            anyInt(),
-            anyInt()
-        )
+        verifyNothingRemovedFromLocal()
     }
 
     @Test
@@ -611,14 +474,7 @@ class CSLocalNetworkProtectionTest : CSTest() {
         // Multicast and Broadcast address should always be populated in local_net_access map
         verifyPopulationOfMulticastAndBroadcastAddress()
         // Verifying IPv6 address should be populated in local_net_access map
-        verify(bpfNetMaps).addLocalNetAccess(
-            eq( PREFIX_LENGTH_IPV6 + LINK_LOCAL_PREFIX.getPrefixLength()),
-            eq(WIFI_IFNAME),
-            eq(LINK_LOCAL_PREFIX.getAddress()),
-            eq(0),
-            eq(0),
-            eq(false)
-        )
+        verifyAddedToLocal(LINK_LOCAL_PREFIX, WIFI_IFNAME)
 
         // Unregistering the network
         wifiAgent.unregisterAfterReplacement(LONG_TIMEOUT_MS)
@@ -628,13 +484,7 @@ class CSLocalNetworkProtectionTest : CSTest() {
         // old interface
         verifyRemovalOfMulticastAndBroadcastAddress()
         // Verifying IPv6 address should be removed from local_net_access map
-        verify(bpfNetMaps).removeLocalNetAccess(
-            eq(PREFIX_LENGTH_IPV6 + LINK_LOCAL_PREFIX.getPrefixLength()),
-            eq(WIFI_IFNAME),
-            eq(LINK_LOCAL_PREFIX.getAddress()),
-            eq(0),
-            eq(0)
-        )
+        verifyRemovedFromLocal(LINK_LOCAL_PREFIX, WIFI_IFNAME)
     }
 
     @Test
@@ -663,14 +513,7 @@ class CSLocalNetworkProtectionTest : CSTest() {
         verifyPopulationOfMulticastAndBroadcastAddress()
 
         // Verifying IPv6 default route should not be populated in local_net_access map
-        verify(bpfNetMaps, never()).addLocalNetAccess(
-            eq(PREFIX_LENGTH_IPV6),
-            eq(WIFI_IFNAME),
-            eq(IPV6_DEFAULT_ROUTE_PREFIX.getAddress()),
-            eq(0),
-            eq(0),
-            eq(false)
-        )
+        verifyNeverAddedToLocal(IPV6_DEFAULT_ROUTE_PREFIX, WIFI_IFNAME)
     }
 
     @Test
@@ -699,17 +542,7 @@ class CSLocalNetworkProtectionTest : CSTest() {
         verifyPopulationOfMulticastAndBroadcastAddress()
 
         // Verifying IPv6 covering route should be populated in local_net_access map
-        verify(bpfNetMaps).addLocalNetAccess(
-            eq(
-                PREFIX_LENGTH_IPV6 +
-                    LINK_LOCAL_PREFIX.getPrefixLength()
-            ),
-            eq(WIFI_IFNAME),
-            eq(LINK_LOCAL_PREFIX.getAddress()),
-            eq(0),
-            eq(0),
-            eq(false)
-        )
+        verifyAddedToLocal(LINK_LOCAL_PREFIX)
     }
 
     @Test
@@ -721,12 +554,12 @@ class CSLocalNetworkProtectionTest : CSTest() {
         val routes = listOf(
             RouteInfo(
             IPV6_HOME_PREFIX_2,
-            null,
+            LINK_LOCAL_ADDRESS.address,
             WIFI_IFNAME
             ),
             RouteInfo(
                 IPV6_HOME_PREFIX,
-                null,
+                LINK_LOCAL_ADDRESS.address,
                 WIFI_IFNAME
             ),
             RouteInfo(
@@ -756,84 +589,7 @@ class CSLocalNetworkProtectionTest : CSTest() {
         verifyPopulationOfMulticastAndBroadcastAddress()
 
         // Verifying IPv6 unique routes should be populated in local_net_access map
-        verify(bpfNetMaps).addLocalNetAccess(
-            eq(
-                PREFIX_LENGTH_IPV6 +
-                    IPV6_HOME_PREFIX.getPrefixLength()
-            ),
-            eq(WIFI_IFNAME),
-            eq(IPV6_HOME_PREFIX.getAddress()),
-            eq(0),
-            eq(0),
-            eq(false)
-        )
-        verify(bpfNetMaps).addLocalNetAccess(
-            eq(
-                PREFIX_LENGTH_IPV6 +
-                    LINK_LOCAL_PREFIX.getPrefixLength()
-            ),
-            eq(WIFI_IFNAME),
-            eq(LINK_LOCAL_PREFIX.getAddress()),
-            eq(0),
-            eq(0),
-            eq(false)
-        )
-    }
-
-    // Verify if multicast and broadcast addresses have been added using addLocalNetAccess
-    fun verifyPopulationOfMulticastAndBroadcastAddress(
-        interfaceName: String = WIFI_IFNAME
-    ) {
-        verify(bpfNetMaps).addLocalNetAccess(
-            eq(PREFIX_LENGTH_IPV4 + 4),
-            eq(interfaceName),
-            eq(InetAddresses.parseNumericAddress("224.0.0.0")),
-            eq(0),
-            eq(0),
-            eq(false)
-        )
-        verify(bpfNetMaps).addLocalNetAccess(
-            eq(PREFIX_LENGTH_IPV6 + 8),
-            eq(interfaceName),
-            eq(InetAddresses.parseNumericAddress("ff00::")),
-            eq(0),
-            eq(0),
-            eq(false)
-        )
-        verify(bpfNetMaps).addLocalNetAccess(
-            eq(PREFIX_LENGTH_IPV4 + 32),
-            eq(interfaceName),
-            eq(InetAddresses.parseNumericAddress("255.255.255.255")),
-            eq(0),
-            eq(0),
-            eq(false)
-        )
-    }
-
-    // Verify if multicast and broadcast addresses have been removed using removeLocalNetAccess
-    fun verifyRemovalOfMulticastAndBroadcastAddress(
-        interfaceName: String = WIFI_IFNAME
-    ) {
-        verify(bpfNetMaps).removeLocalNetAccess(
-            eq(PREFIX_LENGTH_IPV4 + 4),
-            eq(interfaceName),
-            eq(InetAddresses.parseNumericAddress("224.0.0.0")),
-            eq(0),
-            eq(0)
-        )
-        verify(bpfNetMaps).removeLocalNetAccess(
-            eq(PREFIX_LENGTH_IPV6 + 8),
-            eq(interfaceName),
-            eq(InetAddresses.parseNumericAddress("ff00::")),
-            eq(0),
-            eq(0)
-        )
-        verify(bpfNetMaps).removeLocalNetAccess(
-            eq(PREFIX_LENGTH_IPV4 + 32),
-            eq(interfaceName),
-            eq(InetAddresses.parseNumericAddress("255.255.255.255")),
-            eq(0),
-            eq(0)
-        )
+        verifyAddedToLocal(IPV6_HOME_PREFIX, WIFI_IFNAME)
+        verifyAddedToLocal(LINK_LOCAL_PREFIX, WIFI_IFNAME)
     }
 }
