@@ -107,6 +107,7 @@ import android.os.Message;
 import android.os.Process;
 import android.os.RemoteCallbackList;
 import android.os.RemoteException;
+import android.os.ResultReceiver;
 import android.os.UserHandle;
 import android.permission.PermissionManager;
 import android.provider.DeviceConfig;
@@ -1159,6 +1160,8 @@ public class NsdService extends INsdManager.Stub {
                         handleInjectProxyOffloadEngineResponse(
                                 (ProxyOffloadEngineResponse) msg.obj
                         );
+                case NsdManager.CHECK_PERMISSION_FOR_SERVICE ->
+                        handleCheckPermissionForService((CheckPermissionArgs) msg.obj);
                 case NsdManager.REGISTER_CLIENT -> handleRegisterClient(clientRequestId,
                         (ConnectorArgs) msg.obj);
                 case NsdManager.UNREGISTER_CLIENT -> handleUnregisterClient(
@@ -1835,6 +1838,20 @@ public class NsdService extends INsdManager.Stub {
                 serviceInfo,
                 isServiceLost,
                 ifaceName);
+    }
+
+    private void handleCheckPermissionForService(@NonNull CheckPermissionArgs args) {
+        final ClientInfo clientInfo = mClients.get(args.mConnector);
+        if (clientInfo == null) {
+            Log.e(TAG, "Unknown connector in handleCheckPermissionForService");
+            args.mResultReceiver.send(NsdManager.SERVICE_PERMISSION_DENIED, /* resultData= */null);
+            return;
+        }
+        final boolean isServiceAllowed = mAccessRepository.isServiceAllowed(
+                clientInfo.mUid, args.mServiceName, args.mServiceType);
+        args.mResultReceiver.send(isServiceAllowed
+                ? NsdManager.SERVICE_PERMISSION_GRANTED
+                : NsdManager.SERVICE_PERMISSION_DENIED, /* resultData= */null);
     }
 
     private void handleRegisterClient(int clientRequestId, ConnectorArgs arg) {
@@ -3126,6 +3143,24 @@ public class NsdService extends INsdManager.Stub {
         }
     }
 
+    private static final class CheckPermissionArgs {
+        @NonNull
+        final NsdServiceConnector mConnector;
+        @NonNull
+        final String mServiceName;
+        @NonNull
+        final String mServiceType;
+        @NonNull
+        final ResultReceiver mResultReceiver;
+        CheckPermissionArgs(@NonNull NsdServiceConnector connector, String serviceName,
+                @NonNull String serviceType, @NonNull ResultReceiver resultReceiver) {
+            this.mConnector = connector;
+            this.mServiceName = serviceName;
+            this.mServiceType = serviceType;
+            this.mResultReceiver = resultReceiver;
+        }
+    }
+
     @Nullable
     private static AttributionSource getAttributionSource(int uid, int pid) {
         // AttributionSource builder method setPid() introduced in U, but check for 25Q2 here to
@@ -3245,6 +3280,16 @@ public class NsdService extends INsdManager.Stub {
             mHandler.sendMessage(
                     mHandler.obtainMessage(NsdManager.INJECT_PROXY_OFFLOAD_ENGINE_RESPONSE,
                             new ProxyOffloadEngineResponse(serviceInfo, isServiceLost, ifaceName)));
+        }
+
+        @Override
+        public void checkPermissionForService(String serviceName, String serviceType,
+                ResultReceiver resultReceiver) {
+            Objects.requireNonNull(serviceName);
+            Objects.requireNonNull(serviceType);
+            Objects.requireNonNull(resultReceiver);
+            mHandler.sendMessage(mHandler.obtainMessage(NsdManager.CHECK_PERMISSION_FOR_SERVICE,
+                    new CheckPermissionArgs(this, serviceName, serviceType, resultReceiver)));
         }
 
         private static void checkOffloadEnginePermission(Context context) {
