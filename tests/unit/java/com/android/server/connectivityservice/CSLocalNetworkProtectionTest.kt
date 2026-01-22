@@ -28,7 +28,11 @@ import android.net.NetworkCapabilities.TRANSPORT_VPN
 import android.net.NetworkCapabilities.TRANSPORT_WIFI
 import android.net.NetworkRequest
 import android.net.RouteInfo
+import android.net.VpnManager
+import android.net.VpnTransportInfo
 import android.os.Build
+import android.os.Process
+import android.util.Range
 import androidx.test.filters.SmallTest
 import com.android.server.CSTest
 import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo
@@ -54,6 +58,7 @@ private const val PREFIX_LENGTH_IPV6 = 32
 private const val WIFI_IFNAME = "wlan0"
 private const val WIFI_IFNAME_2 = "wlan1"
 private const val WIFI_IFNAME_3 = "wlan2"
+private const val VPN_IFNAME = "tun0"
 
 private val wifiNc = NetworkCapabilities.Builder()
         .addTransportType(TRANSPORT_WIFI)
@@ -591,5 +596,37 @@ class CSLocalNetworkProtectionTest : CSTest() {
         // Verifying IPv6 unique routes should be populated in local_net_access map
         verifyAddedToLocal(IPV6_HOME_PREFIX, WIFI_IFNAME)
         verifyAddedToLocal(LINK_LOCAL_PREFIX, WIFI_IFNAME)
+    }
+
+    @Test
+    fun testSplitTunnelVpn() {
+        val nr = nr(TRANSPORT_VPN)
+        val cb = TestableNetworkCallback()
+        cm.requestNetwork(nr, cb)
+
+        val lp = lpWithRoutes(
+            iface = VPN_IFNAME,
+            routes = listOf(
+                RouteInfo(IpPrefix("2001:db8::/32"), null, VPN_IFNAME),
+                RouteInfo(IpPrefix("10.0.0.0/8"), null, VPN_IFNAME),
+            ),
+            LinkAddress("2001:db8:a:b::d00d/64"), LinkAddress("10.1.2.3/24")
+        )
+        val nc = NetworkCapabilities.Builder()
+            .addTransportType(TRANSPORT_VPN)
+            .addCapability(NET_CAPABILITY_INTERNET)
+            .addCapability(NET_CAPABILITY_NOT_VCN_MANAGED)
+            .removeCapability(NET_CAPABILITY_NOT_VPN)
+            .setUids(setOf(Range<Int>(Process.myUid(), Process.myUid())))
+            .setTransportInfo(VpnTransportInfo(VpnManager.TYPE_VPN_SERVICE, "mySessionId"))
+            .build()
+
+        val vpnAgent = Agent(nc = nc, lp = lp)
+        vpnAgent.connect()
+        cb.expectAvailableCallbacks(vpnAgent.network, validated = false)
+
+        // BUG: should only add 2001:db8:a:b::/64.
+        verifyAddedToLocal(IpPrefix("2001:db8::/32"), VPN_IFNAME)
+        verifyAddedToLocal(IpPrefix("10.0.0.0/8"), VPN_IFNAME)
     }
 }
