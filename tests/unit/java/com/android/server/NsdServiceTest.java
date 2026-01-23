@@ -41,6 +41,7 @@ import static android.net.connectivity.ConnectivityCompatChanges.RESTRICT_LOCAL_
 import static android.net.connectivity.ConnectivityCompatChanges.RUN_NATIVE_NSD_ONLY_IF_LEGACY_APPS_T_AND_LATER;
 import static android.net.nsd.DiscoveryRequest.FLAG_NO_PICKER;
 import static android.net.nsd.DiscoveryRequest.FLAG_SHOW_PICKER;
+import static android.net.nsd.DiscoveryRequest.FLAG_USER_APPROVED_ONLY;
 import static android.net.nsd.NsdManager.FAILURE_BAD_PARAMETERS;
 import static android.net.nsd.NsdManager.FAILURE_INTERNAL_ERROR;
 import static android.net.nsd.NsdManager.FAILURE_MAX_LIMIT;
@@ -237,6 +238,7 @@ public class NsdServiceTest {
     private static final String SERVICE_TYPE = "_test._tcp";
     private static final String SERVICE_TYPE_WITH_LOCAL_TLD = SERVICE_TYPE + ".local";
     private static final String SERVICE_FULL_NAME = SERVICE_NAME + "." + SERVICE_TYPE;
+    private static final String OTHER_SERVICE_NAME = "other_name";
     private static final String DOMAIN_NAME = "mytestdevice.local";
     private static final int PORT = 2201;
     private static final int IFACE_IDX_ANY = 0;
@@ -2017,6 +2019,63 @@ public class NsdServiceTest {
                 info.getServiceName().equals(otherInfo.getServiceInstanceName())));
     }
 
+    private DiscoveryListener startDiscoveryReceivingApprovedAndNotApprovedServices(
+            long discoveryFlags) throws Exception {
+        setMdnsDiscoveryManagerEnabled();
+        mAccessRepository.unloadUid(Process.myUid());
+        final NsdManager client = connectClient(mService);
+
+        // Approve a service via the picker
+        startDiscoveryWithPicker(client);
+        final NsdPickerConnector connector = verifyPickerStarted();
+        final NsdServiceInfo approvedService = new NsdServiceInfo(SERVICE_NAME, SERVICE_TYPE + ".");
+        approvedService.setNetwork(TEST_NETWORK);
+        connector.notifyServiceSelected(approvedService);
+
+        // Start discovery with provided flags
+        final DiscoveryListener discListener = mock(DiscoveryListener.class);
+        final ArgumentCaptor<MdnsListener> listenerCaptor =
+                ArgumentCaptor.forClass(MdnsListener.class);
+        client.discoverServices(
+                new DiscoveryRequest.Builder(SERVICE_TYPE)
+                        .setNetwork(TEST_NETWORK)
+                        .setFlags(discoveryFlags)
+                        .build(),
+                Runnable::run, discListener);
+        waitForIdle();
+
+        // A first listener was already registered for allowlisting using the picker
+        verify(mDiscoveryManager, times(2)).registerListener(eq(SERVICE_TYPE_WITH_LOCAL_TLD),
+                listenerCaptor.capture(), any());
+        final MdnsListener listener = listenerCaptor.getAllValues().get(1);
+        final MdnsServiceInfo invalidInfo = makeTestServiceInfo("invalid", "_nolocalsuffix._tcp");
+        final MdnsServiceInfo approvedInfo = makeTestServiceInfo(
+                SERVICE_NAME, SERVICE_TYPE_WITH_LOCAL_TLD);
+        final MdnsServiceInfo otherInfo = makeTestServiceInfo(
+                OTHER_SERVICE_NAME, SERVICE_TYPE_WITH_LOCAL_TLD);
+
+        listener.onServiceNameDiscovered(invalidInfo, true /* isServiceFromCache */);
+        listener.onServiceNameDiscovered(otherInfo, true /* isServiceFromCache */);
+        listener.onServiceNameDiscovered(approvedInfo, true /* isServiceFromCache */);
+        waitForIdle();
+
+        return discListener;
+    }
+
+    @Test
+    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    @RequiresFlagsEnabled(FLAG_ACCESS_LOCAL_NETWORK_PERMISSION_ENABLED)
+    public void testDiscovery_withUserApprovedOnly_approvedServiceCallbacksOnly()
+            throws Exception {
+        final DiscoveryListener listener = startDiscoveryReceivingApprovedAndNotApprovedServices(
+                FLAG_USER_APPROVED_ONLY);
+
+        verify(listener, timeout(TIMEOUT_MS)).onServiceFound(argThat(info ->
+                info.getServiceName().equals(SERVICE_NAME)));
+        verify(listener, never()).onServiceFound(argThat(info ->
+                !info.getServiceName().equals(SERVICE_NAME)));
+    }
+
     @Test
     @DisableCompatChanges(RESTRICT_LOCAL_NETWORK)
     public void testResolutionWithMdnsDiscoveryManager() throws UnknownHostException {
@@ -3342,12 +3401,17 @@ public class NsdServiceTest {
     }
 
     private NsdPickerConnector verifyPickerStarted() {
+        return verifyPickerStarted(/* startedTimes= */1);
+    }
+
+    private NsdPickerConnector verifyPickerStarted(int startedTimes) {
         final ArgumentCaptor<Intent> intentCaptor = ArgumentCaptor.forClass(Intent.class);
-        verify(mContext).startActivityAsUser(intentCaptor.capture(), any());
-        assertEquals(TEST_APP_NAME,
-                intentCaptor.getValue().getStringExtra(NsdPickerConnector.EXTRA_APP_NAME));
+        verify(mContext, times(startedTimes)).startActivityAsUser(intentCaptor.capture(), any());
+        final List<Intent> intents = intentCaptor.getAllValues();
+        final Intent lastIntent = intents.get(startedTimes - 1);
+        assertEquals(TEST_APP_NAME, lastIntent.getStringExtra(NsdPickerConnector.EXTRA_APP_NAME));
         return NsdPickerConnector.Stub.asInterface(
-            intentCaptor.getValue().getExtras().getBinder(NsdPickerConnector.EXTRA_CONNECTOR));
+            lastIntent.getExtras().getBinder(NsdPickerConnector.EXTRA_CONNECTOR));
     }
 
     private NsdServiceReceiver setMockPickerReceiver(NsdPickerConnector connector)
@@ -3400,12 +3464,13 @@ public class NsdServiceTest {
         return service;
     }
 
-    private MdnsServiceInfo makeTestServiceInfo() {
+    private MdnsServiceInfo makeTestServiceInfo(
+            @NonNull String serviceName, @NonNull String serviceType) {
         return new MdnsServiceInfo(
-                SERVICE_NAME,
-                SERVICE_TYPE_WITH_LOCAL_TLD.split("\\."),
+                serviceName,
+                serviceType.split("\\."),
                 List.of(), /* subtypes */
-                new String[] {"android", "local"}, /* hostName */
+                new String[]{"android", "local"}, /* hostName */
                 PORT,
                 List.of(IPV4_ADDRESS),
                 List.of(IPV6_ADDRESS),
@@ -3414,6 +3479,10 @@ public class NsdServiceTest {
                 TEST_NETWORK,
                 Instant.MAX /* expirationTime */,
                 0L /* creationCapabilitiesBits */);
+    }
+
+    private MdnsServiceInfo makeTestServiceInfo() {
+        return makeTestServiceInfo(SERVICE_NAME, SERVICE_TYPE_WITH_LOCAL_TLD);
     }
 
     private INsdManagerCallback getCallback() {

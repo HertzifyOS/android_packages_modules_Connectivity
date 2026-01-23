@@ -240,6 +240,7 @@ package android.net.nsd {
     field @NonNull public static final android.os.Parcelable.Creator<android.net.nsd.DiscoveryRequest> CREATOR;
     field @FlaggedApi("android.permission.flags.access_local_network_permission_enabled") public static final long FLAG_NO_PICKER = 1L; // 0x1L
     field @FlaggedApi("android.permission.flags.access_local_network_permission_enabled") public static final long FLAG_SHOW_PICKER = 2L; // 0x2L
+    field @FlaggedApi("android.permission.flags.access_local_network_permission_enabled") public static final long FLAG_USER_APPROVED_ONLY = 4L; // 0x4L
   }
 
   public static final class DiscoveryRequest.Builder {
