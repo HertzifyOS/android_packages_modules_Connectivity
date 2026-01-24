@@ -21,6 +21,7 @@ import static com.android.net.module.util.HexDump.toHexString;
 import android.annotation.FlaggedApi;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
+import android.annotation.SystemApi;
 import android.compat.annotation.UnsupportedAppUsage;
 import android.net.Network;
 import android.os.Parcel;
@@ -211,21 +212,27 @@ public final class NsdServiceInfo implements Parcelable {
         return mHostname;
     }
 
-    // Below doc is not the javadoc as registering with a given hostname is only allowed
-    // for the system_server, so apps cannot use it.
-    // Set a custom hostname for this service instance for registration.
-    // A hostname must be in ".local." domain. The ".local." must be omitted when calling this
-    // For example, you should call setHostname("MyHost") to use the hostname "MyHost.local.".
-    // If a hostname is set with this method, the addresses set with {@link #setHostAddresses}
-    // will be registered with the hostname. If the hostname is null (which is the default for a
-    // new {@link NsdServiceInfo}), a random hostname is used and the addresses of this device will
-    // be registered.
     /**
-     * Sets the hostname.
+     * Sets the host name of the service.
      *
+     * <p>When used for service advertising (via {@link NsdManager#registerService}), setting
+     * a custom host name is only supported for privileged callers having
+     * {@code NETWORK_SETTINGS} permission. For unprivileged applications, any host name
+     * set via this method will be ignored during the registration process.
+     * A hostname must be in ".local." domain. The ".local." must be omitted when calling this
+     * For example, you should call setHostname("MyHost") to use the hostname "MyHost.local.".
+     * If a hostname is set with this method, the addresses set with {@link #setHostAddresses}
+     * will be registered with the hostname. If the hostname is null (which is the default for a
+     * new {@link NsdServiceInfo}), a random hostname is used and the addresses of this device will
+     * be registered.
+     *
+     * @param hostname the host name to be associated with this service.
      * @see #getHostname() for the usage.
+     *
+     * @hide
      */
     @FlaggedApi(com.android.tethering.flags.Flags.FLAG_NSD_MDNS_SCAN_OFFLOAD)
+    @SystemApi
     public void setHostname(@Nullable String hostname) {
         mHostname = hostname;
     }
