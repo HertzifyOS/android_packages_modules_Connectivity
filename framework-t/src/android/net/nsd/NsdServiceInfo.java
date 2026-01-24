@@ -22,7 +22,6 @@ import android.annotation.FlaggedApi;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.annotation.SystemApi;
-import android.compat.annotation.UnsupportedAppUsage;
 import android.net.Network;
 import android.os.Parcel;
 import android.os.Parcelable;
@@ -356,9 +355,26 @@ public final class NsdServiceInfo implements Parcelable {
         }
     }
 
-    /** @hide */
-    @UnsupportedAppUsage
-    public void setAttribute(String key, byte[] value) {
+    /**
+     * Add a service attribute as a key/value pair using raw bytes.
+     *
+     * <p> Service attributes are included as DNS-SD TXT record pairs.
+     *
+     * <p> This method preserves the provided bytes exactly, ensuring that data is
+     * maintained even if the bytes do not represent a valid UTF-8 string.
+     *
+     * <p> The key must be US-ASCII printable characters, excluding the '=' character. The
+     * total length of key + value must be less than 255 bytes.
+     *
+     * <p> Keys should be short, ideally no more than 9 characters, and unique per instance of
+     * {@link NsdServiceInfo}. Calling {@link #setAttribute} twice with the same key will
+     * overwrite the previous value.
+     *
+     * @param key the key of the attribute
+     * @param value the raw bytes of the attribute value, or null for an attribute with no value
+     */
+    @FlaggedApi(com.android.tethering.flags.Flags.FLAG_NSD_MDNS_SCAN_OFFLOAD)
+    public void setAttribute(@NonNull String key, @Nullable byte[] value) {
         if (TextUtils.isEmpty(key)) {
             throw new IllegalArgumentException("Key cannot be empty");
         }
