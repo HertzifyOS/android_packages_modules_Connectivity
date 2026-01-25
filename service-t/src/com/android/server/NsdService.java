@@ -37,6 +37,7 @@ import static android.net.nsd.NsdManager.FAILURE_INTERNAL_ERROR;
 import static android.net.nsd.NsdManager.FAILURE_PERMISSION_DENIED;
 import static android.net.nsd.NsdManager.MDNS_DISCOVERY_MANAGER_EVENT;
 import static android.net.nsd.NsdManager.MDNS_SERVICE_EVENT;
+import static android.net.nsd.NsdManager.OFFLOAD_ENGINE_SERVICE_INFO_UPDATE;
 import static android.net.nsd.NsdManager.RESOLVE_SERVICE_SUCCEEDED;
 import static android.net.nsd.NsdManager.SUBTYPE_LABEL_REGEX;
 import static android.net.nsd.NsdManager.TYPE_REGEX;
@@ -1213,6 +1214,8 @@ public class NsdService extends INsdManager.Stub {
                         );
                 case NsdManager.CHECK_PERMISSION_FOR_SERVICE ->
                         handleCheckPermissionForService((CheckPermissionArgs) msg.obj);
+                case OFFLOAD_ENGINE_SERVICE_INFO_UPDATE ->
+                        handleOffloadServiceInfoUpdate((OffloadServiceInfoUpdateArgs) msg.obj);
                 case NsdManager.REGISTER_CLIENT -> handleRegisterClient(clientRequestId,
                         (ConnectorArgs) msg.obj);
                 case NsdManager.UNREGISTER_CLIENT -> handleUnregisterClient(
@@ -1851,6 +1854,16 @@ public class NsdService extends INsdManager.Stub {
         } else {
             Log.e(TAG, "Unregister failed with non-DiscoveryManagerRequest.");
         }
+    }
+
+    private void handleOffloadServiceInfoUpdate(
+            OffloadServiceInfoUpdateArgs offloadServiceInfoUpdateArgs
+    ) {
+        sendOffloadServiceInfosUpdate(
+                offloadServiceInfoUpdateArgs.mInterfaceName,
+                offloadServiceInfoUpdateArgs.mOffloadServiceInfo,
+                offloadServiceInfoUpdateArgs.mIsRemove
+        );
     }
 
     private void handleRegisterOffloadEngine(OffloadEngineInfo offloadEngineInfo) {
@@ -3110,13 +3123,31 @@ public class NsdService extends INsdManager.Stub {
         @Override
         public void onOffloadStartOrUpdate(@NonNull String interfaceName,
                 @NonNull OffloadServiceInfo offloadServiceInfo) {
-            sendOffloadServiceInfosUpdate(interfaceName, offloadServiceInfo, false /* isRemove */);
+            mHandler.sendMessage(
+                    mHandler.obtainMessage(
+                            NsdManager.OFFLOAD_ENGINE_SERVICE_INFO_UPDATE,
+                            new OffloadServiceInfoUpdateArgs(
+                                    interfaceName,
+                                    offloadServiceInfo,
+                                    false
+                            )
+                    )
+            );
         }
 
         @Override
         public void onOffloadStop(@NonNull String interfaceName,
                 @NonNull OffloadServiceInfo offloadServiceInfo) {
-            sendOffloadServiceInfosUpdate(interfaceName, offloadServiceInfo, true /* isRemove */);
+            mHandler.sendMessage(
+                    mHandler.obtainMessage(
+                            NsdManager.OFFLOAD_ENGINE_SERVICE_INFO_UPDATE,
+                            new OffloadServiceInfoUpdateArgs(
+                                    interfaceName,
+                                    offloadServiceInfo,
+                                    true
+                            )
+                    )
+            );
         }
     }
 
@@ -3217,6 +3248,24 @@ public class NsdService extends INsdManager.Stub {
             this.mServiceName = serviceName;
             this.mServiceType = serviceType;
             this.mResultReceiver = resultReceiver;
+        }
+    }
+
+    private static final class OffloadServiceInfoUpdateArgs {
+        @NonNull
+        final String mInterfaceName;
+        @NonNull
+        final OffloadServiceInfo mOffloadServiceInfo;
+        final boolean mIsRemove;
+
+        OffloadServiceInfoUpdateArgs(
+                @NonNull String interfaceName,
+                @NonNull OffloadServiceInfo serviceInfo,
+                boolean isRemove
+        ) {
+            this.mInterfaceName = interfaceName;
+            this.mOffloadServiceInfo = serviceInfo;
+            this.mIsRemove = isRemove;
         }
     }
 

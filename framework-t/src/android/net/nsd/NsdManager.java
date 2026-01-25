@@ -320,6 +320,8 @@ public final class NsdManager {
     public static final int INJECT_PROXY_OFFLOAD_ENGINE_RESPONSE    = 35;
     /** @hide */
     public static final int CHECK_PERMISSION_FOR_SERVICE            = 36;
+    /** @hide */
+    public static final int OFFLOAD_ENGINE_SERVICE_INFO_UPDATE      = 37;
 
     /** Dns based service discovery protocol */
     public static final int PROTOCOL_DNS_SD = 0x0001;
