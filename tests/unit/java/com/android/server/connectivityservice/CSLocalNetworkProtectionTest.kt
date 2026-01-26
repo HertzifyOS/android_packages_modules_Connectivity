@@ -40,6 +40,7 @@ import com.android.testutils.DevSdkIgnoreRunner
 import com.android.testutils.TestableNetworkCallback
 import com.android.testutils.TestableNetworkCallback.Event.LinkPropertiesChanged
 import com.android.testutils.TestableNetworkCallback.Event.Lost
+import com.android.testutils.waitForIdle
 import java.net.Inet6Address
 import java.net.InetAddress
 import org.junit.Test
@@ -47,17 +48,19 @@ import org.junit.runner.RunWith
 import org.mockito.ArgumentMatchers.any
 import org.mockito.ArgumentMatchers.anyInt
 import org.mockito.ArgumentMatchers.anyString
-import org.mockito.ArgumentMatchers.eq
+import org.mockito.Mockito.atLeastOnce
 import org.mockito.Mockito.never
-import org.mockito.Mockito.times
+import org.mockito.Mockito.reset
 import org.mockito.Mockito.verify
+import org.mockito.Mockito.verifyNoMoreInteractions
 
-private const val LONG_TIMEOUT_MS = 5_000
+private const val TIMEOUT_MS = 500
 private const val PREFIX_LENGTH_IPV4 = 32 + 96
 private const val PREFIX_LENGTH_IPV6 = 32
 private const val WIFI_IFNAME = "wlan0"
 private const val WIFI_IFNAME_2 = "wlan1"
 private const val WIFI_IFNAME_3 = "wlan2"
+private const val CELLULAR_IFNAME = "rmnet0"
 private const val VPN_IFNAME = "tun0"
 
 private val wifiNc = NetworkCapabilities.Builder()
@@ -95,12 +98,19 @@ private fun nr(transport: Int) = NetworkRequest.Builder()
             }
         }.build()
 
+private fun address(addressStr: String) = InetAddresses.parseNumericAddress(addressStr)
+
 
 @DevSdkIgnoreRunner.MonitorThreadLeak
 @RunWith(DevSdkIgnoreRunner::class)
 @SmallTest
 @IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
 class CSLocalNetworkProtectionTest : CSTest() {
+    private val MULTICAST_AND_BROADCAST_PREFIXES = listOf(
+        IpPrefix("ff00::/8"),
+        IpPrefix("224.0.0.0/4"),
+        IpPrefix("255.255.255.255/32")
+    )
     private val LINK_LOCAL_PREFIX = IpPrefix("fe80::/64")
 
     private val LINK_LOCAL_ADDRESS = LinkAddress("fe80::1cf1:35ff:fe8c:db87/64")
@@ -108,6 +118,13 @@ class CSLocalNetworkProtectionTest : CSTest() {
     private val IPV6_HOME_PREFIX = IpPrefix("2601:19b:67f:e200::/56")
     private val IPV6_ONLINK_PREFIX = IpPrefix("2601:19b:67f:e220::/64")
     private val IPV6_GLOBAL_ADDRESS = LinkAddress("2601:19b:67f:e220:1cf1:35ff:fe8c:db87/64")
+    private val ULA_ONLINK_PREFIX = IpPrefix("fde8:9964:b018:1::/64")
+    private val ULA_ADDRESS = LinkAddress("fde8:9964:b018:1::cafe/64")
+    private val ULA_EXTERNAL_AGGREGATE = IpPrefix("fd9c:139a:42eb::/48")
+    private val ULA_STUB_PREFIX = IpPrefix("fd0a:32d6:6277::/48")
+    private val IPV6_CELLULAR_PREFIX = IpPrefix("2001:268:9889:f121::/64")
+    private val IPV6_CELLULAR_ADDRESS = LinkAddress("2001:268:9889:f121:0:33:539b:c01/64")
+
 
     private val IPV6_HOME_PREFIX_2 = IpPrefix("2001:db8:1:a00::/56")
     private val IPV6_DEFAULT_ROUTE_PREFIX = IpPrefix("::/0")
@@ -120,6 +137,10 @@ class CSLocalNetworkProtectionTest : CSTest() {
     private val IPV4_PREFIX_3 = IpPrefix("10.255.255.0/24")
     private val IPV4_COVERING_PREFIX = IpPrefix("10.255.0.0/16")
     private val IPV4_DEFAULT_ROUTE_PREFIX = IpPrefix("0.0.0.0/0")
+
+    private val IPV4_ROUTER = address("10.0.0.1")
+    private val IPV6_ROUTER = address("fe80::1")
+    private val IPV6_STUB_ROUTER = address("fe80::cafe")
 
     private fun triePrefixLength(prefix: IpPrefix) = if (prefix.address is Inet6Address)
                 prefix.prefixLength + PREFIX_LENGTH_IPV6
@@ -151,16 +172,16 @@ class CSLocalNetworkProtectionTest : CSTest() {
 
     // Verify if multicast and broadcast addresses have been added using addLocalNetAccess
     fun verifyPopulationOfMulticastAndBroadcastAddress(iface: String = WIFI_IFNAME) {
-        verifyAddedToLocal(IpPrefix("224.0.0.0/4"), iface)
-        verifyAddedToLocal(IpPrefix("ff00::/8"), iface)
-        verifyAddedToLocal(IpPrefix("255.255.255.255/32"), iface)
+        for (prefix in MULTICAST_AND_BROADCAST_PREFIXES) {
+            verifyAddedToLocal(prefix, iface)
+        }
     }
 
     // Verify if multicast and broadcast addresses have been removed using removeLocalNetAccess
     fun verifyRemovalOfMulticastAndBroadcastAddress(iface: String = WIFI_IFNAME) {
-        verifyRemovedFromLocal(IpPrefix("224.0.0.0/4"), iface)
-        verifyRemovedFromLocal(IpPrefix("ff00::/8"), iface)
-        verifyRemovedFromLocal(IpPrefix("255.255.255.255/32"), iface)
+        for (prefix in MULTICAST_AND_BROADCAST_PREFIXES) {
+            verifyRemovedFromLocal(prefix, iface)
+        }
     }
 
     @Test
@@ -473,7 +494,7 @@ class CSLocalNetworkProtectionTest : CSTest() {
         verifyAddedToLocal(LINK_LOCAL_PREFIX)
 
         // Unregistering the network
-        wifiAgent.unregisterAfterReplacement(LONG_TIMEOUT_MS)
+        wifiAgent.unregisterAfterReplacement(TIMEOUT_MS)
         cb.expect<Lost>(wifiAgent.network)
 
         // Multicast and Broadcast address should be removed in local_net_access map for
@@ -586,7 +607,181 @@ class CSLocalNetworkProtectionTest : CSTest() {
 
         // Verifying IPv6 unique routes should be populated in local_net_access map
         verifyAddedToLocal(IPV6_HOME_PREFIX)
+        verifyNeverAddedToLocal(IPV6_ONLINK_PREFIX)  // covered by IPV6_HOME_PREFIX
         verifyAddedToLocal(LINK_LOCAL_PREFIX)
+    }
+
+    fun makeLp(iface: String, addresses: Set<LinkAddress>, routes: Set<RouteInfo>): LinkProperties {
+        return LinkProperties().also {
+            it.interfaceName = iface
+            for (address in addresses) it.addLinkAddress(address)
+            for (route in routes) it.addRoute(route)
+        }
+    }
+
+    fun stackClatLp(lp: LinkProperties): LinkProperties {
+        val clatIface = "v4-" + lp.interfaceName
+        lp.addStackedLink(LinkProperties().also {
+            it.interfaceName = clatIface
+            it.addLinkAddress(LinkAddress("192.0.0.4/32"))
+            it.addRoute(RouteInfo(IPV4_DEFAULT_ROUTE_PREFIX, null, clatIface))
+        })
+        return lp;
+    }
+
+    fun doTestExpectedLocalPrefixes(lp: LinkProperties, vararg localPrefixes: IpPrefix) {
+        csHandler.waitForIdle(TIMEOUT_MS)
+        val nr = nr(TRANSPORT_WIFI)
+        val cb = TestableNetworkCallback()
+        cm.requestNetwork(nr, cb)
+        reset(bpfNetMaps)
+
+        val wifiAgent = Agent(nc = wifiNc, lp = lp)
+        wifiAgent.connect()
+        cb.expectAvailableCallbacks(wifiAgent.network, validated = false)
+
+        verifyPopulationOfMulticastAndBroadcastAddress(lp.interfaceName!!)
+        for (prefix in localPrefixes) {
+            verifyAddedToLocal(prefix, lp.interfaceName!!)
+        }
+        for (stacked in lp.stackedLinks) {
+            verifyPopulationOfMulticastAndBroadcastAddress(stacked.interfaceName!!)
+        }
+        verify(bpfNetMaps, atLeastOnce()).getNetPermForUid(anyInt())
+        verifyNoMoreInteractions(bpfNetMaps)
+
+        wifiAgent.disconnect()
+        cb.expect<Lost>()
+        csHandler.waitForIdle(TIMEOUT_MS)
+
+        verifyRemovalOfMulticastAndBroadcastAddress(lp.interfaceName!!)
+        for (prefix in localPrefixes) {
+            verifyRemovedFromLocal(prefix, lp.interfaceName!!)
+        }
+        for (stacked in lp.stackedLinks) {
+            verifyRemovalOfMulticastAndBroadcastAddress(stacked.interfaceName!!)
+        }
+    }
+    @Test
+    fun testDualStackCellular() {
+        val lp = lpWithRoutes(
+            CELLULAR_IFNAME,
+            listOf(
+                RouteInfo(IPV4_DEFAULT_ROUTE_PREFIX, null, CELLULAR_IFNAME),
+                RouteInfo(IPV6_DEFAULT_ROUTE_PREFIX, null, CELLULAR_IFNAME)
+            ),
+            IPV4_ADDRESS_1, IPV6_GLOBAL_ADDRESS
+        )
+        doTestExpectedLocalPrefixes(lp,IPV4_PREFIX_1, IPV6_ONLINK_PREFIX)
+    }
+
+    @Test
+    fun testIpv6OnlyCellular() {
+        val lp = stackClatLp(lpWithRoutes(
+            CELLULAR_IFNAME,
+            listOf(
+                RouteInfo(IPV6_DEFAULT_ROUTE_PREFIX, null, CELLULAR_IFNAME)
+            ),
+            IPV6_CELLULAR_ADDRESS
+        ))
+        doTestExpectedLocalPrefixes(lp, IPV6_CELLULAR_PREFIX)
+    }
+
+    @Test
+    fun testDualStackWifi() {
+        val lp = lpWithRoutes(
+            WIFI_IFNAME,
+            listOf(
+                RouteInfo(LINK_LOCAL_PREFIX, null,  WIFI_IFNAME),
+                RouteInfo(IPV4_PREFIX_1, null,  WIFI_IFNAME),
+                RouteInfo(IPV6_ONLINK_PREFIX, null,  WIFI_IFNAME),
+                RouteInfo(IPV4_DEFAULT_ROUTE_PREFIX, IPV4_ROUTER, WIFI_IFNAME),
+                RouteInfo(IPV6_DEFAULT_ROUTE_PREFIX, IPV6_ROUTER, WIFI_IFNAME)
+            ),
+            LINK_LOCAL_ADDRESS, IPV6_GLOBAL_ADDRESS, IPV4_ADDRESS_1
+        )
+        doTestExpectedLocalPrefixes(lp, LINK_LOCAL_PREFIX, IPV4_PREFIX_1, IPV6_ONLINK_PREFIX)
+    }
+
+    @Test
+    fun testIpv6OnlyWifi() {
+        val lp = stackClatLp(lpWithRoutes(
+            WIFI_IFNAME,
+            listOf(
+                RouteInfo(LINK_LOCAL_PREFIX, null,  WIFI_IFNAME),
+                RouteInfo(IPV6_ONLINK_PREFIX, null,  WIFI_IFNAME),
+                RouteInfo(IPV6_DEFAULT_ROUTE_PREFIX, IPV6_ROUTER, WIFI_IFNAME)
+            ),
+            LINK_LOCAL_ADDRESS, IPV6_GLOBAL_ADDRESS
+        ))
+        doTestExpectedLocalPrefixes(lp, LINK_LOCAL_PREFIX, IPV6_ONLINK_PREFIX)
+    }
+
+    @Test
+    fun testDualStackWifiWithRioAndOfflinkUla() {
+        val lp = lpWithRoutes(
+            WIFI_IFNAME,
+            listOf(
+                RouteInfo(LINK_LOCAL_PREFIX, null,  WIFI_IFNAME),
+                RouteInfo(IPV4_PREFIX_1, null,  WIFI_IFNAME),
+                // On-link /64 prefix is covered by home /56 prefix.
+                RouteInfo(IPV6_HOME_PREFIX, IPV6_ROUTER, WIFI_IFNAME),
+                RouteInfo(ULA_EXTERNAL_AGGREGATE, IPV6_ROUTER, WIFI_IFNAME),
+                RouteInfo(IPV4_DEFAULT_ROUTE_PREFIX, IPV4_ROUTER, WIFI_IFNAME),
+                RouteInfo(IPV6_DEFAULT_ROUTE_PREFIX, IPV6_ROUTER, WIFI_IFNAME)
+            ),
+            LINK_LOCAL_ADDRESS, IPV6_GLOBAL_ADDRESS, IPV4_ADDRESS_1
+        )
+        doTestExpectedLocalPrefixes(lp, LINK_LOCAL_PREFIX, IPV4_PREFIX_1, IPV6_HOME_PREFIX)
+    }
+
+    @Test
+    fun testDualStackWifiWithImplicitRoutes() {
+        val lp = lpWithRoutes(
+            WIFI_IFNAME,
+            listOf(
+                RouteInfo(IPV4_DEFAULT_ROUTE_PREFIX, IPV4_ROUTER, WIFI_IFNAME),
+                RouteInfo(IPV6_DEFAULT_ROUTE_PREFIX, IPV6_ROUTER, WIFI_IFNAME)
+            ),
+            LINK_LOCAL_ADDRESS, IPV6_GLOBAL_ADDRESS, ULA_ADDRESS, IPV4_ADDRESS_1
+        )
+        // On-link routes marked as local even if they are not explicitly present in LinkProperties.
+        doTestExpectedLocalPrefixes(lp, LINK_LOCAL_PREFIX, IPV6_ONLINK_PREFIX, ULA_ONLINK_PREFIX, IPV4_PREFIX_1)
+    }
+
+    @Test
+    fun testIpv4WifiWithStubNetwork() {
+        val lp = lpWithRoutes(
+            WIFI_IFNAME,
+            listOf(
+                RouteInfo(LINK_LOCAL_PREFIX, null,  WIFI_IFNAME),
+                RouteInfo(IPV4_PREFIX_1, null,  WIFI_IFNAME),
+                RouteInfo(IPV4_DEFAULT_ROUTE_PREFIX, IPV4_ROUTER, WIFI_IFNAME),
+                RouteInfo(ULA_STUB_PREFIX, IPV6_STUB_ROUTER, WIFI_IFNAME)
+            ),
+            LINK_LOCAL_ADDRESS, IPV4_ADDRESS_1, ULA_ADDRESS
+        )
+        doTestExpectedLocalPrefixes(lp, LINK_LOCAL_PREFIX, IPV4_PREFIX_1, ULA_ONLINK_PREFIX, ULA_STUB_PREFIX)
+    }
+
+    @Test
+    fun testDualStackWifiWithUlaAndStubNetwork() {
+        val lp = lpWithRoutes(
+            WIFI_IFNAME,
+            listOf(
+                RouteInfo(LINK_LOCAL_PREFIX, null,  WIFI_IFNAME),
+                RouteInfo(IPV6_ONLINK_PREFIX, null, WIFI_IFNAME),
+                RouteInfo(IPV6_HOME_PREFIX, IPV6_ROUTER, WIFI_IFNAME),
+                RouteInfo(ULA_ONLINK_PREFIX, null, WIFI_IFNAME),
+                RouteInfo(ULA_STUB_PREFIX, IPV6_STUB_ROUTER, WIFI_IFNAME),
+                RouteInfo(ULA_EXTERNAL_AGGREGATE, IPV6_ROUTER, WIFI_IFNAME),
+                RouteInfo(IPV6_DEFAULT_ROUTE_PREFIX, IPV6_ROUTER, WIFI_IFNAME),
+                RouteInfo(IPV4_PREFIX_1, null,  WIFI_IFNAME),
+                RouteInfo(IPV4_DEFAULT_ROUTE_PREFIX, IPV4_ROUTER, WIFI_IFNAME)
+            ),
+            LINK_LOCAL_ADDRESS, IPV6_GLOBAL_ADDRESS, ULA_ADDRESS, IPV4_ADDRESS_1
+        )
+        doTestExpectedLocalPrefixes(lp, LINK_LOCAL_PREFIX, IPV6_HOME_PREFIX, ULA_ONLINK_PREFIX, ULA_STUB_PREFIX, IPV4_PREFIX_1)
     }
 
     @Test
