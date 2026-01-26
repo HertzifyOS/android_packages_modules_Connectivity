@@ -204,6 +204,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.IntConsumer;
 
 // TODOs:
 //  - test client can send requests and receive replies
@@ -3408,5 +3409,28 @@ public class NsdServiceTest {
 
         assertFalse(HandlerUtils.visibleOnHandlerThread(mHandler, () ->
                 mAccessRepository.isServiceAllowed(Process.myUid(), SERVICE_NAME, SERVICE_TYPE)));
+    }
+
+    @Test
+    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    @RequiresFlagsEnabled(FLAG_ACCESS_LOCAL_NETWORK_PERMISSION_ENABLED)
+    public void testCheckPermissionForService() throws Exception {
+        setMdnsDiscoveryManagerEnabled();
+        mAccessRepository.unloadUid(Process.myUid());
+        final NsdManager client = connectClient(mService);
+        final IntConsumer resultReceiver = mock(IntConsumer.class);
+
+        client.checkPermissionForService(SERVICE_NAME, SERVICE_TYPE, Runnable::run, resultReceiver);
+        verify(resultReceiver, timeout(TIMEOUT_MS)).accept(NsdManager.SERVICE_PERMISSION_DENIED);
+
+        startDiscoveryWithPicker(client);
+        final NsdPickerConnector connector = verifyPickerStarted();
+        final NsdServiceInfo serviceInfo = new NsdServiceInfo(SERVICE_NAME, SERVICE_TYPE);
+        serviceInfo.setNetwork(TEST_NETWORK);
+        connector.notifyServiceSelected(serviceInfo);
+        waitForIdle();
+
+        client.checkPermissionForService(SERVICE_NAME, SERVICE_TYPE, Runnable::run, resultReceiver);
+        verify(resultReceiver, timeout(TIMEOUT_MS)).accept(NsdManager.SERVICE_PERMISSION_GRANTED);
     }
 }
