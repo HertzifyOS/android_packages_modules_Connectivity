@@ -100,7 +100,6 @@ private fun nr(transport: Int) = NetworkRequest.Builder()
 
 private fun address(addressStr: String) = InetAddresses.parseNumericAddress(addressStr)
 
-
 @DevSdkIgnoreRunner.MonitorThreadLeak
 @RunWith(DevSdkIgnoreRunner::class)
 @SmallTest
@@ -125,7 +124,6 @@ class CSLocalNetworkProtectionTest : CSTest() {
     private val IPV6_CELLULAR_PREFIX = IpPrefix("2001:268:9889:f121::/64")
     private val IPV6_CELLULAR_ADDRESS = LinkAddress("2001:268:9889:f121:0:33:539b:c01/64")
 
-
     private val IPV6_HOME_PREFIX_2 = IpPrefix("2001:db8:1:a00::/56")
     private val IPV6_DEFAULT_ROUTE_PREFIX = IpPrefix("::/0")
 
@@ -142,10 +140,11 @@ class CSLocalNetworkProtectionTest : CSTest() {
     private val IPV6_ROUTER = address("fe80::1")
     private val IPV6_STUB_ROUTER = address("fe80::cafe")
 
-    private fun triePrefixLength(prefix: IpPrefix) = if (prefix.address is Inet6Address)
-                prefix.prefixLength + PREFIX_LENGTH_IPV6
-            else
-                prefix.prefixLength + PREFIX_LENGTH_IPV4
+    private fun triePrefixLength(prefix: IpPrefix) = if (prefix.address is Inet6Address) {
+        prefix.prefixLength + PREFIX_LENGTH_IPV6
+    } else {
+        prefix.prefixLength + PREFIX_LENGTH_IPV4
+    }
     private fun verifyAddedToLocal(prefix: IpPrefix, iface: String = WIFI_IFNAME) {
         verify(bpfNetMaps).addLocalNetAccess(triePrefixLength(prefix), iface,
             prefix.address, 0 /* protocol */, 0 /* remoteport */, false)
@@ -158,7 +157,6 @@ class CSLocalNetworkProtectionTest : CSTest() {
     private fun verifyRemovedFromLocal(prefix: IpPrefix, iface: String = WIFI_IFNAME) {
         verify(bpfNetMaps).removeLocalNetAccess(triePrefixLength(prefix), iface,
             prefix.address, 0 /* protocol */, 0 /* remoteport */)
-
     }
 
     private fun verifyNeverRemovedFromLocal(prefix: IpPrefix, iface: String = WIFI_IFNAME) =
@@ -166,7 +164,7 @@ class CSLocalNetworkProtectionTest : CSTest() {
             iface, prefix.address, 0 /* protocol */, 0 /* remoteport */)
 
     private fun verifyNothingRemovedFromLocal() {
-        verify(bpfNetMaps,never()).removeLocalNetAccess(anyInt(), anyString(),
+        verify(bpfNetMaps, never()).removeLocalNetAccess(anyInt(), anyString(),
             any(InetAddress::class.java), anyInt(), anyInt())
     }
 
@@ -607,7 +605,7 @@ class CSLocalNetworkProtectionTest : CSTest() {
 
         // Verifying IPv6 unique routes should be populated in local_net_access map
         verifyAddedToLocal(IPV6_HOME_PREFIX)
-        verifyNeverAddedToLocal(IPV6_ONLINK_PREFIX)  // covered by IPV6_HOME_PREFIX
+        verifyNeverAddedToLocal(IPV6_ONLINK_PREFIX) // covered by IPV6_HOME_PREFIX
         verifyAddedToLocal(LINK_LOCAL_PREFIX)
     }
 
@@ -626,7 +624,7 @@ class CSLocalNetworkProtectionTest : CSTest() {
             it.addLinkAddress(LinkAddress("192.0.0.4/32"))
             it.addRoute(RouteInfo(IPV4_DEFAULT_ROUTE_PREFIX, null, clatIface))
         })
-        return lp;
+        return lp
     }
 
     fun doTestExpectedLocalPrefixes(lp: LinkProperties, vararg localPrefixes: IpPrefix) {
@@ -672,7 +670,7 @@ class CSLocalNetworkProtectionTest : CSTest() {
             ),
             IPV4_ADDRESS_1, IPV6_GLOBAL_ADDRESS
         )
-        doTestExpectedLocalPrefixes(lp,IPV4_PREFIX_1, IPV6_ONLINK_PREFIX)
+        doTestExpectedLocalPrefixes(lp, IPV4_PREFIX_1, IPV6_ONLINK_PREFIX)
     }
 
     @Test
@@ -692,9 +690,9 @@ class CSLocalNetworkProtectionTest : CSTest() {
         val lp = lpWithRoutes(
             WIFI_IFNAME,
             listOf(
-                RouteInfo(LINK_LOCAL_PREFIX, null,  WIFI_IFNAME),
-                RouteInfo(IPV4_PREFIX_1, null,  WIFI_IFNAME),
-                RouteInfo(IPV6_ONLINK_PREFIX, null,  WIFI_IFNAME),
+                RouteInfo(LINK_LOCAL_PREFIX, null, WIFI_IFNAME),
+                RouteInfo(IPV4_PREFIX_1, null, WIFI_IFNAME),
+                RouteInfo(IPV6_ONLINK_PREFIX, null, WIFI_IFNAME),
                 RouteInfo(IPV4_DEFAULT_ROUTE_PREFIX, IPV4_ROUTER, WIFI_IFNAME),
                 RouteInfo(IPV6_DEFAULT_ROUTE_PREFIX, IPV6_ROUTER, WIFI_IFNAME)
             ),
@@ -708,8 +706,8 @@ class CSLocalNetworkProtectionTest : CSTest() {
         val lp = stackClatLp(lpWithRoutes(
             WIFI_IFNAME,
             listOf(
-                RouteInfo(LINK_LOCAL_PREFIX, null,  WIFI_IFNAME),
-                RouteInfo(IPV6_ONLINK_PREFIX, null,  WIFI_IFNAME),
+                RouteInfo(LINK_LOCAL_PREFIX, null, WIFI_IFNAME),
+                RouteInfo(IPV6_ONLINK_PREFIX, null, WIFI_IFNAME),
                 RouteInfo(IPV6_DEFAULT_ROUTE_PREFIX, IPV6_ROUTER, WIFI_IFNAME)
             ),
             LINK_LOCAL_ADDRESS, IPV6_GLOBAL_ADDRESS
@@ -722,8 +720,8 @@ class CSLocalNetworkProtectionTest : CSTest() {
         val lp = lpWithRoutes(
             WIFI_IFNAME,
             listOf(
-                RouteInfo(LINK_LOCAL_PREFIX, null,  WIFI_IFNAME),
-                RouteInfo(IPV4_PREFIX_1, null,  WIFI_IFNAME),
+                RouteInfo(LINK_LOCAL_PREFIX, null, WIFI_IFNAME),
+                RouteInfo(IPV4_PREFIX_1, null, WIFI_IFNAME),
                 // On-link /64 prefix is covered by home /56 prefix.
                 RouteInfo(IPV6_HOME_PREFIX, IPV6_ROUTER, WIFI_IFNAME),
                 RouteInfo(ULA_EXTERNAL_AGGREGATE, IPV6_ROUTER, WIFI_IFNAME),
@@ -746,7 +744,8 @@ class CSLocalNetworkProtectionTest : CSTest() {
             LINK_LOCAL_ADDRESS, IPV6_GLOBAL_ADDRESS, ULA_ADDRESS, IPV4_ADDRESS_1
         )
         // On-link routes marked as local even if they are not explicitly present in LinkProperties.
-        doTestExpectedLocalPrefixes(lp, LINK_LOCAL_PREFIX, IPV6_ONLINK_PREFIX, ULA_ONLINK_PREFIX, IPV4_PREFIX_1)
+        doTestExpectedLocalPrefixes(lp, LINK_LOCAL_PREFIX, IPV6_ONLINK_PREFIX, ULA_ONLINK_PREFIX,
+            IPV4_PREFIX_1)
     }
 
     @Test
@@ -754,14 +753,15 @@ class CSLocalNetworkProtectionTest : CSTest() {
         val lp = lpWithRoutes(
             WIFI_IFNAME,
             listOf(
-                RouteInfo(LINK_LOCAL_PREFIX, null,  WIFI_IFNAME),
-                RouteInfo(IPV4_PREFIX_1, null,  WIFI_IFNAME),
+                RouteInfo(LINK_LOCAL_PREFIX, null, WIFI_IFNAME),
+                RouteInfo(IPV4_PREFIX_1, null, WIFI_IFNAME),
                 RouteInfo(IPV4_DEFAULT_ROUTE_PREFIX, IPV4_ROUTER, WIFI_IFNAME),
                 RouteInfo(ULA_STUB_PREFIX, IPV6_STUB_ROUTER, WIFI_IFNAME)
             ),
             LINK_LOCAL_ADDRESS, IPV4_ADDRESS_1, ULA_ADDRESS
         )
-        doTestExpectedLocalPrefixes(lp, LINK_LOCAL_PREFIX, IPV4_PREFIX_1, ULA_ONLINK_PREFIX, ULA_STUB_PREFIX)
+        doTestExpectedLocalPrefixes(lp, LINK_LOCAL_PREFIX, IPV4_PREFIX_1, ULA_ONLINK_PREFIX,
+            ULA_STUB_PREFIX)
     }
 
     @Test
@@ -769,19 +769,20 @@ class CSLocalNetworkProtectionTest : CSTest() {
         val lp = lpWithRoutes(
             WIFI_IFNAME,
             listOf(
-                RouteInfo(LINK_LOCAL_PREFIX, null,  WIFI_IFNAME),
+                RouteInfo(LINK_LOCAL_PREFIX, null, WIFI_IFNAME),
                 RouteInfo(IPV6_ONLINK_PREFIX, null, WIFI_IFNAME),
                 RouteInfo(IPV6_HOME_PREFIX, IPV6_ROUTER, WIFI_IFNAME),
                 RouteInfo(ULA_ONLINK_PREFIX, null, WIFI_IFNAME),
                 RouteInfo(ULA_STUB_PREFIX, IPV6_STUB_ROUTER, WIFI_IFNAME),
                 RouteInfo(ULA_EXTERNAL_AGGREGATE, IPV6_ROUTER, WIFI_IFNAME),
                 RouteInfo(IPV6_DEFAULT_ROUTE_PREFIX, IPV6_ROUTER, WIFI_IFNAME),
-                RouteInfo(IPV4_PREFIX_1, null,  WIFI_IFNAME),
+                RouteInfo(IPV4_PREFIX_1, null, WIFI_IFNAME),
                 RouteInfo(IPV4_DEFAULT_ROUTE_PREFIX, IPV4_ROUTER, WIFI_IFNAME)
             ),
             LINK_LOCAL_ADDRESS, IPV6_GLOBAL_ADDRESS, ULA_ADDRESS, IPV4_ADDRESS_1
         )
-        doTestExpectedLocalPrefixes(lp, LINK_LOCAL_PREFIX, IPV6_HOME_PREFIX, ULA_ONLINK_PREFIX, ULA_STUB_PREFIX, IPV4_PREFIX_1)
+        doTestExpectedLocalPrefixes(lp, LINK_LOCAL_PREFIX, IPV6_HOME_PREFIX, ULA_ONLINK_PREFIX,
+            ULA_STUB_PREFIX, IPV4_PREFIX_1)
     }
 
     @Test
