@@ -10198,18 +10198,20 @@ public class ConnectivityService extends IConnectivityManager.Stub
             throw new IllegalArgumentException("Local agents are not supported in this version");
         }
         final boolean hasLocalNetworkConfig = null != localNetworkConfig;
-        if (hasLocalCap != hasLocalNetworkConfig) {
-            throw new IllegalArgumentException(null != localNetworkConfig
-                    ? "Only local network agents can have a LocalNetworkConfig"
-                    : "Local network agents must have a LocalNetworkConfig"
-            );
+        if (hasLocalNetworkConfig && !hasLocalCap) {
+            throw new IllegalArgumentException(
+                    "Only local network agents can have a LocalNetworkConfig");
         }
+        final boolean needsDefaultLnc = hasLocalCap && !hasLocalNetworkConfig;
+        final LocalNetworkConfig lnc = needsDefaultLnc
+                ? new LocalNetworkConfig.Builder().build()
+                : localNetworkConfig;
 
         final int uid = mDeps.getCallingUid();
         final long token = Binder.clearCallingIdentity();
         try {
             return registerNetworkAgentInternal(na, networkInfo, linkProperties,
-                    networkCapabilities, initialScore, networkAgentConfig, localNetworkConfig,
+                    networkCapabilities, initialScore, networkAgentConfig, lnc,
                     providerId, uid, isAppSpecificNetwork);
         } finally {
             Binder.restoreCallingIdentity(token);
