@@ -51,6 +51,7 @@ import android.net.apf.BaseApfGenerator
 import android.net.apf.BaseApfGenerator.MemorySlot
 import android.net.apf.BaseApfGenerator.Register.R0
 import android.net.apf.BaseApfGenerator.Register.R1
+import android.net.cts.util.CtsNetUtils
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
@@ -84,6 +85,7 @@ import com.android.net.module.util.NetworkStackConstants.ETHER_SRC_ADDR_OFFSET
 import com.android.net.module.util.NetworkStackConstants.ICMPV6_HEADER_MIN_LEN
 import com.android.net.module.util.NetworkStackConstants.IPV6_ADDR_LEN
 import com.android.net.module.util.PacketReader
+import com.android.testutils.ConnectUtil
 import com.android.testutils.ConnectivityDiagnosticsCollector
 import com.android.testutils.DevSdkIgnoreRule
 import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo
@@ -126,9 +128,10 @@ private const val TIMEOUT_MS = 2000L
 private const val RCV_BUFFER_SIZE = 1480
 private const val PING_HEADER_LENGTH = 8
 
-// Sets threshold to 5 Mbps to provide a conservative buffer against the 10 Mbps VSR requirement.
-private const val TRAFFIC_THRESHOLD_KBPS = 5000.0
-private val BACKOFF_INTERVALS_MS = listOf(2000L, 4000L, 8000L, 16000L, 32000L)
+// Sets threshold to 5 Kbps to provide a conservative buffer against the 10 Mbps VSR requirement.
+private const val TRAFFIC_THRESHOLD_KBPS = 5.0
+private const val POLLING_INTERVAL_MS = 2000L
+private const val MAX_POLLING_ATTEMPTS = 15
 
 open class FromU<Type>(val value: Type)
 
@@ -144,6 +147,8 @@ class ApfIntegrationTest {
 
         private val context = InstrumentationRegistry.getInstrumentation().context
         private val powerManager = context.getSystemService(PowerManager::class.java)!!
+        private val ctsNetUtils = CtsNetUtils(context)
+        private val connUtils = ConnectUtil(context)
         private val pm = context.packageManager
         private val wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG)
         private var isLowPowerStandbyOriginalEnabled: Boolean = false
@@ -214,6 +219,10 @@ class ApfIntegrationTest {
             if (pm.hasSystemFeature(FEATURE_PC)) {
                 return
             }
+
+            // toggle Wi-Fi and ensure Wi-Fi is validated after reconnected
+            ctsNetUtils.reconnectWifiIfSupported()
+            connUtils.ensureWifiValidated()
 
             // APF must run when the screen is off and the device is not interactive.
             turnScreenOff()
@@ -525,8 +534,7 @@ class ApfIntegrationTest {
 
     /**
      * Wait for network traffic on the test interface to be low enough for APF to be active.
-     * Uses exponential backoff: measures traffic over 2s, 4s, 8s, 16s, 32s intervals.
-     * Fails if traffic exceeds threshold after all retries.
+     * Polls traffic every 2 seconds. Fails if traffic exceeds threshold after all retries.
      *
      * Note: This method will wait at least 2 seconds to measure traffic.
      */
@@ -538,14 +546,13 @@ class ApfIntegrationTest {
             fail("TrafficStats unsupported for $ifname")
         }
 
-        for ((attemptIndex, intervalMs) in BACKOFF_INTERVALS_MS.withIndex()) {
-            Thread.sleep(intervalMs)
+        for (i in 0 until MAX_POLLING_ATTEMPTS) {
+            Thread.sleep(POLLING_INTERVAL_MS)
 
             val current = TrafficSnapshot.capture(ifname)
             Log.i(
                 TAG,
-                "$ifname TrafficStats (attempt ${attemptIndex + 1}/" +
-                    "${BACKOFF_INTERVALS_MS.size}): $current"
+                "$ifname TrafficStats (attempt ${i + 1}/$MAX_POLLING_ATTEMPTS): $current"
             )
 
             val throughputKbps = current.getThroughputKbps(prev)
@@ -554,8 +561,8 @@ class ApfIntegrationTest {
 
             Log.i(
                 TAG,
-                "$ifname throughput (${attemptIndex + 1}/${BACKOFF_INTERVALS_MS.size}) " +
-                        "after ${intervalMs}ms: " +
+                "$ifname throughput (${i + 1}/$MAX_POLLING_ATTEMPTS) " +
+                        "after ${POLLING_INTERVAL_MS}ms: " +
                         "${"%.2f".format(throughputKbps)} Kbps " +
                         "(rxDiff=$rxDiff txDiff=$txDiff)."
             )
@@ -564,7 +571,7 @@ class ApfIntegrationTest {
                 Log.i(
                     TAG,
                     "$ifname traffic below threshold ${TRAFFIC_THRESHOLD_KBPS}kbps after " +
-                            "${intervalMs}ms; continuing"
+                            "${POLLING_INTERVAL_MS}ms; continuing"
                 )
                 return
             }
