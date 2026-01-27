@@ -30,11 +30,13 @@ import android.net.cts.util.CtsNetUtils
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.PowerManager
+import android.os.SystemProperties
 import android.util.Log
 import androidx.test.platform.app.InstrumentationRegistry
 import com.android.compatibility.common.util.SystemUtil.runShellCommand
 import com.android.compatibility.common.util.SystemUtil.runShellCommandOrThrow
 import com.android.modules.utils.build.SdkLevel
+import com.android.net.module.util.HexDump
 import com.android.testutils.ConnectUtil
 import com.android.testutils.DevSdkIgnoreRule
 import com.android.testutils.TestableNetworkCallback
@@ -231,5 +233,28 @@ abstract class ApfTestBase {
         if (::networkCallback.isInitialized) {
             cm.unregisterNetworkCallback(networkCallback)
         }
+    }
+
+    fun installProgram(bytes: ByteArray) {
+        val prog = bytes.toHexString()
+        val result = runShellCommandOrThrow("cmd network_stack apf $ifname install $prog").trim()
+        // runShellCommandOrThrow only throws on S+.
+        assertThat(result).isEqualTo("success")
+    }
+
+    fun readProgram(): ByteArray {
+        val progHexString = runShellCommandOrThrow("cmd network_stack apf $ifname read").trim()
+        // runShellCommandOrThrow only throws on S+.
+        assertThat(progHexString).isNotEmpty()
+        return HexDump.hexStringToByteArray(progHexString)
+    }
+
+    // APF is backwards compatible, i.e. a v6 interpreter supports both v2 and v4 functionality.
+    fun assumeApfVersionSupportAtLeast(version: Int) {
+        assume().that(caps.apfVersionSupported).isAtLeast(version)
+    }
+
+    fun assumeNotCuttlefish() {
+        assume().that(SystemProperties.get("ro.product.board", "")).isNotEqualTo("cutf")
     }
 }
