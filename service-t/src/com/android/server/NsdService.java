@@ -33,6 +33,7 @@ import static android.net.nsd.AdvertisingRequest.FLAG_SKIP_PROBING;
 import static android.net.nsd.AdvertisingRequest.FLAG_SKIP_SUBTYPE_ANNOUNCEMENTS;
 import static android.net.nsd.DiscoveryRequest.FLAG_NO_PICKER;
 import static android.net.nsd.DiscoveryRequest.FLAG_SHOW_PICKER;
+import static android.net.nsd.DiscoveryRequest.FLAG_USER_APPROVED_ONLY;
 import static android.net.nsd.NsdManager.FAILURE_INTERNAL_ERROR;
 import static android.net.nsd.NsdManager.FAILURE_PERMISSION_DENIED;
 import static android.net.nsd.NsdManager.MDNS_DISCOVERY_MANAGER_EVENT;
@@ -799,6 +800,17 @@ public class NsdService extends INsdManager.Stub {
         return false;
     }
 
+    private boolean serviceMatchesApprovedOnly(@NonNull ClientInfo clientInfo,
+            @NonNull MdnsServiceInfo service, @NonNull DiscoveryRequest request) {
+        final boolean approvedOnly = (request.getFlags() & FLAG_USER_APPROVED_ONLY) != 0;
+        if (!approvedOnly) {
+            return true;
+        }
+        final String serviceType = joinServiceType(service);
+        return serviceType != null && mAccessRepository.isServiceAllowed(
+                clientInfo.mUid, service.getServiceInstanceName(), serviceType);
+    }
+
     /**
      * Take or release the lock based on updated internal state.
      *
@@ -1249,38 +1261,50 @@ public class NsdService extends INsdManager.Stub {
                 parseTypeAndSubtype(discoveryRequest.getServiceType());
         final String serviceType = typeAndSubtype == null ? null : typeAndSubtype.first;
         final boolean useJavaBackend = useDiscoveryManager(clientInfo, serviceType);
-        final boolean forcePicker = mEnablePicker
-                && ((discoveryRequest.getFlags() & FLAG_SHOW_PICKER) != 0);
 
-        final boolean noPicker;
-        final boolean usingPermission;
-        final boolean usingFallbackPermission;
-        if (forcePicker && useJavaBackend) {
-            // If the picker is used, no permission is required, and no permission checks are done
-            // so the app does not get blamed for using permissions.
-            noPicker = false;
-            usingPermission = false;
-            usingFallbackPermission = false;
+        final boolean pickerRequested;
+        final boolean permissionsRequired;
+        if (useJavaBackend && mEnablePicker) {
+            pickerRequested = (discoveryRequest.getFlags() & FLAG_SHOW_PICKER) != 0;
+            // Ignore APPROVED_ONLY if SHOW_PICKER is set
+            final boolean approvedOnlyRequested = !pickerRequested
+                    && ((discoveryRequest.getFlags() & FLAG_USER_APPROVED_ONLY) != 0);
+            permissionsRequired = !(approvedOnlyRequested || pickerRequested);
         } else {
-            noPicker = !mEnablePicker || ((discoveryRequest.getFlags() & FLAG_NO_PICKER) != 0);
-            usingPermission = checkDataDeliveryPermissions(
-                    clientInfo.mUid, clientInfo.mPid) == PERMISSION_GRANTED;
-            usingFallbackPermission =
-                    !usingPermission && hasFallbackPermission(clientInfo.mUid, clientInfo.mPid);
+            pickerRequested = false;
+            // The legacy backend will only be used when running on T (and with target SDK T-),
+            // while checkDataDeliveryPermissions always returns GRANTED before B
+            // (getAttributionSource == null). So permission checks will always be successful when
+            // the legacy backend is used; this is set to true for the mEnablePicker == false case.
+            permissionsRequired = true;
         }
-        final boolean usePicker = !usingPermission && !usingFallbackPermission;
-        // The local network permission enforcement only exists on 25Q2+, which always uses the Java
-        // backend (the legacy path is only for apps targeting T- running on T-). Fail early if
-        // usePicker && !useJavaBackend so it's clear it doesn't need to be supported below, but
-        // this should never happen.
-        if (usePicker && (!useJavaBackend || noPicker)) {
+
+        final boolean usingLocalNetPermission;
+        // The picker is used if requested (implies no permissions are required), or if required
+        // permissions are missing.
+        final boolean usePicker;
+        if (permissionsRequired) {
+            usingLocalNetPermission = checkDataDeliveryPermissions(
+                    clientInfo.mUid, clientInfo.mPid) == PERMISSION_GRANTED;
+            final boolean usingFallbackPermission = !usingLocalNetPermission
+                    && hasFallbackPermission(clientInfo.mUid, clientInfo.mPid);
+            usePicker = !usingLocalNetPermission && !usingFallbackPermission;
+        } else {
+            usingLocalNetPermission = false;
+            usePicker = pickerRequested;
+        }
+
+        final boolean noPickerFlag = !pickerRequested
+                && ((discoveryRequest.getFlags() & FLAG_NO_PICKER) != 0);
+        if (usePicker && (noPickerFlag || !mEnablePicker)) {
             clientInfo.onDiscoverServicesFailedPermissions(clientRequestId);
             return;
         }
 
         if (requestLimitReached(clientInfo)) {
             clientInfo.onDiscoverServicesFailedImmediately(clientRequestId,
-                    NsdManager.FAILURE_MAX_LIMIT, true /* isLegacy */, usingPermission);
+                    NsdManager.FAILURE_MAX_LIMIT, true /* isLegacy */,
+                    usingLocalNetPermission);
             return;
         }
 
@@ -1288,7 +1312,8 @@ public class NsdService extends INsdManager.Stub {
         if (useJavaBackend) {
             if (serviceType == null || typeAndSubtype.second.size() > 1) {
                 clientInfo.onDiscoverServicesFailedImmediately(clientRequestId,
-                        NsdManager.FAILURE_INTERNAL_ERROR, false /* isLegacy */, usingPermission);
+                        NsdManager.FAILURE_INTERNAL_ERROR, false /* isLegacy */,
+                        usingLocalNetPermission);
                 return;
             }
 
@@ -1299,7 +1324,8 @@ public class NsdService extends INsdManager.Stub {
 
             if (subtype != null && !checkSubtypeLabel(subtype)) {
                 clientInfo.onDiscoverServicesFailedImmediately(clientRequestId,
-                        NsdManager.FAILURE_BAD_PARAMETERS, false /* isLegacy */, usingPermission);
+                        NsdManager.FAILURE_BAD_PARAMETERS, false /* isLegacy */,
+                        usingLocalNetPermission);
                 return;
             }
 
@@ -1334,9 +1360,10 @@ public class NsdService extends INsdManager.Stub {
             }
             mMdnsDiscoveryManager.registerListener(
                     listenServiceType, listener, optionsBuilder.build());
+            final boolean usingPermissionExemption = !usingLocalNetPermission;
             final ClientRequest clientRequest = storeDiscoveryManagerRequestMap(
                     clientRequestId, transactionId, listener, clientInfo,
-                    discoveryRequest.getNetwork(), usingFallbackPermission,
+                    discoveryRequest.getNetwork(), usingPermissionExemption,
                     discoveryRequest);
             clientInfo.onDiscoverServicesStarted(clientRequestId, discoveryRequest, clientRequest);
         } else {
@@ -1354,7 +1381,8 @@ public class NsdService extends INsdManager.Stub {
             } else {
                 stopServiceDiscovery(transactionId);
                 clientInfo.onDiscoverServicesFailedImmediately(clientRequestId,
-                        NsdManager.FAILURE_INTERNAL_ERROR, true /* isLegacy */, usingPermission);
+                        NsdManager.FAILURE_INTERNAL_ERROR, true /* isLegacy */,
+                        usingLocalNetPermission);
             }
         }
     }
@@ -2188,16 +2216,9 @@ public class NsdService extends INsdManager.Stub {
     @Nullable
     private NsdServiceInfo buildNsdServiceInfoFromMdnsEvent(
             final MdnsServiceInfo serviceInfo, int code, ClientInfo clientInfo) {
-        final String[] typeArray = serviceInfo.getServiceType();
-        final String joinedType;
-        if (typeArray.length == 0
-                || !typeArray[typeArray.length - 1].equals(LOCAL_DOMAIN_NAME)) {
-            Log.wtf(TAG, "MdnsServiceInfo type does not end in .local: "
-                    + Arrays.toString(typeArray));
+        final String joinedType = joinServiceType(serviceInfo);
+        if (joinedType == null) {
             return null;
-        } else {
-            joinedType = TextUtils.join(".",
-                    Arrays.copyOfRange(typeArray, 0, typeArray.length - 1));
         }
         final String serviceType;
         switch (code) {
@@ -2243,6 +2264,19 @@ public class NsdService extends INsdManager.Stub {
         return servInfo;
     }
 
+    @Nullable
+    private String joinServiceType(@NonNull MdnsServiceInfo serviceInfo) {
+        final String[] typeArray = serviceInfo.getServiceType();
+        if (typeArray.length == 0
+                || !typeArray[typeArray.length - 1].equals(LOCAL_DOMAIN_NAME)) {
+            Log.wtf(TAG, "MdnsServiceInfo type does not end in .local: "
+                    + Arrays.toString(typeArray));
+            return null;
+        } else {
+            return TextUtils.join(".", Arrays.copyOfRange(typeArray, 0, typeArray.length - 1));
+        }
+    }
+
     private void handleMdnsDiscoveryManagerEvent(
             int transactionId, int code, Object obj) {
         final ClientInfo clientInfo = mTransactionIdToClientInfoMap.get(transactionId);
@@ -2267,7 +2301,8 @@ public class NsdService extends INsdManager.Stub {
         }
 
         final DiscoveryRequest discReq = ((DiscoveryManagerRequest) request).mDiscoveryRequest;
-        if (discReq != null && isServiceFilteredOut(event.mMdnsServiceInfo, discReq)) {
+        if (discReq != null && (isServiceFilteredOut(event.mMdnsServiceInfo, discReq)
+                || !serviceMatchesApprovedOnly(clientInfo, event.mMdnsServiceInfo, discReq))) {
             if (DBG) {
                 Log.d(TAG, "Service " + event.mMdnsServiceInfo + " filtered out for " + discReq);
             }
