@@ -3250,7 +3250,7 @@ public class NsdServiceTest {
         ArgumentCaptor<Boolean> isServiceLostCaptor = ArgumentCaptor.forClass(Boolean.class);
         ArgumentCaptor<String> interfaceNameCaptor = ArgumentCaptor.forClass(String.class);
 
-        verify(mDiscoveryManager).handleProxyOffloadEngineResponse(
+        verify(mDiscoveryManager, timeout(TIMEOUT_MS)).handleProxyOffloadEngineResponse(
                 serviceInfoCaptor.capture(),
                 isServiceLostCaptor.capture(),
                 interfaceNameCaptor.capture()
