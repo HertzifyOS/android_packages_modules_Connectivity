@@ -29,6 +29,7 @@
 # by virtue of 'service bpfloader' being overridden by the apex shipped .rc
 # Warning: the below settings are irrelevant unless the apex is missing.
 service bpfloader /system/bin/false
+    disabled # started on demand via trigger
     user root
     oneshot
     reboot_on_failure reboot,netbpfload-missing
