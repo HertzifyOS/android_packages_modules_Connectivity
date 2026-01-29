@@ -79,7 +79,7 @@ static Status checkProgramAccessible(const char* programPath) {
 
 static void getsockoptTest() {
     // getsockopt bpf hook is not called if the device is running in compat mode.
-    if (bpf::isKernel64Bit() != bpf::isUserspace64bit()) return;
+    if (bpf::isKernel64Bit() != bpf::isUserspace64bit() && !isAtLeastKernelVersion(6, 13)) return;
 
     // SO_ANDROID_DROP_REASON option is only supported on 5.10+.
     if (!isAtLeastKernelVersion(5, 10)) return;
