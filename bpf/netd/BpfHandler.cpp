@@ -42,6 +42,7 @@ using bpf::isAtLeastT;
 using bpf::isAtLeastU;
 using bpf::isAtLeastV;
 using bpf::isAtLeast25Q2;
+using bpf::isUser;
 using bpf::queryProgram;
 using bpf::retrieveProgram;
 using netdutils::Status;
@@ -346,9 +347,7 @@ static void mapLockTest(void) {
 
 Status BpfHandler::initMaps() {
     // bpfLock() requires bpfGetFdMapId which is only available on 4.14+ kernels.
-    if (isAtLeastKernelVersion(4, 14)) {
-        mapLockTest();
-    }
+    if (isAtLeastKernelVersion(4, 14) && !isUser) mapLockTest();
 
     RETURN_IF_NOT_OK(mStatsMapA.init(STATS_MAP_A_PATH));
     RETURN_IF_NOT_OK(mStatsMapB.init(STATS_MAP_B_PATH));
