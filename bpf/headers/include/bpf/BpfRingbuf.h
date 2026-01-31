@@ -88,6 +88,7 @@ class BpfRingbufBase {
 
   const size_t mValueSize;
 
+  inline static const size_t mPageSize = getpagesize();
   size_t mConsumerSize;
   size_t mProducerSize;
   unsigned long mPosMask;
@@ -193,8 +194,8 @@ inline Result<void> BpfRingbufBase::Init(const char* path) {
   }
 
   mPosMask = max_entries - 1;
-  mConsumerSize = getpagesize();
-  mProducerSize = getpagesize() + 2 * max_entries;
+  mConsumerSize = mPageSize;
+  mProducerSize = mPageSize + 2 * max_entries;
 
   {
     void* ptr = mmap(NULL, mConsumerSize, PROT_READ | PROT_WRITE, MAP_SHARED,
@@ -214,7 +215,7 @@ inline Result<void> BpfRingbufBase::Init(const char* path) {
     mProducerPos = reinterpret_cast<decltype(mProducerPos)>(ptr);
   }
 
-  mDataPos = pointerAddBytes<void*>(mProducerPos, getpagesize());
+  mDataPos = pointerAddBytes<void*>(mProducerPos, mPageSize);
   return {};
 }
 
