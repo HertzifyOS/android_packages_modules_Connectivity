@@ -138,6 +138,15 @@ DEFINE_BPF_MAP_EXT(local_net_note_op_enabled_map, ARRAY, uint32_t, bool, 1,
                    AID_ROOT, AID_NET_BW_ACCT, 0060, "net_shared", DEFAULT_BPF_PIN_SUBDIR,
                    BPFLOADER_MAINLINE_25Q2_VERSION, BPFLOADER_MAX_VER, 0)
 
+// A single-element array holding the current generation ID of the local network
+// cache map. Updated by the system. Even IDs represent a stable cache state.
+// Odd IDs represent an unstable state, during which the cache should not be
+// used.
+DEFINE_BPF_MAP_EXT(local_net_cache_generation_id_map, ARRAY, uint32_t, uint64_t,
+                   1, AID_ROOT, AID_NET_BW_ACCT, 0060, "net_shared",
+                   DEFAULT_BPF_PIN_SUBDIR, BPFLOADER_MAINLINE_25Q2_VERSION,
+                   BPFLOADER_MAX_VER, 0)
+
 // A ring buffer on which loopback access events are pushed.
 DEFINE_BPF_RINGBUF_EXT(loopback_access_ringbuf, LoopbackAccessEvent, 16 * 512,
                        AID_ROOT, AID_SYSTEM, 0060, "net_shared", DEFAULT_BPF_PIN_SUBDIR,
