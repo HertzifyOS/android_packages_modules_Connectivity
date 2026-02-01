@@ -51,12 +51,15 @@ class BpfRingbufBase {
   // returns !isEmpty() for convenience
   bool wait(int timeout_ms = -1);
 
+  size_t maxCapacityBytes() const { return mMaxEntries; }
+
  protected:
   // Non-initializing constructor, used by Create.
-  BpfRingbufBase(size_t value_size) : mValueSize(value_size) {}
+  BpfRingbufBase(size_t value_size) : mValueSize(value_size), mMaxEntries(0) {}
 
   // Full construction that aborts on error (use Create/Init to handle errors).
-  BpfRingbufBase(const char* path, size_t value_size) : mValueSize(value_size) {
+  BpfRingbufBase(const char *path, size_t value_size)
+    : mValueSize(value_size), mMaxEntries(0) {
     if (auto status = Init(path); !status.ok()) {
       ALOGE("BpfRingbuf init failed: %s", status.error().message().c_str());
       abort();
@@ -87,6 +90,7 @@ class BpfRingbufBase {
   }
 
   const size_t mValueSize;
+  size_t mMaxEntries;
 
   size_t mConsumerSize;
   size_t mProducerSize;
@@ -191,6 +195,7 @@ inline Result<void> BpfRingbufBase::Init(const char* path) {
     errno = EINVAL;
     return ErrnoError() << "max_entries must be non-zero";
   }
+  mMaxEntries = max_entries;
 
   mPosMask = max_entries - 1;
   mConsumerSize = getpagesize();
