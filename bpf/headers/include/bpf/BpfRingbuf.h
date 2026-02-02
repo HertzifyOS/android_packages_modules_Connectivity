@@ -40,10 +40,10 @@ using android::base::unique_fd;
 class BpfRingbufBase {
  public:
   virtual ~BpfRingbufBase() {
-    if (mConsumerPos) munmap(mConsumerPos, mConsumerSize);
-    if (mProducerPos) munmap(mProducerPos, mProducerSize);
-    mConsumerPos = nullptr;
-    mProducerPos = nullptr;
+    if (mConsumerPtr) munmap(mConsumerPtr, mConsumerSize);
+    if (mProducerPtr) munmap(mProducerPtr, mProducerSize);
+    mConsumerPtr = nullptr;
+    mProducerPtr = nullptr;
   }
 
   bool isEmpty(void);
@@ -98,7 +98,7 @@ class BpfRingbufBase {
   unsigned long mPosMask;
   unique_fd mRingFd;
 
-  void* mDataPos = nullptr;
+  void* mDataPtr = nullptr;
   // The kernel uses an "unsigned long" type for both consumer and producer position.
   // Unsigned long is a 4 byte value on a 32-bit kernel, and an 8 byte value on a 64-bit kernel.
   // To support 32-bit kernels, producer pos is capped at 4 bytes (despite it being 8 bytes on
@@ -107,8 +107,8 @@ class BpfRingbufBase {
   // This solution is bitness agnostic. The consumer only increments the 8 byte consumer pos, which,
   // in a little-endian architecture, is safe since the entire page is mapped into memory and a
   // 32-bit kernel will just ignore the high-order bits.
-  std::atomic_uint64_t* mConsumerPos = nullptr;
-  std::atomic_uint32_t* mProducerPos = nullptr;
+  std::atomic_uint64_t* mConsumerPtr = nullptr;
+  std::atomic_uint32_t* mProducerPtr = nullptr;
   std::atomic_uint32_t* mLength = nullptr;
 
   // In order to guarantee atomic access in a 32 bit userspace environment, atomic_uint64_t is used
@@ -208,7 +208,7 @@ inline Result<void> BpfRingbufBase::Init(const char* path) {
     if (ptr == MAP_FAILED) {
       return ErrnoError() << "failed to mmap ringbuf consumer pages";
     }
-    mConsumerPos = reinterpret_cast<decltype(mConsumerPos)>(ptr);
+    mConsumerPtr = reinterpret_cast<decltype(mConsumerPtr)>(ptr);
   }
 
   {
@@ -217,16 +217,16 @@ inline Result<void> BpfRingbufBase::Init(const char* path) {
     if (ptr == MAP_FAILED) {
       return ErrnoError() << "failed to mmap ringbuf producer page";
     }
-    mProducerPos = reinterpret_cast<decltype(mProducerPos)>(ptr);
+    mProducerPtr = reinterpret_cast<decltype(mProducerPtr)>(ptr);
   }
 
-  mDataPos = pointerAddBytes<void*>(mProducerPos, mPageSize);
+  mDataPtr = pointerAddBytes<void*>(mProducerPtr, mPageSize);
   return {};
 }
 
 inline bool BpfRingbufBase::isEmpty(void) {
-  uint32_t prod_pos = mProducerPos->load(std::memory_order_relaxed);
-  uint64_t cons_pos = mConsumerPos->load(std::memory_order_relaxed);
+  uint32_t prod_pos = mProducerPtr->load(std::memory_order_relaxed);
+  uint64_t cons_pos = mConsumerPtr->load(std::memory_order_relaxed);
   return (cons_pos & 0xFFFFFFFF) == prod_pos;
 }
 
@@ -243,12 +243,12 @@ inline bool BpfRingbufBase::wait(int timeout_ms) {
 inline Result<int> BpfRingbufBase::ConsumeAll(
     const std::function<void(const void*)>& callback) {
   int64_t count = 0;
-  uint32_t prod_pos = mProducerPos->load(std::memory_order_acquire);
-  // Only userspace writes to mConsumerPos, so no need to use std::memory_order_acquire
-  uint64_t cons_pos = mConsumerPos->load(std::memory_order_relaxed);
+  uint32_t prod_pos = mProducerPtr->load(std::memory_order_acquire);
+  // Only userspace writes to mConsumerPtr, so no need to use std::memory_order_acquire
+  uint64_t cons_pos = mConsumerPtr->load(std::memory_order_relaxed);
   while ((cons_pos & 0xFFFFFFFF) != prod_pos) {
     // Find the start of the entry for this read (wrapping is done here).
-    void* start_ptr = pointerAddBytes<void*>(mDataPos, cons_pos & mPosMask);
+    void* start_ptr = pointerAddBytes<void*>(mDataPtr, cons_pos & mPosMask);
 
     // The entry has an 8 byte header containing the sample length.
     // struct bpf_ringbuf_hdr {
@@ -265,7 +265,7 @@ inline Result<int> BpfRingbufBase::ConsumeAll(
 
     if ((length & BPF_RINGBUF_DISCARD_BIT) == 0) {
       if (length != mValueSize) {
-        mConsumerPos->store(cons_pos, std::memory_order_release);
+        mConsumerPtr->store(cons_pos, std::memory_order_release);
         errno = EMSGSIZE;
         return ErrnoError()
                << "BPF ring buffer message has unexpected size (want "
@@ -275,7 +275,7 @@ inline Result<int> BpfRingbufBase::ConsumeAll(
       count++;
     }
 
-    mConsumerPos->store(cons_pos, std::memory_order_release);
+    mConsumerPtr->store(cons_pos, std::memory_order_release);
   }
 
   return count;
