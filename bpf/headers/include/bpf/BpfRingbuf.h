@@ -93,7 +93,7 @@ class BpfRingbufBase {
 
   const size_t mValueSize;
 
-  inline static const size_t mPageSize = isX86() ? 4096 : getpagesize();
+  inline static const size_t mPageSize = getpagesize();
   unsigned long mPosMask = -1uL;  // == max_entries - 1
   size_t maxEntries() const { return mPosMask + 1; }
   size_t dataSize() const { return 2 * maxCapacityBytes(); }
