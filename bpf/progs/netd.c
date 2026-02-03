@@ -916,6 +916,7 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb,
 // Supported kernel + platform/os version combinations:
 //
 //      | 4.9 | 4.14 | 4.19 | 5.4 | 5.10 | 5.15 | 6.1 | 6.6 | 6.12 | 6.18 |
+// 26Q4 |     |      |      |     |      |  x   |  x  |  x  |  x   |  x   |
 // 26Q2 |     |      |      |     |  x   |  x   |  x  |  x  |  x   |  x   |
 // 25Q4 |     |      |      |     |  x   |  x   |  x  |  x  |  x   |
 // 25Q2 |     |      |      |  x  |  x   |  x   |  x  |  x  |  x   |

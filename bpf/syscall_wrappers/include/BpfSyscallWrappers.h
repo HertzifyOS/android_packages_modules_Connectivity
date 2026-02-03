@@ -196,11 +196,22 @@ inline int bpfFdGet(const char* pathname, uint32_t flag) {
 
 int bpfGetFdMapId(const borrowed_fd& map_fd);
 
+// disable use of bpf locking on:
+//   - all user builds
+//   - arm userdebug builds
+// as it is only needed for correctness verification on dev/test builds
+const bool lockingEnabled =
+#if defined(__arm__) || defined(__aarch64__)
+  isEng;
+#else
+  !isUser;
+#endif
+
 inline int bpfLock(int fd, short type) {
 #ifdef BPF_MAP_LOCKLESS_FOR_TEST
     return fd;
 #endif
-    if (isUser) return fd;  // disable locking on user builds, only needed for dev/test builds
+    if (!lockingEnabled) return fd;
     if (fd < 0) return fd;  // pass any errors straight through
     int mapId = bpfGetFdMapId(fd);
     int saved_errno = errno;
