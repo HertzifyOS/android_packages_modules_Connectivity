@@ -99,6 +99,7 @@ import com.android.testutils.NsdResolveRecord.ResolveEvent.ServiceResolved
 import com.android.testutils.NsdResolveRecord.ResolveEvent.StopResolutionFailed
 import com.android.testutils.NsdServiceInfoCallbackRecord
 import com.android.testutils.NsdServiceInfoCallbackRecord.ServiceInfoCallbackEvent.RegisterCallbackFailed
+import com.android.testutils.NsdServiceInfoCallbackRecord.ServiceInfoCallbackEvent.RegisterCallbackSucceeded
 import com.android.testutils.NsdServiceInfoCallbackRecord.ServiceInfoCallbackEvent.ServiceUpdated
 import com.android.testutils.NsdServiceInfoCallbackRecord.ServiceInfoCallbackEvent.ServiceUpdatedLost
 import com.android.testutils.NsdServiceInfoCallbackRecord.ServiceInfoCallbackEvent.UnregisterCallbackSucceeded
@@ -1000,6 +1001,7 @@ class NsdManagerTest {
             assertEquals(foundInfo1.serviceType, "$serviceType.")
 
             nsdManager.registerServiceInfoCallback(foundInfo1, { it.run() }, cbRecord)
+            cbRecord.expectCallback<RegisterCallbackSucceeded>()
             val addOrUpdateEvent5 = offloadEngine
                 .expectCallback<TestNsdOffloadEngine.OffloadEvent.AddOrUpdateEvent>()
             assertEquals(foundInfo1.serviceName, addOrUpdateEvent5.info.key.serviceName)
@@ -1656,6 +1658,7 @@ class NsdManagerTest {
 
             // Register service callback and check the addresses are the same as network addresses
             nsdManager.registerServiceInfoCallback(foundInfo, { it.run() }, cbRecord)
+            cbRecord.expectCallback<RegisterCallbackSucceeded>()
             val serviceInfoCb = cbRecord.expectCallback<ServiceUpdated>()
             assertEquals(foundInfo.serviceName, serviceInfoCb.serviceInfo.serviceName)
             val hostAddresses = serviceInfoCb.serviceInfo.hostAddresses
@@ -3551,6 +3554,7 @@ class NsdManagerTest {
             .setNetwork(testNetwork1.network)
             .build()
         nsdManager.registerServiceInfoCallback(discoveryRequest, { it.run() }, cbRecord)
+        cbRecord.expectCallback<RegisterCallbackSucceeded>()
 
         tryTest {
             packetReader.pollForQuery("$serviceType.local", DnsResolver.TYPE_PTR) ?: fail(
@@ -3662,6 +3666,7 @@ class NsdManagerTest {
 
         val failCb = cbRecord.expectCallback<RegisterCallbackFailed>()
         assertEquals(NsdManager.FAILURE_PERMISSION_DENIED, failCb.errorCode)
+        cbRecord.assertNoCallback(timeoutMs = 0L)
     }
 }
 

@@ -1390,8 +1390,7 @@ public class NsdService extends INsdManager.Stub {
                     clientRequestId, transactionId, listener, clientInfo,
                     discoveryRequest.getNetwork(), usingPermissionExemption,
                     discoveryRequest);
-            clientInfo.onDiscoverServicesStarted(clientRequestId, discoveryRequest, clientRequest,
-                    isServiceInfoCallback);
+            clientInfo.onDiscoverServicesStarted(clientRequestId, discoveryRequest, clientRequest);
         } else {
             maybeStartDaemon();
             if (discoverServices(transactionId, discoveryRequest)) {
@@ -1402,9 +1401,7 @@ public class NsdService extends INsdManager.Stub {
                 final ClientRequest request = storeLegacyRequestMap(clientRequestId,
                         transactionId, clientInfo, NsdManager.DISCOVER_SERVICES,
                         mClock.elapsedRealtime());
-                clientInfo.onDiscoverServicesStarted(
-                        clientRequestId, discoveryRequest, request,
-                        /* isServiceInfoCallback= */false);
+                clientInfo.onDiscoverServicesStarted(clientRequestId, discoveryRequest, request);
             } else {
                 stopServiceDiscovery(transactionId);
                 clientInfo.onDiscoverServicesFailedImmediately(clientRequestId,
@@ -1879,7 +1876,7 @@ public class NsdService extends INsdManager.Stub {
         storeDiscoveryManagerRequestMap(clientRequestId, transactionId, listener,
                 clientInfo, info.getNetwork(), usingPermissionExemption,
                 /* discoveryRequest= */null);
-        clientInfo.onServiceInfoCallbackRegistered(transactionId);
+        clientInfo.onServiceInfoCallbackRegistered(clientRequestId, transactionId);
         clientInfo.log("Register a ServiceInfoListener " + transactionId
                 + " for service type:" + resolveServiceType);
     }
@@ -4145,16 +4142,13 @@ public class NsdService extends INsdManager.Stub {
         }
 
         void onDiscoverServicesStarted(int listenerKey, DiscoveryRequest discoveryRequest,
-                ClientRequest request, boolean isServiceInfoCallback) {
+                ClientRequest request) {
             mMetrics.reportServiceDiscoveryStarted(
                     isLegacyClientRequest(request), request.mTransactionId);
-            // ServiceInfoCallback does not have a "started" callback
-            if (!isServiceInfoCallback) {
-                try {
-                    mCb.onDiscoverServicesStarted(listenerKey, discoveryRequest);
-                } catch (RemoteException e) {
-                    Log.e(TAG, "Error calling onDiscoverServicesStarted", e);
-                }
+            try {
+                mCb.onDiscoverServicesStarted(listenerKey, discoveryRequest);
+            } catch (RemoteException e) {
+                Log.e(TAG, "Error calling onDiscoverServicesStarted", e);
             }
         }
 
@@ -4382,8 +4376,13 @@ public class NsdService extends INsdManager.Stub {
             }
         }
 
-        void onServiceInfoCallbackRegistered(int transactionId) {
+        void onServiceInfoCallbackRegistered(int listenerKey, int transactionId) {
             mMetrics.reportServiceInfoCallbackRegistered(transactionId);
+            try {
+                mCb.onServiceInfoCallbackRegistered(listenerKey);
+            } catch (RemoteException e) {
+                Log.e(TAG, "Error calling onServiceInfoCallbackRegistered", e);
+            }
         }
 
         void onServiceUpdated(int listenerKey, NsdServiceInfo info, ClientRequest request) {
