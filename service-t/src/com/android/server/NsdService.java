@@ -490,7 +490,7 @@ public class NsdService extends INsdManager.Stub {
             bundle.putString(NsdPickerConnector.EXTRA_APP_NAME, getAppName());
             bundle.putParcelable(NsdPickerConnector.EXTRA_REQUEST, request);
             intent.putExtras(bundle);
-            mContext.startActivityAsUser(intent, UserHandle.CURRENT);
+            mContext.startActivityAsUser(intent, UserHandle.getUserHandleForUid(mClientInfo.mUid));
         }
 
         private String getAppName() {
