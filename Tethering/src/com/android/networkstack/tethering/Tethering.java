@@ -2187,7 +2187,7 @@ public class Tethering {
         protected void notifyDownstreamsOfNewUpstreamIface(InterfaceSet ifaces) {
             mCurrentUpstreamIfaceSet = ifaces;
             for (IpServer ipServer : mNotifyList) {
-                ipServer.sendMessage(IpServer.CMD_TETHER_CONNECTION_CHANGED, ifaces);
+                ipServer.processMessage(IpServer.CMD_TETHER_CONNECTION_CHANGED, ifaces);
             }
         }
 
@@ -2386,7 +2386,7 @@ public class Tethering {
                         IpServer who = (IpServer) message.obj;
                         if (VDBG) Log.d(TAG, "Tether Mode requested by " + who);
                         handleInterfaceServingStateActive(message.arg1, who);
-                        who.sendMessage(IpServer.CMD_TETHER_CONNECTION_CHANGED,
+                        who.processMessage(IpServer.CMD_TETHER_CONNECTION_CHANGED,
                                 mCurrentUpstreamIfaceSet);
                         // If there has been a change and an upstream is now
                         // desired, kick off the selection process.
@@ -2483,7 +2483,7 @@ public class Tethering {
                 switch (message.what) {
                     case EVENT_IFACE_SERVING_STATE_ACTIVE:
                         IpServer who = (IpServer) message.obj;
-                        who.sendMessage(mErrorNotification);
+                        who.processMessage(mErrorNotification);
                         break;
                     case CMD_CLEAR_ERROR:
                         mErrorNotification = TETHER_ERROR_NO_ERROR;
@@ -2498,7 +2498,7 @@ public class Tethering {
             void notify(int msgType) {
                 mErrorNotification = msgType;
                 for (IpServer ipServer : mNotifyList) {
-                    ipServer.sendMessage(msgType);
+                    ipServer.processMessage(msgType);
                 }
             }
 

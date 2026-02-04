@@ -1195,7 +1195,7 @@ public class TetheringTest {
         // IPv6TetheringCoordinator must have been notified of downstream
         for (IpServer ipSrv : mTetheringDependencies.mAllDownstreams) {
             UpstreamNetworkState ipv6OnlyState = buildMobileUpstreamState(false, true, false);
-            ipSrv.sendMessage(IpServer.CMD_IPV6_TETHER_UPDATE, 0, 0,
+            ipSrv.processMessage(IpServer.CMD_IPV6_TETHER_UPDATE, 0, 0,
                     upstreamState.linkProperties.isIpv6Provisioned()
                             ? ipv6OnlyState.linkProperties
                             : null);
