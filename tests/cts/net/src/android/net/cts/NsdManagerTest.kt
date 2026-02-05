@@ -64,6 +64,8 @@ import android.system.OsConstants.RT_SCOPE_LINK
 import android.util.Log
 import androidx.test.filters.SmallTest
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.UiSelector
 import com.android.compatibility.common.util.PollingCheck
 import com.android.compatibility.common.util.PropertyUtil
 import com.android.compatibility.common.util.SystemUtil
@@ -176,6 +178,10 @@ private const val FLAG_NSD_MDNS_SCAN_OFFLOAD =
     "com.android.tethering.flags.nsd_mdns_scan_offload"
 private const val NOT_MDNS_CAPABLE_INTERFACE = "lo"
 private const val NO_SUBTYPE = ""
+private const val FLAG_ACCESS_LOCAL_NETWORK_PERMISSION_ENABLED =
+    "android.net.connectivity.android.permission.flags.access_local_network_permission_enabled"
+private const val FLAG_NSD_SERVICE_PICKER =
+    "android.net.connectivity.com.android.tethering.flags.nsd_service_picker"
 private val multicastIpv6Addr = parseNumericAddress("ff02::fb") as Inet6Address
 private val testSrcAddr = parseNumericAddress("2001:db8::123") as Inet6Address
 
@@ -671,6 +677,70 @@ class NsdManagerTest {
         )
         val failedCb = discoveryRecord.expectCallback<StartDiscoveryFailed>()
         assertEquals(NsdManager.FAILURE_INTERNAL_ERROR, failedCb.errorCode)
+    }
+
+    @Test
+    @CtsNetTestCasesLocalNetNoPermissions
+    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    @RequiresFlagsEnabled(
+        FLAG_ACCESS_LOCAL_NETWORK_PERMISSION_ENABLED,
+        FLAG_NSD_SERVICE_PICKER
+    )
+    fun testDiscoverServices_missingLocalNetPermission_showsPicker() {
+        val perm = context.checkSelfPermission(ACCESS_LOCAL_NETWORK)
+        assertEquals(PackageManager.PERMISSION_DENIED, perm)
+
+        val uiDevice = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+        uiDevice.wakeUp()
+        uiDevice.executeShellCommand("wm dismiss-keyguard")
+        val packetReader = makePacketReader()
+        val discoveryRecord = NsdDiscoveryRecord()
+        tryTest {
+            nsdManager.discoverServices(
+                serviceType,
+                PROTOCOL_DNS_SD,
+                testNetwork1.network,
+                Executor { it.run() },
+                discoveryRecord
+            )
+            discoveryRecord.expectCallback<DiscoveryStarted>()
+            assertNotNull(packetReader.pollForQuery("$serviceType.local", DnsResolver.TYPE_PTR))
+
+            /* Inject two services without registerService as the test does not have permissions
+               Generated with:
+               scapy.raw(scapy.DNS(rd=0, qr=1, aa=1, qd = None, an =
+                   scapy.DNSRR(rrname='_nmt123456789._tcp.local', type='PTR', ttl=120,
+                   rdata='NsdTest123456789._nmt123456789._tcp.local'))).hex()
+             */
+            val ptrResponseTemplate = hexStringToByteArray("0000840000000001000000000d5f6e6d74313" +
+                    "233343536373839045f746370056c6f63616c00000c000100000078002b104e7364546573743" +
+                    "132333435363738390d5f6e6d74313233343536373839045f746370056c6f63616c00")
+            val payload1 = ptrResponseTemplate.clone().apply {
+                replaceServiceNameAndTypeWithTestSuffix(this, serviceName)
+            }
+            val payload2 = ptrResponseTemplate.clone().apply {
+                replaceServiceNameAndTypeWithTestSuffix(this, serviceName2)
+            }
+            packetReader.sendResponse(buildMdnsPacket(payload1))
+            packetReader.sendResponse(buildMdnsPacket(payload2))
+
+            // Wait for the picker to appear and click on the second service
+            val serviceText = uiDevice.findObject(UiSelector().text(serviceName2))
+            assertTrue("Picker did not show service $serviceName2",
+                serviceText.waitForExists(UI_TIMEOUT_MS))
+            serviceText.click()
+
+            // Expect the next callback to be the 2nd service being found, even though the response
+            // for the 1st service was sent first
+            val foundInfo = discoveryRecord.expectCallback<ServiceFound>(UI_TIMEOUT_MS)
+            assertEquals(serviceName2, foundInfo.serviceInfo.serviceName)
+        } cleanup {
+            packetReader.handler.post { packetReader.stop() }
+            handlerThread.waitForIdle(TIMEOUT_MS)
+            nsdManager.stopServiceDiscovery(discoveryRecord)
+            // No other callback (including for the 1st service) is received until DiscoveryStopped
+            discoveryRecord.expectCallback<DiscoveryStopped>()
+        }
     }
 
     private fun checkAddressScopeId(iface: TestNetworkInterface, address: List<InetAddress>) {
