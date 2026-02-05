@@ -892,9 +892,8 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb,
 
     // If an outbound packet is going to be dropped, we do not count that traffic.
     if (egress.egress && (match == DROP)) {
-        // TODO(maze): enable interface stats undo
-        // uint32_t key = skb->ifindex;
-        // update_iface_stats_map(skb, &key, EGRESS, KVER_4_9, UNDO);
+        uint32_t key = skb->ifindex;
+        update_iface_stats_map(skb, &key, EGRESS, KVER_4_9, UNDO);
         return DROP;
     }
 
