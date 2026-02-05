@@ -140,6 +140,7 @@ import android.os.IBinder;
 import android.os.PatternMatcher;
 import android.os.Process;
 import android.os.RemoteException;
+import android.os.UserHandle;
 import android.permission.PermissionManager;
 import android.platform.test.annotations.RequiresFlagsDisabled;
 import android.platform.test.annotations.RequiresFlagsEnabled;
@@ -1398,6 +1399,22 @@ public class NsdServiceTest {
         final Intent intent = intentCaptor.getValue();
         assertEquals(NsdPickerConnector.ACTION_PICKER, intent.getAction());
         assertEquals(packageName, intent.getStringExtra(NsdPickerConnector.EXTRA_APP_NAME));
+    }
+
+    @Test
+    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    public void testPickerStart_SecondaryUser() {
+        final UserHandle user = UserHandle.of(11);
+        doReturn(user.getUid(123)).when(mDeps).getCallingUid();
+        setMdnsDiscoveryManagerEnabled();
+        final NsdManager client = connectClient(mService);
+
+        client.discoverServices(new DiscoveryRequest.Builder(SERVICE_TYPE)
+                .setFlags(FLAG_SHOW_PICKER)
+                .build(), Runnable::run, mock(DiscoveryListener.class));
+        waitForIdle();
+
+        verify(mContext).startActivityAsUser(any(), eq(user));
     }
 
     private void setMdnsDiscoveryManagerEnabled() {
