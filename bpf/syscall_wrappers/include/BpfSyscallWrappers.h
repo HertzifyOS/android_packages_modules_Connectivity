@@ -208,17 +208,16 @@ inline int bpfFdGet(const char* pathname, uint32_t flag) {
 
 int bpfGetFdMapId(const borrowed_fd& map_fd);
 
-static inline bool is_cuttlefish() {
-    char value[92] = {};
-    if (__system_property_get("ro.product.board", value) < 1) abort();
-    return !strcmp(value, "cutf");
-}
-
-// enable use of bpf locking on:
-//   - all eng builds
-//   - cuttlefish userdebug builds
+// disable use of bpf locking on:
+//   - all user builds
+//   - arm userdebug builds
 // as it is only needed for correctness verification on dev/test builds
-const bool lockingEnabled = isEng || (isUserdebug && is_cuttlefish());
+const bool lockingEnabled =
+#if defined(__arm__) || defined(__aarch64__)
+  isEng;
+#else
+  !isUser;
+#endif
 
 inline int bpfLock(int fd, short type) {
 #ifdef BPF_MAP_LOCKLESS_FOR_TEST
