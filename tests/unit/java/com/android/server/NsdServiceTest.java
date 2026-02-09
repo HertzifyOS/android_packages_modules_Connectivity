@@ -3202,7 +3202,7 @@ public class NsdServiceTest {
         doReturn(List.of(new MdnsAdvertiser.OffloadServiceInfoWrapper(123, advertingInfo)))
                 .when(mAdvertiser).notifyOffloadStart(interfaceName);
         final DiscoveryOffloadInfo filerRepliesInfo = new DiscoveryOffloadInfo(
-                "_testService", "_testType", List.of("_sub1", "_sub2"), "Android.local");
+                "_testService", "_testType._tcp.local", List.of("_sub1", "_sub2"), "Android.local");
         final OffloadServiceInfo discoveryInfoExpected =
                 createOffloadServiceInfoFromDiscoveryOffload(
                         filerRepliesInfo,
@@ -3253,7 +3253,7 @@ public class NsdServiceTest {
         final String interfaceName = "iface";
         final DiscoveryOffloadInfo discoveryOffloadInfo = new DiscoveryOffloadInfo(
                 "_testService",
-                "_testType",
+                "_testType._tcp.local",
                 List.of("_sub1", "_sub2"),
                 "Android.local"
         );
@@ -3274,7 +3274,7 @@ public class NsdServiceTest {
     public void testRegisterOffloadSession_sendAllOffloadServiceInfos() {
         final String interfaceName = "iface";
         final DiscoveryOffloadInfo discoveryOffloadInfo = new DiscoveryOffloadInfo(
-                "_testService", "_testType", List.of("_sub1", "_sub2"), "Android.local");
+                "_testService", "_testType._tcp.local", List.of("_sub1", "_sub2"), "Android.local");
         long offloadType = OFFLOAD_TYPE_QUERY | OFFLOAD_TYPE_REPLY;
         long expectedOffloadType = DiscoveryOffloadInfo.OFFLOAD_TYPE;
         if (nsdMdnsScanOffload()) {
