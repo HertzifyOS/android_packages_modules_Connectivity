@@ -343,6 +343,7 @@ public final class BpfNetMapsTest {
     @IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     public void testAddLocalNetAccessAfterV() throws Exception {
         assertTrue(mLocalNetAccessMap.isEmpty());
+        long oldGenId = mLocalNetCacheGenerationIdMap.getValue(new U32(0)).val;
 
         mBpfNetMaps.addLocalNetAccess(160, TEST_IF_NAME,
                 Inet4Address.getByName("196.68.0.0"), 0, 0, true);
@@ -351,6 +352,8 @@ public final class BpfNetMapsTest {
                 Inet4Address.getByName("196.68.0.0"), 0, 0)));
         assertNull(mLocalNetAccessMap.getValue(new LocalNetAccessKey(160, TEST_IF_INDEX,
                 Inet4Address.getByName("100.68.0.0"), 0, 0)));
+        long newGenId = mLocalNetCacheGenerationIdMap.getValue(new U32(0)).val;
+        assertEquals(oldGenId + 2, newGenId);
     }
 
     @Test
@@ -443,12 +446,16 @@ public final class BpfNetMapsTest {
         assertNull(mLocalNetAccessMap.getValue(new LocalNetAccessKey(160, TEST_IF_INDEX,
                 Inet4Address.getByName("100.68.0.0"), 0, 0)));
 
+        long oldGenId = mLocalNetCacheGenerationIdMap.getValue(new U32(0)).val;
         mBpfNetMaps.removeLocalNetAccess(160, TEST_IF_NAME,
                 Inet4Address.getByName("196.68.0.0"), 0, 0);
         assertNull(mLocalNetAccessMap.getValue(new LocalNetAccessKey(160, TEST_IF_INDEX,
                 Inet4Address.getByName("196.68.0.0"), 0, 0)));
         assertNull(mLocalNetAccessMap.getValue(new LocalNetAccessKey(160, TEST_IF_INDEX,
                 Inet4Address.getByName("100.68.0.0"), 0, 0)));
+
+        long newGenId = mLocalNetCacheGenerationIdMap.getValue(new U32(0)).val;
+        assertEquals(oldGenId + 2, newGenId);
     }
 
     @Test
@@ -582,6 +589,7 @@ public final class BpfNetMapsTest {
     @IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     public void testAddLocalNetUidHostAccessAfterV() throws Exception {
         assertTrue(mLocalNetUidHostAllowlistMap.isEmpty()); // Necessary ?
+        long oldGenId = mLocalNetCacheGenerationIdMap.getValue(new U32(0)).val;
         mBpfNetMaps.addLocalNetUidHostAccess(TEST_UID, TEST_IF_INDEX,
                 parseNumericAddress("196.0.2.123"));
 
@@ -590,6 +598,8 @@ public final class BpfNetMapsTest {
                         parseNumericAddress("196.0.2.123")));
         assertNotNull(value);
         assertTrue(value.val);
+        long genId = mLocalNetCacheGenerationIdMap.getValue(new U32(0)).val;
+        assertEquals(oldGenId + 2, genId);
     }
 
     @Test
@@ -602,12 +612,16 @@ public final class BpfNetMapsTest {
                 parseNumericAddress("196.0.2.124"));
         mBpfNetMaps.addLocalNetUidHostAccess(TEST_UID_2, TEST_IF_INDEX + 1,
                 parseNumericAddress("196.0.2.125"));
+        long oldGenId = mLocalNetCacheGenerationIdMap.getValue(new U32(0)).val;
+
         mBpfNetMaps.removeLocalNetHostAllowlistForInterface(TEST_IF_INDEX);
 
         final LocalNetUidHostAllowlistKey expectedKey = new LocalNetUidHostAllowlistKey(
                 TEST_UID_2, TEST_IF_INDEX + 1, parseNumericAddress("196.0.2.125"));
         assertEquals(expectedKey, mLocalNetUidHostAllowlistMap.getFirstKey());
         assertNull(mLocalNetUidHostAllowlistMap.getNextKey(expectedKey));
+        long genId = mLocalNetCacheGenerationIdMap.getValue(new U32(0)).val;
+        assertEquals(oldGenId + 2, genId);
     }
 
     @Test

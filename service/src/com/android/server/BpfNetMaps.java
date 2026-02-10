@@ -1641,7 +1641,9 @@ public class BpfNetMaps {
 
         try {
             synchronized (sLocalNetAccessLock) {
+                incrementLnpGenerationId(true);
                 sLocalNetAccessMap.updateEntry(localNetAccessKey, new Bool(isAllowed));
+                incrementLnpGenerationId(false);
             }
         } catch (ErrnoException e) {
             Log.e(TAG, "Failed to add local network access for localNetAccessKey : "
@@ -1677,7 +1679,9 @@ public class BpfNetMaps {
 
         try {
             synchronized (sLocalNetAccessLock) {
+                incrementLnpGenerationId(true);
                 sLocalNetAccessMap.deleteEntry(localNetAccessKey);
+                incrementLnpGenerationId(false);
             }
         } catch (ErrnoException e) {
             Log.e(TAG, "Failed to remove local network access for localNetAccessKey : "
@@ -1814,7 +1818,9 @@ public class BpfNetMaps {
                 uid, ifIndex, address);
         try {
             synchronized (sLocalNetAccessLock) {
+                incrementLnpGenerationId(true);
                 sLocalNetUidHostAllowlistMap.updateEntry(key, new Bool(true));
+                incrementLnpGenerationId(false);
             }
         } catch (ErrnoException e) {
             Log.e(TAG, "Failed to add local network access for key: " + key);
@@ -1829,11 +1835,13 @@ public class BpfNetMaps {
         throwIfPre25Q2("removeLocalNetHostAllowlistForUid is not available on pre-B devices");
         try {
             synchronized (sLocalNetAccessLock) {
+                incrementLnpGenerationId(true);
                 sLocalNetUidHostAllowlistMap.forEach((key, value) -> {
                     if (key.ifIndex == ifIndex) {
                         sLocalNetUidHostAllowlistMap.deleteEntry(key);
                     }
                 });
+                incrementLnpGenerationId(false);
             }
         } catch (ErrnoException e) {
             Log.e(TAG, "Failed removing local net allowlist entries for ifIndex " + ifIndex, e);
@@ -2118,6 +2126,17 @@ public class BpfNetMaps {
         } catch (ErrnoException e) {
             pw.println("Failed to read data saver configuration: " + e);
         }
+    }
+
+    @GuardedBy("sLocalNetAccessLock")
+    private void incrementLnpGenerationId(boolean expectEven)
+            throws IllegalStateException, ErrnoException {
+        if (expectEven != ((sLnpGenerationID & 1) == 0)) {
+            throw new IllegalStateException(
+                    "Parity error in the local net cache generation ID. This should never happen.");
+        }
+        sLocalNetCacheGenerationIdMap.updateEntry(GENERATION_ID_KEY,
+                new S64(++sLnpGenerationID));
     }
 
     @RequiresApi(Build.VERSION_CODES.BAKLAVA)
