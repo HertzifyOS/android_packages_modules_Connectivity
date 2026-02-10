@@ -34,6 +34,7 @@ import android.net.Network;
 import android.net.ParseException;
 import android.net.dns.HttpsEndpoint;
 import android.net.dns.HttpsRecord;
+import android.os.Handler;
 import android.util.Log;
 
 import com.android.internal.annotations.GuardedBy;
@@ -61,12 +62,18 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public class HttpsEndpointAccumulator implements DnsResolver.Callback<byte[]> {
 
+    // As specified in RFC 9460 section 5.1, clients should wait 50 ms before starting optimistic
+    // pre-connection. Depending on metric results, this value may be adjusted in the future.
+    private static final int DEFAULT_HTTPS_TIMEOUT_MILLIS = 50;
+
     private final Network mNetwork;
     private final DnsResolver.Callback<HttpsEndpoint> mUserCallback;
     private final int mTargetQueryCount;
-    private final int mHttpsTimeoutMillis;
     private final boolean mHasIpv4;
     private final boolean mHasIpv6;
+
+    private final int mHttpsTimeoutMillis;
+    private final Handler mHttpsTimeoutHandler;
 
     @GuardedBy("mResult")
     private final HttpsEndpointAccumulatorResult mResult;
@@ -90,14 +97,22 @@ public class HttpsEndpointAccumulator implements DnsResolver.Callback<byte[]> {
 
     public HttpsEndpointAccumulator(@NonNull Network network,
             @NonNull DnsResolver.Callback<HttpsEndpoint> callback, int queryCount,
-            int timeoutMillis, boolean hasIpv4, boolean hasIpv6) {
+            int timeoutMillis, boolean hasIpv4, boolean hasIpv6, @NonNull Handler handler) {
         mNetwork = network;
         mUserCallback = callback;
         mTargetQueryCount = queryCount;
-        mHttpsTimeoutMillis = timeoutMillis;
         mHasIpv4 = hasIpv4;
         mHasIpv6 = hasIpv6;
         mResult = new HttpsEndpointAccumulatorResult();
+
+        mHttpsTimeoutMillis = switch(timeoutMillis) {
+            case DnsResolver.HTTPS_QUERY_WAIT_NONE -> 0;
+            case DnsResolver.HTTPS_QUERY_WAIT_AUTO -> DEFAULT_HTTPS_TIMEOUT_MILLIS;
+            // Indicate that we should wait indefinitely for the HTTPS record.
+            case DnsResolver.HTTPS_QUERY_WAIT_UNTIL_TIMEOUT -> -1;
+            default -> timeoutMillis;
+        };
+        mHttpsTimeoutHandler = handler;
     }
 
     @Override
@@ -175,9 +190,20 @@ public class HttpsEndpointAccumulator implements DnsResolver.Callback<byte[]> {
                 mResult.mDnsException = exception;
             }
 
-            if (!mResult.mHttpsRecords.isEmpty() && hasEnoughAddressInfo()) {
-                // Disregard any exceptions and return if we got valid HTTPS and IP data.
-                reportAnswer(rcode);
+            if (hasEnoughAddressInfo()) {
+                if (mResult.mHttpsRecords.isEmpty()) {
+                    // If we have received all but the HTTPS records, decide whether to return
+                    // immediately or wait the given amount of time before returning incomplete
+                    // results.
+                    if (mHttpsTimeoutMillis == DnsResolver.HTTPS_QUERY_WAIT_NONE) {
+                        tryReportResult(rcode);
+                    } else {
+                        startHttpsTimeoutAndReturnIfNeeded(rcode);
+                    }
+                } else {
+                    // Disregard any exceptions and return if we got valid HTTPS and IP data.
+                    reportAnswer(rcode);
+                }
             } else if (mTargetQueryCount == mResult.mReceivedAnswersToQueryTypes.size()) {
                 // Return if we have gotten all the records as we expected.
                 tryReportResult(rcode);
@@ -185,7 +211,6 @@ public class HttpsEndpointAccumulator implements DnsResolver.Callback<byte[]> {
         }
         // TODO(b/448882639): handle filtering out HTTPS records with specified mandatory values
         // that are absent
-        // TODO(b/448882639): handle timeout logic for HTTPS record
         // TODO(b/448882639): handle if the HTTPS record name does not match the A/AAAA ones
         // TODO(b/448882639): handle parsing the CNAME chain for the A/AAAA records
     }
@@ -232,6 +257,7 @@ public class HttpsEndpointAccumulator implements DnsResolver.Callback<byte[]> {
             return;
         }
 
+        // TODO: cancel any remaining queries that are still in flight
         reportAnswer(rcode);
     }
 
@@ -259,5 +285,18 @@ public class HttpsEndpointAccumulator implements DnsResolver.Callback<byte[]> {
                 mResult.mReceivedAnswersToQueryTypes.contains(TYPE_A);
 
         return hasIpv6IfNeeded && hasIpv4IfNeeded;
+    }
+
+    /**
+     * Starts an additional timeout for the HTTPS query if it's the final record we're waiting for
+     * and the caller has specified an additional timeout value.
+     *
+     * <p>If the timeout is reached, we return whatever results we have (even if incomplete).
+     */
+    @GuardedBy("mResult")
+    private void startHttpsTimeoutAndReturnIfNeeded(int rcode) {
+        if (mHttpsTimeoutMillis > 0) {
+            mHttpsTimeoutHandler.postDelayed(() -> tryReportResult(rcode), mHttpsTimeoutMillis);
+        }
     }
 }
