@@ -1222,6 +1222,11 @@ static inline __always_inline bool is_netd() {
     return tgid == *pid;
 }
 
+static inline __always_inline bool is_root_or_shell() {
+    uint32_t uid = bpf_get_current_uid_gid();  // low 32 bits is uid
+    return (uid == AID_ROOT) || (uid == AID_SHELL);
+}
+
 // kernel's include/linux/bpf.h defines flag BPF_RET_BIND_NO_CAP_NET_BIND_SERVICE as (1 << 0) == 1,
 // as a flag, it must be shifted up by 1 (making it == 2) and combined with 'generic' ALLOW (== 1)
 static const int BPF_ALLOW_IGNORING_CAP_NET_BIND = BPF_ALLOW + 2;
@@ -1230,7 +1235,12 @@ static inline __always_inline int inet_bind(struct bpf_sock_addr *ctx,
                                             const struct kver_uint kver) {
     const bool is5_15 = KVER_IS_AT_LEAST(kver, 5, 15, 0);
     if (block_bind_port(ctx->protocol, ctx->user_port)) return BPF_DISALLOW;
-    if (is5_15 && ctx->user_port == htons(53) && is_netd()) return BPF_ALLOW_IGNORING_CAP_NET_BIND;
+    if (is5_15) {
+        if (ctx->user_port == htons(53) && is_netd())
+            return BPF_ALLOW_IGNORING_CAP_NET_BIND;
+        if (ctx->protocol == IPPROTO_TCP && ctx->user_port == htons(555) && is_root_or_shell())
+            return BPF_ALLOW_IGNORING_CAP_NET_BIND;
+    }
     return BPF_ALLOW;
 }
 
