@@ -41,7 +41,8 @@ enum class BuildType {
 
 static inline BuildType getBuildType() {
     char value[92] = {};
-    if (__system_property_get("ro.build.type", value) < 1) abort();
+    if (__system_property_get("ro.build.type", value) < 1)
+        return BuildType::UNKNOWN;
     if (!strcmp(value, "eng")) return BuildType::ENG;
     if (!strcmp(value, "user")) return BuildType::USER;
     if (!strcmp(value, "userdebug")) return BuildType::USERDEBUG;
