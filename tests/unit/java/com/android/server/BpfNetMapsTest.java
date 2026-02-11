@@ -232,6 +232,8 @@ public final class BpfNetMapsTest {
             new TestBpfMap<>(LocalNetAccessKey.class, Bool.class);
     private final IBpfMap<LocalNetUidHostAllowlistKey, Bool> mLocalNetUidHostAllowlistMap =
             new TestBpfMap<>(LocalNetUidHostAllowlistKey.class, Bool.class);
+    private final IBpfMap<U32, S64> mLocalNetCacheGenerationIdMap =
+            new TestBpfMap<>(U32.class, S64.class);
     private final IBpfMap<S64, CookieTagMapValue> mCookieTagMap =
             spy(new TestBpfMap<>(S64.class, CookieTagMapValue.class));
     private final IBpfMap<S32, U8> mDataSaverEnabledMap = new TestBpfMap<>(S32.class, U8.class);
@@ -266,11 +268,13 @@ public final class BpfNetMapsTest {
         mConfigurationMap.updateEntry(UID_RULES_CONFIGURATION_KEY, new U32(0));
         mConfigurationMap.updateEntry(
                 CURRENT_STATS_MAP_CONFIGURATION_KEY, new U32(STATS_SELECT_MAP_A));
+        mLocalNetCacheGenerationIdMap.insertEntry(new U32(0), new S64(0));
         BpfNetMaps.setUidOwnerMapForTest(mUidOwnerMap);
         BpfNetMaps.setUidPermissionMapForTest(mUidPermissionMap);
         BpfNetMaps.setLocalNetAccessMapForTest(mLocalNetAccessMap);
         BpfNetMaps.setLocalNetBlockedUidMapForTest(mLocalNetBlockedUidMap);
         BpfNetMaps.setLocalNetUidHostAllowlistMapForTest(mLocalNetUidHostAllowlistMap);
+        BpfNetMaps.setLocalNetCacheGenerationIdMapForTest(mLocalNetCacheGenerationIdMap);
         BpfNetMaps.setCookieTagMapForTest(mCookieTagMap);
         BpfNetMaps.setDataSaverEnabledMapForTest(mDataSaverEnabledMap);
         BpfNetMaps.setL4sEnabledMapForTest(mL4sEnabledMap);
@@ -483,6 +487,20 @@ public final class BpfNetMapsTest {
                 Inet4Address.getByName("196.68.0.0"), 0, 0);
         assertNotNull(mLocalNetAccessMap.getValue(new LocalNetAccessKey(160, TEST_IF_INDEX,
                 Inet4Address.getByName("196.68.0.0"), 0, 0)));
+    }
+
+    @Test
+    @IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    public void initsEvenLocalNetCacheGenId() throws Exception {
+        // Start initialization with an odd LNP generation ID
+        BpfNetMaps.setInitializedForTest(false);
+        mLocalNetCacheGenerationIdMap.updateEntry(new U32(0), new S64(1));
+
+        mBpfNetMaps = new BpfNetMaps(mContext, mNetd, mDeps, mInterfaceTracker);
+
+        // Ensure the generation ID is incremented
+        long genId = mLocalNetCacheGenerationIdMap.getValue(new U32(0)).val;
+        assertEquals(2, genId);
     }
 
     @Test
