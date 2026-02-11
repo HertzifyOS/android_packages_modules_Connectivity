@@ -1384,11 +1384,20 @@ public class BpfNetMaps {
                     chunk[getIndex(uid)] |= (permissionBits & UID_PERMISSION_MASK) << getShift(uid);
                 }
 
-                // TODO(436242702): deleteEntry if chunk is all 0
-                sUidPermissionChunkMap.updateEntry(
-                    new S32(chunkId),
-                    new UidPermissionChunk(chunk)
-                );
+                boolean emptyChunk = true;
+                for (int j = 0; j < CHUNK_INT64_COUNT; j++) if (chunk[j] != 0) {
+                    emptyChunk = false;
+                    break;
+                }
+
+                if (emptyChunk) {
+                    sUidPermissionChunkMap.deleteEntry(new S32(chunkId));
+                } else {
+                    sUidPermissionChunkMap.updateEntry(
+                        new S32(chunkId),
+                        new UidPermissionChunk(chunk)
+                    );
+                }
             } catch (ErrnoException e) {
                 throw new IllegalStateException("Failed to update uid permission chunk map", e);
             }
