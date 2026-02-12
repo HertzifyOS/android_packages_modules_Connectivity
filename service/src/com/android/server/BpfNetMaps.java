@@ -194,9 +194,8 @@ public class BpfNetMaps {
     @GuardedBy("sLocalNetAccessLock")
     private static IBpfMap<LocalNetAccessKey, Bool> sLocalNetAccessMap = null;
     private static IBpfMap<U32, Bool> sLocalNetBlockedUidMap = null;
-    private static final Object sLocalNetUidHostAllowlistMapLock = new Object();
     // The allowlist map is accessed on different threads in ConnectivityService#allowLocalNetAccess
-    @GuardedBy("sLocalNetUidHostAllowlistMapLock")
+    @GuardedBy("sLocalNetAccessLock")
     private static IBpfMap<LocalNetUidHostAllowlistKey, Bool> sLocalNetUidHostAllowlistMap = null;
     @GuardedBy("sLocalNetAccessLock")
     private static IBpfMap<U32, S64> sLocalNetCacheGenerationIdMap = null;
@@ -358,7 +357,7 @@ public class BpfNetMaps {
     @VisibleForTesting
     public static void setLocalNetUidHostAllowlistMapForTest(
             IBpfMap<LocalNetUidHostAllowlistKey, Bool> localNetUidHostAllowlistMap) {
-        synchronized (sLocalNetUidHostAllowlistMapLock) {
+        synchronized (sLocalNetAccessLock) {
             sLocalNetUidHostAllowlistMap = localNetUidHostAllowlistMap;
         }
     }
@@ -605,7 +604,7 @@ public class BpfNetMaps {
                         e);
             }
 
-            synchronized (sLocalNetUidHostAllowlistMapLock) {
+            synchronized (sLocalNetAccessLock) {
                 if (sLocalNetUidHostAllowlistMap == null) {
                     sLocalNetUidHostAllowlistMap = getLocalNetUidHostAllowlistMap();
                 }
@@ -1814,7 +1813,7 @@ public class BpfNetMaps {
         final LocalNetUidHostAllowlistKey key = new LocalNetUidHostAllowlistKey(
                 uid, ifIndex, address);
         try {
-            synchronized (sLocalNetUidHostAllowlistMapLock) {
+            synchronized (sLocalNetAccessLock) {
                 sLocalNetUidHostAllowlistMap.updateEntry(key, new Bool(true));
             }
         } catch (ErrnoException e) {
@@ -1829,7 +1828,7 @@ public class BpfNetMaps {
     public void removeLocalNetHostAllowlistForInterface(final int ifIndex) {
         throwIfPre25Q2("removeLocalNetHostAllowlistForUid is not available on pre-B devices");
         try {
-            synchronized (sLocalNetUidHostAllowlistMapLock) {
+            synchronized (sLocalNetAccessLock) {
                 sLocalNetUidHostAllowlistMap.forEach((key, value) -> {
                     if (key.ifIndex == ifIndex) {
                         sLocalNetUidHostAllowlistMap.deleteEntry(key);
@@ -2229,7 +2228,7 @@ public class BpfNetMaps {
                 BpfDump.dumpMap(sLocalNetBlockedUidMap, pw, "sLocalNetBlockedUidMap",
                         (key, value) -> " " + key + ": " + value.val);
             }
-            synchronized (sLocalNetUidHostAllowlistMapLock) {
+            synchronized (sLocalNetAccessLock) {
                 if (sLocalNetUidHostAllowlistMap != null) {
                     BpfDump.dumpMap(sLocalNetUidHostAllowlistMap, pw,
                             "sLocalNetUidHostAllowlistMap",
