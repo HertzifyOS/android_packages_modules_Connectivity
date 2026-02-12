@@ -441,6 +441,7 @@ public class NsdService extends INsdManager.Stub {
     private class PickerListener extends MdnsListener {
         private final ClientInfo mClientInfo;
         private final boolean mIsServiceInfoCallback;
+        private final DiscoveryRequest mDiscoveryRequest;
         // Accumulate onServiceFound/onServiceLost callbacks until the picker receiver is registered
         private final ArrayList<PendingCallback> mPendingServiceCallbacks = new ArrayList<>();
 
@@ -474,13 +475,15 @@ public class NsdService extends INsdManager.Stub {
         };
 
         private PickerListener(int clientRequestId, int transactionId, String listenedServiceType,
-                ClientInfo clientInfo, boolean isServiceInfoCallback) {
+                ClientInfo clientInfo, boolean isServiceInfoCallback,
+                DiscoveryRequest discoveryRequest) {
             super(clientRequestId, transactionId, listenedServiceType);
             mClientInfo = clientInfo;
             mIsServiceInfoCallback = isServiceInfoCallback;
+            mDiscoveryRequest = discoveryRequest;
         }
 
-        void startPicker(@NonNull DiscoveryRequest request) {
+        void startPicker() {
             final Intent intent = new Intent();
             intent.setAction(NsdPickerConnector.ACTION_PICKER);
             intent.setFlags(Intent.FLAG_ACTIVITY_BROUGHT_TO_FRONT | Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -488,7 +491,7 @@ public class NsdService extends INsdManager.Stub {
             final Bundle bundle = new Bundle();
             bundle.putBinder(NsdPickerConnector.EXTRA_CONNECTOR, mConnector);
             bundle.putString(NsdPickerConnector.EXTRA_APP_NAME, getAppName());
-            bundle.putParcelable(NsdPickerConnector.EXTRA_REQUEST, request);
+            bundle.putParcelable(NsdPickerConnector.EXTRA_REQUEST, mDiscoveryRequest);
             intent.putExtras(bundle);
             mContext.startActivityAsUser(intent, UserHandle.getUserHandleForUid(mClientInfo.mUid));
         }
@@ -521,37 +524,15 @@ public class NsdService extends INsdManager.Stub {
         @Override
         public void onServiceNameDiscovered(@NonNull MdnsServiceInfo serviceInfo,
                 boolean isServiceFromCache) {
-            mHandler.post(() -> {
-                final DiscoveryManagerRequest request = getRequest();
-                if (request == null) {
-                    // The request was unregistered, no need to update the picker
-                    return;
-                }
-                if (isServiceFilteredOut(serviceInfo, request.mDiscoveryRequest)) {
-                    return;
-                }
-                recordEventMetric(serviceInfo, NsdManager.SERVICE_FOUND, isServiceFromCache,
-                        NO_SERVICE_REMOVED);
-                handleServiceNameDiscoveredOrRemoved(serviceInfo, NsdManager.SERVICE_FOUND);
-            });
+            mHandler.post(() -> handleOrQueueServiceFoundOrRemoved(serviceInfo,
+                    NsdManager.SERVICE_FOUND, isServiceFromCache, NO_SERVICE_REMOVED));
         }
 
         @Override
         public void onServiceNameRemoved(@NonNull MdnsServiceInfo serviceInfo,
                 int serviceRemovedReason) {
-            mHandler.post(() -> {
-                final DiscoveryManagerRequest request = getRequest();
-                if (request == null) {
-                    // The request was unregistered, no need to update the picker
-                    return;
-                }
-                if (isServiceFilteredOut(serviceInfo, request.mDiscoveryRequest)) {
-                    return;
-                }
-                recordEventMetric(serviceInfo, NsdManager.SERVICE_LOST,
-                        /* isServiceFromCache=*/false, serviceRemovedReason);
-                handleServiceNameDiscoveredOrRemoved(serviceInfo, NsdManager.SERVICE_LOST);
-            });
+            mHandler.post(() -> handleOrQueueServiceFoundOrRemoved(serviceInfo,
+                    NsdManager.SERVICE_LOST, /* isServiceFromCache=*/false, serviceRemovedReason));
         }
 
         @Override
@@ -561,13 +542,27 @@ public class NsdService extends INsdManager.Stub {
                     DISCOVERY_QUERY_SENT_CALLBACK, new MdnsEvent(mClientRequestId));
         }
 
-        private void handleServiceNameDiscoveredOrRemoved(@NonNull MdnsServiceInfo serviceInfo,
-                int eventCode) {
+        private void handleOrQueueServiceFoundOrRemoved(@NonNull MdnsServiceInfo serviceInfo,
+                int eventCode, boolean isServiceFromCache, int serviceRemovedReason) {
+            final DiscoveryManagerRequest request = getRequest();
+            if (request == null) {
+                // The request was unregistered, no need to update the picker
+                return;
+            }
+            if (isServiceFilteredOut(serviceInfo, request.mDiscoveryRequest)) {
+                return;
+            }
+            recordEventMetric(serviceInfo, eventCode, isServiceFromCache, serviceRemovedReason);
             if (mServiceReceiver == null) {
                 mPendingServiceCallbacks.add(
                         new PendingCallback(serviceInfo, eventCode));
                 return;
             }
+            handleServiceFoundOrRemoved(serviceInfo, eventCode);
+        }
+
+        private void handleServiceFoundOrRemoved(@NonNull MdnsServiceInfo serviceInfo,
+                int eventCode) {
             final NsdServiceInfo nsdServiceInfo = buildNsdServiceInfoFromMdnsEvent(
                     serviceInfo, eventCode, mClientInfo);
             if (nsdServiceInfo == null) {
@@ -615,7 +610,7 @@ public class NsdService extends INsdManager.Stub {
             }
             mServiceReceiver = receiver;
             for (PendingCallback cb : mPendingServiceCallbacks) {
-                handleServiceNameDiscoveredOrRemoved(cb.mServiceInfo, cb.mEventCode);
+                handleServiceFoundOrRemoved(cb.mServiceInfo, cb.mEventCode);
             }
             mPendingServiceCallbacks.clear();
         }
@@ -1363,9 +1358,10 @@ public class NsdService extends INsdManager.Stub {
             final MdnsListener listener;
             if (usePicker) {
                 final PickerListener pickerListener = new PickerListener(clientRequestId,
-                        transactionId, listenServiceType, clientInfo, isServiceInfoCallback);
+                        transactionId, listenServiceType, clientInfo, isServiceInfoCallback,
+                        discoveryRequest);
                 listener = pickerListener;
-                pickerListener.startPicker(discoveryRequest);
+                pickerListener.startPicker();
                 clientInfo.log("Register a PickerListener " + transactionId
                         + " for service type:" + listenServiceType);
             } else if (isServiceInfoCallback) {
@@ -2449,27 +2445,32 @@ public class NsdService extends INsdManager.Stub {
                 request, clientRequestId, transactionId, clientInfo);
     }
 
-    private void handleDiscoveryManagerServiceUpdated(ClientInfo clientInfo,
-            int clientRequestId, ClientRequest request, NsdServiceInfo info,
-            MdnsEvent event) {
-        final MdnsServiceInfo serviceInfo = event.mMdnsServiceInfo;
-        info.setPort(serviceInfo.getPort());
+    private void addServiceInfoCallbackAttributes(MdnsServiceInfo mdnsServiceInfo,
+            NsdServiceInfo nsdServiceInfo) {
+        nsdServiceInfo.setPort(mdnsServiceInfo.getPort());
 
-        Map<String, String> attrs = serviceInfo.getAttributes();
+        Map<String, String> attrs = mdnsServiceInfo.getAttributes();
         for (Map.Entry<String, String> kv : attrs.entrySet()) {
             final String key = kv.getKey();
             try {
-                info.setAttribute(key, serviceInfo.getAttributeAsBytes(key));
+                nsdServiceInfo.setAttribute(key, mdnsServiceInfo.getAttributeAsBytes(key));
             } catch (IllegalArgumentException e) {
                 Log.e(TAG, "Invalid attribute", e);
             }
         }
 
-        info.setHostname(getHostname(serviceInfo));
-        final List<InetAddress> addresses = getInetAddresses(serviceInfo);
-        info.setHostAddresses(addresses);
-        clientInfo.onServiceUpdated(clientRequestId, info, serviceInfo.getInterfaceIndex(),
-                request);
+        nsdServiceInfo.setHostname(getHostname(mdnsServiceInfo));
+        final List<InetAddress> addresses = getInetAddresses(mdnsServiceInfo);
+        nsdServiceInfo.setHostAddresses(addresses);
+    }
+
+    private void handleDiscoveryManagerServiceUpdated(ClientInfo clientInfo,
+            int clientRequestId, ClientRequest request, NsdServiceInfo nsdServiceInfo,
+            MdnsEvent event) {
+        final MdnsServiceInfo mdnsServiceInfo = event.mMdnsServiceInfo;
+        addServiceInfoCallbackAttributes(mdnsServiceInfo, nsdServiceInfo);
+        clientInfo.onServiceUpdated(clientRequestId, nsdServiceInfo,
+                mdnsServiceInfo.getInterfaceIndex(), request);
         // Set the ServiceFromCache flag only if the service is actually being
         // retrieved from the cache. This flag should not be overridden by later
         // service updates, which may not be cached.
