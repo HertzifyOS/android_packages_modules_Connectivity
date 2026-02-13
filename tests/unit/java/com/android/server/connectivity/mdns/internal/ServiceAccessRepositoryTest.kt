@@ -180,7 +180,7 @@ class ServiceAccessRepositoryTest {
         val allowed = db.getAllowedServices(TEST_UID, TEST_PACKAGE)
         assertEquals(1, allowed.size)
         val service = allowed.valueAt(0)
-        assertEquals(Service(SERVICE_NAME, SERVICE_TYPE), service)
+        assertEquals(Service(SERVICE_NAME, SERVICE_TYPE, /* needsSeenTimeRefresh= */false), service)
     }
 
     @Test
@@ -267,6 +267,7 @@ class ServiceAccessRepositoryTest {
         // After the app data clear broadcast is received, simulate service allow and package unload
         // events being processed
         repository.addAllowedService(TEST_UID, TEST_PACKAGE, "service2", SERVICE_TYPE)
+        waitForIdle()
         repository.unloadPackage(TEST_UID, TEST_PACKAGE)
         waitForIdle()
 
@@ -375,5 +376,31 @@ class ServiceAccessRepositoryTest {
                 verify(packageManager).getPackageUid(eq(pkg.packageName), anyInt())
             }
         }
+    }
+
+    @Test
+    fun testRecordSeenTimeOnUnload() {
+        doReturn(100L).`when`(clock).currentTimeMillis()
+        repository.loadPackage(TEST_UID, TEST_PACKAGE)
+        repository.addAllowedService(TEST_UID, TEST_PACKAGE, "service1", SERVICE_TYPE)
+        waitForIdle()
+        doReturn(200L).`when`(clock).currentTimeMillis()
+        repository.addAllowedService(TEST_UID, TEST_PACKAGE, "service2", SERVICE_TYPE)
+        waitForIdle()
+
+        repository.unloadPackage(TEST_UID, TEST_PACKAGE)
+        repository.loadPackage(TEST_UID, TEST_PACKAGE)
+
+        // Only see the first service (call isServiceAllowed) after reloading from disk
+        doReturn(300L).`when`(clock).currentTimeMillis()
+        repository.isServiceAllowed(TEST_UID, TEST_PACKAGE, "service1", SERVICE_TYPE)
+        repository.unloadPackage(TEST_UID, TEST_PACKAGE)
+
+        db.deleteOlderEntries(TEST_UID, TEST_PACKAGE, /* numEntriesToKeep= */1)
+        val allowed = db.getAllowedServices(TEST_UID, TEST_PACKAGE)
+        assertEquals(1, allowed.size.toLong())
+        // service2 was added later, but service1 was the last seen, so it should be the one kept
+        assertEquals(Service("service1", SERVICE_TYPE, /* needsSeenTimeRefresh= */false),
+            allowed.valueAt(0))
     }
 }

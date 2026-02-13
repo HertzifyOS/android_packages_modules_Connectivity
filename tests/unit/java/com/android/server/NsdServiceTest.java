@@ -3932,7 +3932,7 @@ public class NsdServiceTest {
     public void testCheckPermissionForService_Persisted() throws Exception {
         final int uid = Process.myUid();
         final ArraySet<ServiceAccessRepository.Service> persisted = new ArraySet<>();
-        persisted.add(new ServiceAccessRepository.Service(SERVICE_NAME, SERVICE_TYPE));
+        persisted.add(new ServiceAccessRepository.Service(SERVICE_NAME, SERVICE_TYPE, false));
         doReturn(persisted).when(mServiceAccessDb).getAllowedServices(uid, mPackageName);
 
         final NsdManager client = connectClient(mService);

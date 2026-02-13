@@ -231,7 +231,8 @@ public class ServiceAccessDb {
 
                 final ArraySet<Service> services = new ArraySet<>();
                 while (cursor.moveToNext()) {
-                    services.add(new Service(cursor.getString(0), cursor.getString(1)));
+                    services.add(new Service(cursor.getString(0), cursor.getString(1),
+                            /* needsSeenTimeRefresh= */false));
                 }
                 return services;
             }
@@ -249,13 +250,16 @@ public class ServiceAccessDb {
      */
     public void addAllowedService(int uid, @NonNull String packageName, @NonNull String serviceName,
             @NonNull String serviceType) {
+        // Ensure standard case conversion is used on service name/type
+        final Service service = new Service(serviceName, serviceType,
+                /* needsSeenTimeRefresh= */false);
         try {
             final SQLiteDatabase db = mDbHelper.getWritableDatabase();
             final ContentValues values = new ContentValues(5);
             values.put(ServiceAccessContract.COL_UID, uid);
             values.put(ServiceAccessContract.COL_PACKAGE_NAME, packageName);
-            values.put(ServiceAccessContract.COL_SERVICE_NAME, serviceName);
-            values.put(ServiceAccessContract.COL_SERVICE_TYPE, serviceType);
+            values.put(ServiceAccessContract.COL_SERVICE_NAME, service.mName);
+            values.put(ServiceAccessContract.COL_SERVICE_TYPE, service.mType);
             values.put(ServiceAccessContract.COL_LAST_SEEN_TIME, mClock.currentTimeMillis());
             db.replaceOrThrow(ServiceAccessContract.TABLE_NAME, null, values);
         } catch (SQLiteException e) {
@@ -280,9 +284,12 @@ public class ServiceAccessDb {
                     + " AND " + ServiceAccessContract.COL_UID + "=" + uid;
             db.beginTransaction();
             try {
-                services.forEach(s -> db.update(
-                        ServiceAccessContract.TABLE_NAME, values,
-                        selection, new String[]{packageName, s.mName, s.mType}));
+                services.forEach(s -> {
+                    if (s.mNeedsSeenTimeRefresh) {
+                        db.update(ServiceAccessContract.TABLE_NAME, values,
+                                selection, new String[]{packageName, s.mName, s.mType});
+                    }
+                });
                 db.setTransactionSuccessful();
             } finally {
                 db.endTransaction();
