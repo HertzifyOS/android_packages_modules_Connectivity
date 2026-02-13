@@ -15,31 +15,87 @@
  */
 package com.android.server.connectivity.mdns.internal
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Handler
+import android.os.HandlerThread
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.SmallTest
+import androidx.test.platform.app.InstrumentationRegistry
 import com.android.net.module.util.SharedLog
+import com.android.server.connectivity.mdns.internal.ServiceAccessRepository.Service
 import com.android.testutils.DevSdkIgnoreRule
+import com.android.testutils.waitForIdle
+import java.nio.file.Files
+import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.mockito.ArgumentCaptor
+import org.mockito.ArgumentMatchers.any
+import org.mockito.ArgumentMatchers.anyInt
+import org.mockito.Mock
+import org.mockito.Mockito.doReturn
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.verify
+import org.mockito.MockitoAnnotations
 
 private const val TEST_UID = 12345
 private const val TEST_PACKAGE = "com.android.test.package"
 private const val SERVICE_NAME = "MyService"
 private const val SERVICE_TYPE = "_test._tcp"
+private const val TIMEOUT_MS = 10_000L
 
 @RunWith(AndroidJUnit4::class)
 @SmallTest
 class ServiceAccessRepositoryTest {
+    @get:Rule
+    val ignoreRule = DevSdkIgnoreRule()
+
+    @Mock
+    private lateinit var context: Context
+    @Mock
+    private lateinit var clock: ServiceAccessDb.Clock
+    private lateinit var handlerThread: HandlerThread
+    private lateinit var testHandler: Handler
     private lateinit var repository: ServiceAccessRepository
+    private lateinit var db: ServiceAccessDb
 
     @Before
     fun setUp() {
-        repository = ServiceAccessRepository(mock(SharedLog::class.java))
+        MockitoAnnotations.openMocks(this)
+        doReturn(context).`when`(context).createContextAsUser(any(), anyInt())
+        handlerThread = HandlerThread(ServiceAccessRepositoryTest::class.java.simpleName)
+        handlerThread.start()
+        testHandler = Handler(handlerThread.looper)
+        db = ServiceAccessDb(
+            InstrumentationRegistry.getInstrumentation().context,
+            clock,
+            Files.createTempDirectory("ServiceAccessRepositoryTest").toFile()
+        )
+        repository = ServiceAccessRepository(
+            context,
+            handlerThread.looper,
+            mock(SharedLog::class.java),
+            db
+        )
+        repository.loadPackage(TEST_UID, TEST_PACKAGE)
+    }
+
+    @After
+    fun tearDown() {
+        handlerThread.quitSafely()
+        handlerThread.join()
+    }
+
+    private fun waitForIdle() {
+        testHandler.waitForIdle(TIMEOUT_MS)
     }
 
     @Test
@@ -101,9 +157,146 @@ class ServiceAccessRepositoryTest {
     fun testUnloadPackage() {
         repository.addAllowedService(TEST_UID, TEST_PACKAGE, SERVICE_NAME, SERVICE_TYPE)
         assertTrue(repository.isServiceAllowed(TEST_UID, TEST_PACKAGE, SERVICE_NAME, SERVICE_TYPE))
+        waitForIdle()
 
         repository.unloadPackage(TEST_UID, TEST_PACKAGE)
 
         assertFalse(repository.isServiceAllowed(TEST_UID, TEST_PACKAGE, SERVICE_NAME, SERVICE_TYPE))
+    }
+
+    @Test
+    fun testPersistence() {
+        repository.addAllowedService(TEST_UID, TEST_PACKAGE, SERVICE_NAME, SERVICE_TYPE)
+        waitForIdle()
+
+        val allowed = db.getAllowedServices(TEST_UID, TEST_PACKAGE)
+        assertEquals(1, allowed.size)
+        val service = allowed.valueAt(0)
+        assertEquals(Service(SERVICE_NAME, SERVICE_TYPE), service)
+    }
+
+    @Test
+    fun testLoadPackage() {
+        repository.unloadPackage(TEST_UID, TEST_PACKAGE)
+        db.addAllowedService(TEST_UID, TEST_PACKAGE, SERVICE_NAME, SERVICE_TYPE)
+
+        repository.loadPackage(TEST_UID, TEST_PACKAGE)
+
+        assertTrue(repository.isServiceAllowed(TEST_UID, TEST_PACKAGE, SERVICE_NAME, SERVICE_TYPE))
+    }
+
+    private fun captureReceiver(): BroadcastReceiver {
+        repository.start()
+        val captor = ArgumentCaptor.forClass(BroadcastReceiver::class.java)
+        verify(context).registerReceiver(captor.capture(), any())
+        return captor.value
+    }
+
+    @Test
+    fun testPackageRemoved() {
+        val receiver = captureReceiver()
+        repository.addAllowedService(TEST_UID, TEST_PACKAGE, SERVICE_NAME, SERVICE_TYPE)
+
+        val intent = Intent(Intent.ACTION_PACKAGE_REMOVED).apply {
+            putExtra(Intent.EXTRA_UID, TEST_UID)
+            putExtra(Intent.EXTRA_REPLACING, false)
+            putExtra(Intent.EXTRA_DATA_REMOVED, true)
+            data = Uri.parse("package:$TEST_PACKAGE")
+        }
+        receiver.onReceive(context, intent)
+        waitForIdle()
+
+        val allowed = db.getAllowedServices(TEST_UID, TEST_PACKAGE)
+        assertTrue(allowed.isEmpty())
+    }
+
+    @Test
+    fun testPackageRemoved_KeepData() {
+        val receiver = captureReceiver()
+        repository.addAllowedService(TEST_UID, TEST_PACKAGE, SERVICE_NAME, SERVICE_TYPE)
+        waitForIdle()
+
+        val intent = Intent(Intent.ACTION_PACKAGE_REMOVED).apply {
+            putExtra(Intent.EXTRA_UID, TEST_UID)
+            data = Uri.parse("package:$TEST_PACKAGE")
+            putExtra(Intent.EXTRA_DATA_REMOVED, false)
+        }
+        receiver.onReceive(context, intent)
+        waitForIdle()
+
+        val allowed = db.getAllowedServices(TEST_UID, TEST_PACKAGE)
+        assertEquals(1, allowed.size)
+    }
+
+    @Test
+    fun testPackageDataCleared() {
+        val receiver = captureReceiver()
+        repository.addAllowedService(TEST_UID, TEST_PACKAGE, SERVICE_NAME, SERVICE_TYPE)
+
+        val intent = Intent(Intent.ACTION_PACKAGE_DATA_CLEARED).apply {
+            putExtra(Intent.EXTRA_UID, TEST_UID)
+            data = Uri.parse("package:$TEST_PACKAGE")
+        }
+        receiver.onReceive(context, intent)
+        waitForIdle()
+
+        val allowed = db.getAllowedServices(TEST_UID, TEST_PACKAGE)
+        assertTrue(allowed.isEmpty())
+    }
+
+    @Test
+    fun testPackageDataCleared_DataClearedBroadcastBeforeAppDies() {
+        val receiver = captureReceiver()
+        repository.addAllowedService(TEST_UID, TEST_PACKAGE, "service1", SERVICE_TYPE)
+        waitForIdle()
+
+        val intent = Intent(Intent.ACTION_PACKAGE_DATA_CLEARED).apply {
+            putExtra(Intent.EXTRA_UID, TEST_UID)
+            data = Uri.parse("package:$TEST_PACKAGE")
+        }
+        receiver.onReceive(context, intent)
+
+        // After the app data clear broadcast is received, simulate service allow and package unload
+        // events being processed
+        repository.addAllowedService(TEST_UID, TEST_PACKAGE, "service2", SERVICE_TYPE)
+        repository.unloadPackage(TEST_UID, TEST_PACKAGE)
+        waitForIdle()
+
+        // The database should be empty as it did not have a package entry when addAllowedService
+        // was called
+        val allowed = db.getAllowedServices(TEST_UID, TEST_PACKAGE)
+        assertTrue(allowed.isEmpty())
+    }
+
+    @Test
+    fun testPackageDataCleared_DataClearedBroadcastAfterAppRestart() {
+        // Simulate an app restart after adding a service
+        val receiver = captureReceiver()
+        repository.addAllowedService(TEST_UID, TEST_PACKAGE, "service1", SERVICE_TYPE)
+        repository.unloadPackage(TEST_UID, TEST_PACKAGE)
+        repository.loadPackage(TEST_UID, TEST_PACKAGE)
+        waitForIdle()
+
+        // Simulate the clear data broadcast being received after the app restarted, and a service
+        // being added
+        val intent = Intent(Intent.ACTION_PACKAGE_DATA_CLEARED).apply {
+            putExtra(Intent.EXTRA_UID, TEST_UID)
+            data = Uri.parse("package:$TEST_PACKAGE")
+        }
+        receiver.onReceive(context, intent)
+        repository.addAllowedService(TEST_UID, TEST_PACKAGE, "service2", SERVICE_TYPE)
+
+        waitForIdle()
+
+        // Verify in-memory state: both services should be there because "service1" was still
+        // allowlisted when the app started (data clear broadcast was not processed yet), and
+        // removing it from the allowlist while the app is running would be disruptive.
+        assertTrue(repository.isServiceAllowed(TEST_UID, TEST_PACKAGE, "service1", SERVICE_TYPE))
+        assertTrue(repository.isServiceAllowed(TEST_UID, TEST_PACKAGE, "service2", SERVICE_TYPE))
+
+        // Verify state on disk: services are not persisted until app restart, as the package entry
+        // was deleted with the data clear broadcast.
+        val allowed = db.getAllowedServices(TEST_UID, TEST_PACKAGE)
+        assertTrue(allowed.isEmpty())
     }
 }

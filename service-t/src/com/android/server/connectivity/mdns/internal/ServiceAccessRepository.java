@@ -16,10 +16,23 @@
 
 package com.android.server.connectivity.mdns.internal;
 
+import static android.content.Intent.ACTION_PACKAGE_DATA_CLEARED;
+import static android.content.Intent.ACTION_PACKAGE_REMOVED;
+import static android.content.Intent.EXTRA_DATA_REMOVED;
+
 import android.annotation.NonNull;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.net.Uri;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.UserHandle;
 import android.util.ArrayMap;
 import android.util.ArraySet;
 
+import com.android.internal.annotations.VisibleForTesting;
 import com.android.net.module.util.DnsUtils;
 import com.android.net.module.util.SharedLog;
 
@@ -33,14 +46,84 @@ import java.util.Objects;
  * handler thread.
  */
 public class ServiceAccessRepository {
+
+    /**
+     * How many services should be persisted at most for a given package.
+     *
+     * <p>This is chosen using the same rule-of-thumb as the maximum number of concurrent requests
+     * per client (see NsdService.ClientInfo#MAX_LIMIT).
+     */
+    private static final int MAX_PERSIST_SERVICES_COUNT = 200;
+    private static final String SCHEME_PACKAGE = "package";
+
     private final ArrayMap<PackageEntry, ArraySet<Service>> mAllowedServices = new ArrayMap<>();
+    private final Context mContext;
+    private final Handler mHandler;
     private final SharedLog mSharedLog;
+    private final ServiceAccessDb mDb;
+
+    private final BroadcastReceiver mPackageClearReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            final String action = intent.getAction();
+            if (ACTION_PACKAGE_REMOVED.equals(action)) {
+                // When an app is updated ACTION_PACKAGE_REMOVED is also sent.
+                // Do not remove from the allowlist if this is just an app update, or if the app is
+                // uninstalled while keeping data (so if the app is later reinstalled, the allowlist
+                // will still be there). Apps removed while keeping data are still tracked by
+                // PackageManager with the same AppId, so they would have the same UID when
+                // reinstalled.
+                if (!intent.getBooleanExtra(EXTRA_DATA_REMOVED, true)) {
+                    return;
+                }
+            } else if (!ACTION_PACKAGE_DATA_CLEARED.equals(action)) {
+                return;
+            }
+            mHandler.post(() -> {
+                final int uid = intent.getIntExtra(Intent.EXTRA_UID, -1);
+                final Uri packageData = intent.getData();
+                if (uid == -1 || packageData == null) {
+                    // Note uid == -1 is expected with ACTION_PACKAGE_DATA_CLEARED for instant apps
+                    mSharedLog.w("Package cleared intent missing UID or data: " + intent);
+                    return;
+                }
+                final String packageName = packageData.getSchemeSpecificPart();
+                if (packageName == null) {
+                    mSharedLog.w("Package cleared intent missing package name");
+                    return;
+                }
+                handlePackageCleared(uid, packageName);
+            });
+        }
+    };
 
     /**
      * Build a new {@link ServiceAccessRepository}.
      */
-    public ServiceAccessRepository(@NonNull SharedLog sharedLog) {
+    public ServiceAccessRepository(@NonNull Context context, @NonNull Looper looper,
+            @NonNull SharedLog sharedLog) {
+        this(context, looper, sharedLog, new ServiceAccessDb(context));
+    }
+
+    @VisibleForTesting
+    public ServiceAccessRepository(@NonNull Context context, @NonNull Looper looper,
+            @NonNull SharedLog sharedLog, @NonNull ServiceAccessDb db) {
+        mContext = context;
         mSharedLog = sharedLog;
+        mDb = db;
+        mHandler = new Handler(looper);
+    }
+
+    /**
+     * Start monitoring packages to clean up stale entries in storage.
+     */
+    public void start() {
+        final IntentFilter filter = new IntentFilter();
+        filter.addAction(ACTION_PACKAGE_REMOVED);
+        filter.addAction(ACTION_PACKAGE_DATA_CLEARED);
+        filter.addDataScheme(SCHEME_PACKAGE);
+        mContext.createContextAsUser(UserHandle.ALL, /* flags= */0)
+                .registerReceiver(mPackageClearReceiver, filter);
     }
 
     /**
@@ -58,10 +141,18 @@ public class ServiceAccessRepository {
             services = new ArraySet<>();
             mAllowedServices.put(pkg, services);
         }
-        services.add(service);
+        final boolean added = services.add(service);
         mSharedLog.log("Added " + serviceName + "." + serviceType + " for UID " + uid);
+        final int servicesCount = services.size();
 
-        // TODO: asynchronously persist the service to disk
+        mHandler.post(() -> {
+            // Only services count on disk is limited; the in-memory list remains complete, so this
+            // is only limiting for the next time the NsdManager client connects.
+            if (added && servicesCount >= MAX_PERSIST_SERVICES_COUNT) {
+                mDb.deleteOlderEntries(uid, packageName, MAX_PERSIST_SERVICES_COUNT - 1);
+            }
+            mDb.addAllowedService(uid, packageName, serviceName, serviceType);
+        });
     }
 
     /**
@@ -81,9 +172,16 @@ public class ServiceAccessRepository {
 
     /**
      * Load the list of allowed services from disk for a given package.
+     *
+     * <p>This loads the list synchronously if not already in memory, and is expected to be called
+     * once before any operation from the specified package.
      */
     public void loadPackage(int uid, @NonNull String packageName) {
-        // TODO: load allowed services from disk
+        mDb.refreshPackage(uid, packageName);
+        final PackageEntry pkg = new PackageEntry(uid, packageName);
+        if (!mAllowedServices.containsKey(pkg)) {
+            mAllowedServices.put(pkg, mDb.getAllowedServices(uid, packageName));
+        }
     }
 
     /**
@@ -93,6 +191,33 @@ public class ServiceAccessRepository {
      */
     public void unloadPackage(int uid, @NonNull String packageName) {
         mAllowedServices.remove(new PackageEntry(uid, packageName));
+        closeDbIfNoActivePackage();
+    }
+
+    private void handlePackageCleared(int uid, @NonNull String packageName) {
+        // In theory this could race with service allowed entries being added, if the add is delayed
+        // after the removal broadcast or if the app is cleared and restarted quickly. In that
+        // case the database will have no entry for the package so database adds to the allowlist
+        // will just fail until refreshPackage is called again.
+        // This should be fine because very hard to trigger, and it only causes persistence to be
+        // skipped until the next app start.
+        // Entries are *not* removed from the in-memory copy (mAllowedServices), as this will be
+        // done when unloadPackage is called, on binder death notifications (processes are killed
+        // when their data is cleared). This means the race only affects persistence as described,
+        // and avoids unexpected edge-cases where entries could be removed while the app is running.
+        mSharedLog.log("Deleting entries for " + uid + ", " + packageName);
+        mDb.deleteAllEntriesForPackage(uid, packageName);
+        closeDbIfNoActivePackage();
+    }
+
+    /**
+     * If no package is active, close the database to save memory. It is auto-reopened when needed,
+     * although that is a bit expensive.
+     */
+    private void closeDbIfNoActivePackage() {
+        if (mAllowedServices.isEmpty()) {
+            mDb.close();
+        }
     }
 
     /**
@@ -147,7 +272,8 @@ public class ServiceAccessRepository {
         @NonNull
         final String mType;
 
-        Service(@NonNull String name, @NonNull String type) {
+        @VisibleForTesting(visibility = VisibleForTesting.Visibility.PACKAGE)
+        public Service(@NonNull String name, @NonNull String type) {
             this.mName = DnsUtils.toDnsUpperCase(name);
             this.mType = DnsUtils.toDnsUpperCase(type);
         }
