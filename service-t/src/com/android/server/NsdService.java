@@ -444,6 +444,7 @@ public class NsdService extends INsdManager.Stub {
         private final DiscoveryRequest mDiscoveryRequest;
         // Accumulate onServiceFound/onServiceLost callbacks until the picker receiver is registered
         private final ArrayList<PendingCallback> mPendingServiceCallbacks = new ArrayList<>();
+        private final boolean mUseCompleteServiceInfo;
 
         private static class PendingCallback {
             final MdnsServiceInfo mServiceInfo;
@@ -481,6 +482,8 @@ public class NsdService extends INsdManager.Stub {
             mClientInfo = clientInfo;
             mIsServiceInfoCallback = isServiceInfoCallback;
             mDiscoveryRequest = discoveryRequest;
+            mUseCompleteServiceInfo = isServiceInfoCallback
+                    || isCompleteServiceInfoRequired(discoveryRequest);
         }
 
         void startPicker() {
@@ -524,6 +527,19 @@ public class NsdService extends INsdManager.Stub {
         @Override
         public void onServiceNameDiscovered(@NonNull MdnsServiceInfo serviceInfo,
                 boolean isServiceFromCache) {
+            if (mUseCompleteServiceInfo) {
+                return;
+            }
+            mHandler.post(() -> handleOrQueueServiceFoundOrRemoved(serviceInfo,
+                    NsdManager.SERVICE_FOUND, isServiceFromCache, NO_SERVICE_REMOVED));
+        }
+
+        @Override
+        public void onServiceFound(@NonNull MdnsServiceInfo serviceInfo,
+                boolean isServiceFromCache) {
+            if (!mUseCompleteServiceInfo) {
+                return;
+            }
             mHandler.post(() -> handleOrQueueServiceFoundOrRemoved(serviceInfo,
                     NsdManager.SERVICE_FOUND, isServiceFromCache, NO_SERVICE_REMOVED));
         }
@@ -531,6 +547,19 @@ public class NsdService extends INsdManager.Stub {
         @Override
         public void onServiceNameRemoved(@NonNull MdnsServiceInfo serviceInfo,
                 int serviceRemovedReason) {
+            if (mUseCompleteServiceInfo) {
+                return;
+            }
+            mHandler.post(() -> handleOrQueueServiceFoundOrRemoved(serviceInfo,
+                    NsdManager.SERVICE_LOST, /* isServiceFromCache=*/false, serviceRemovedReason));
+        }
+
+        @Override
+        public void onServiceRemoved(@androidx.annotation.NonNull MdnsServiceInfo serviceInfo,
+                int serviceRemovedReason) {
+            if (!mUseCompleteServiceInfo) {
+                return;
+            }
             mHandler.post(() -> handleOrQueueServiceFoundOrRemoved(serviceInfo,
                     NsdManager.SERVICE_LOST, /* isServiceFromCache=*/false, serviceRemovedReason));
         }
@@ -568,6 +597,9 @@ public class NsdService extends INsdManager.Stub {
             if (nsdServiceInfo == null) {
                 // Errors are already logged if null
                 return;
+            }
+            if (mUseCompleteServiceInfo) {
+                addServiceInfoCallbackAttributes(serviceInfo, nsdServiceInfo);
             }
             // Ensure the picker always knows about the interface index. This is reset before
             // sending callbacks to apps.
@@ -649,6 +681,14 @@ public class NsdService extends INsdManager.Stub {
             if (mIsServiceInfoCallback) {
                 mClientInfo.tryNotifyServiceUpdated(mClientRequestId, service, ifIndex, request);
             } else {
+                // The picker may have returned a service with full information (address, port,
+                // attributes). However, the DiscoveryListener.onServiceFound API contract specifies
+                // that this information is only available after resolution. Clear these fields to
+                // conform to the API and avoid providing unexpected data to the app.
+                service.setPort(0);
+                service.setHostname(null);
+                service.clearAttributes();
+                service.setHostAddresses(Collections.emptyList());
                 mClientInfo.tryNotifyServiceFound(mClientRequestId, service);
             }
 
@@ -819,6 +859,11 @@ public class NsdService extends INsdManager.Stub {
         }
         // TODO: check for other properties here
         return false;
+    }
+
+    private boolean isCompleteServiceInfoRequired(@NonNull DiscoveryRequest request) {
+        return !request.getAttributeFilters().isEmpty()
+                || request.getDisplayNameAttribute() != null;
     }
 
     private boolean serviceMatchesApprovedOnly(@NonNull ClientInfo clientInfo,
@@ -1374,6 +1419,8 @@ public class NsdService extends INsdManager.Stub {
                 clientInfo.log("Register a DiscoveryListener " + transactionId
                         + " for service type:" + listenServiceType);
             }
+            final boolean resolveAll = isServiceInfoCallback
+                    || (usePicker && isCompleteServiceInfoRequired(discoveryRequest));
             final MdnsSearchOptions.Builder optionsBuilder =
                     MdnsSearchOptions.newBuilder()
                             .setNetwork(discoveryRequest.getNetwork())
@@ -1382,7 +1429,7 @@ public class NsdService extends INsdManager.Stub {
                                     mMdnsFeatureFlags.isAggressiveQueryModeEnabled()
                                             ? AGGRESSIVE_QUERY_MODE
                                             : PASSIVE_QUERY_MODE)
-                            .setResolveAllServices(isServiceInfoCallback);
+                            .setResolveAllServices(resolveAll);
             if (subtype != null) {
                 // checkSubtypeLabels() ensures that subtypes start with '_' but
                 // MdnsSearchOptions expects the underscore to not be present.
