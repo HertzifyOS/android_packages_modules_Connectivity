@@ -2112,6 +2112,7 @@ public class NsdService extends INsdManager.Stub {
                     && !CollectionUtils.any(mClients.values(), c -> c.mUid == clientInfo.mUid
                     && Objects.equals(c.mPackageName, clientInfo.mPackageName))) {
                 mAccessRepository.unloadPackage(clientInfo.mUid, clientInfo.mPackageName);
+                mAccessRepository.maybeScheduleDatabaseMaintenance();
             }
         }
         maybeStopMonitoringSocketsIfNoActiveRequest();

@@ -17,6 +17,7 @@
 package com.android.server.connectivity.mdns.internal;
 
 import android.annotation.NonNull;
+import android.annotation.RequiresApi;
 import android.content.ApexEnvironment;
 import android.content.ContentValues;
 import android.content.Context;
@@ -24,6 +25,7 @@ import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteException;
 import android.database.sqlite.SQLiteOpenHelper;
+import android.os.Build;
 import android.util.ArraySet;
 import android.util.Log;
 
@@ -41,6 +43,7 @@ import java.util.ArrayList;
  * <p>Note operations may generally fail notably if there is no disk space left. In that case this
  * class does not report errors but returns default values as if no allowlist was persisted.
  */
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
 public class ServiceAccessDb {
     private static final String TAG = ServiceAccessDb.class.getSimpleName();
     private final ServiceAccessDbHelper mDbHelper;
