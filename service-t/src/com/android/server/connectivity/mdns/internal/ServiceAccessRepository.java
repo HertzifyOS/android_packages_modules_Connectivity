@@ -17,8 +17,8 @@
 package com.android.server.connectivity.mdns.internal;
 
 import android.annotation.NonNull;
+import android.util.ArrayMap;
 import android.util.ArraySet;
-import android.util.SparseArray;
 
 import com.android.net.module.util.DnsUtils;
 import com.android.net.module.util.SharedLog;
@@ -33,8 +33,7 @@ import java.util.Objects;
  * handler thread.
  */
 public class ServiceAccessRepository {
-    // UID -> allowed services mapping
-    private final SparseArray<ArraySet<Service>> mAllowedServices = new SparseArray<>();
+    private final ArrayMap<PackageEntry, ArraySet<Service>> mAllowedServices = new ArrayMap<>();
     private final SharedLog mSharedLog;
 
     /**
@@ -47,16 +46,17 @@ public class ServiceAccessRepository {
     /**
      * Add a service that the given UID is allowed to discover.
      */
-    public void addAllowedService(int uid, @NonNull String serviceName,
+    public void addAllowedService(int uid, @NonNull String packageName, @NonNull String serviceName,
             @NonNull String serviceType) {
-        // TODO: make the allowlist also package name-specific
+        Objects.requireNonNull(packageName);
         Objects.requireNonNull(serviceName);
         Objects.requireNonNull(serviceType);
+        final PackageEntry pkg = new PackageEntry(uid, packageName);
         final Service service = new Service(serviceName, serviceType);
-        ArraySet<Service> services = mAllowedServices.get(uid);
+        ArraySet<Service> services = mAllowedServices.get(pkg);
         if (services == null) {
             services = new ArraySet<>();
-            mAllowedServices.put(uid, services);
+            mAllowedServices.put(pkg, services);
         }
         services.add(service);
         mSharedLog.log("Added " + serviceName + "." + serviceType + " for UID " + uid);
@@ -67,11 +67,12 @@ public class ServiceAccessRepository {
     /**
      * Query whether a given UID is allowed to discover a given service.
      */
-    public boolean isServiceAllowed(int uid, @NonNull String serviceName,
-            @NonNull String serviceType) {
+    public boolean isServiceAllowed(int uid, @NonNull String packageName,
+            @NonNull String serviceName, @NonNull String serviceType) {
+        Objects.requireNonNull(packageName);
         Objects.requireNonNull(serviceName);
         Objects.requireNonNull(serviceType);
-        final ArraySet<Service> services = mAllowedServices.get(uid);
+        final ArraySet<Service> services = mAllowedServices.get(new PackageEntry(uid, packageName));
         if (services == null) {
             return false;
         }
@@ -79,19 +80,19 @@ public class ServiceAccessRepository {
     }
 
     /**
-     * Load the list of allowed services from disk for a given UID.
+     * Load the list of allowed services from disk for a given package.
      */
-    public void loadUid(int uid) {
+    public void loadPackage(int uid, @NonNull String packageName) {
         // TODO: load allowed services from disk
     }
 
     /**
      * Unload the list of allowed services for a given UID.
      *
-     * <p>Allowed services can be reloaded from disk using {@link #loadUid(int)}.
+     * <p>Allowed services can be reloaded from disk using {@link #loadPackage(int, String)}.
      */
-    public void unloadUid(int uid) {
-        mAllowedServices.remove(uid);
+    public void unloadPackage(int uid, @NonNull String packageName) {
+        mAllowedServices.remove(new PackageEntry(uid, packageName));
     }
 
     /**
@@ -99,13 +100,44 @@ public class ServiceAccessRepository {
      */
     public void dump(PrintWriter pw) {
         for (int i = 0; i < mAllowedServices.size(); i++) {
-            final int uid = mAllowedServices.keyAt(i);
+            final PackageEntry pkg = mAllowedServices.keyAt(i);
             final ArraySet<Service> services = mAllowedServices.valueAt(i);
-            pw.println("UID " + uid + ":");
+            pw.println(pkg + ":");
             for (int j = 0; j < services.size(); j++) {
                 final Service service = services.valueAt(j);
-                pw.println("  " + service.mName + "." + service.mType);
+                pw.println("  " + service);
             }
+        }
+    }
+
+    public static class PackageEntry {
+        public final int uid;
+        @NonNull
+        public final String packageName;
+
+        PackageEntry(int uid, @NonNull String packageName) {
+            this.uid = uid;
+            this.packageName = packageName;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof PackageEntry)) return false;
+            PackageEntry pkg = (PackageEntry) o;
+            return Objects.equals(packageName, pkg.packageName) && uid == pkg.uid;
+        }
+
+        @Override
+        public int hashCode() {
+            // Similar to Objects.hashCode but avoids boxing into an array
+            return 31 * uid + packageName.hashCode();
+        }
+
+        @NonNull
+        @Override
+        public String toString() {
+            return packageName + " (" + uid + ")";
         }
     }
 
@@ -130,7 +162,14 @@ public class ServiceAccessRepository {
 
         @Override
         public int hashCode() {
-            return Objects.hash(mName, mType);
+            // Similar to Objects.hashCode but avoids boxing into an array
+            return 31 * mName.hashCode() + mType.hashCode();
+        }
+
+        @NonNull
+        @Override
+        public String toString() {
+            return mName + "." + mType;
         }
     }
 }
