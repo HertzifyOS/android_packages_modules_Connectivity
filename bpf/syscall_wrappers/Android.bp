@@ -35,7 +35,6 @@ cc_library_headers {
         "com.android.art.debug",
         "com.android.mediaprovider",
         "com.android.os.statsd",
-        "com.android.resolv",
         "com.android.tethering",
     ],
 }

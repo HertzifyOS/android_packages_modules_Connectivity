@@ -36,10 +36,7 @@ cc_library_static {
     whole_static_libs: [
         "netd_event_listener_interface-V1-ndk",
     ],
-    apex_available: [
-        "com.android.resolv",
-        "com.android.tethering",
-    ],
+    apex_available: ["com.android.tethering"],
     min_sdk_version: "30",
 }
 
@@ -48,10 +45,7 @@ cc_library_static {
     whole_static_libs: [
         "netd_aidl_interface-V18-ndk",
     ],
-    apex_available: [
-        "com.android.resolv",
-        "com.android.tethering",
-    ],
+    apex_available: ["com.android.tethering"],
     min_sdk_version: "30",
 }
 
@@ -215,7 +209,6 @@ aidl_interface {
         ndk: {
             apex_available: [
                 "//apex_available:platform",
-                "com.android.resolv",
                 "com.android.tethering",
             ],
             min_sdk_version: "30",
