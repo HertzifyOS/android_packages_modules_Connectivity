@@ -20,7 +20,7 @@ package {
 java_library {
     name: "netd_aidl_interface-lateststable-java",
     sdk_version: "system_current",
-    min_sdk_version: "30",
+    min_sdk_version: "31",
     static_libs: [
         "netd_aidl_interface-V18-java",
     ],
@@ -37,7 +37,7 @@ cc_library_static {
         "netd_event_listener_interface-V1-ndk",
     ],
     apex_available: ["com.android.tethering"],
-    min_sdk_version: "30",
+    min_sdk_version: "apex_inherit",
 }
 
 cc_library_static {
@@ -46,7 +46,7 @@ cc_library_static {
         "netd_aidl_interface-V18-ndk",
     ],
     apex_available: ["com.android.tethering"],
-    min_sdk_version: "30",
+    min_sdk_version: "apex_inherit",
 }
 
 cc_defaults {
@@ -92,17 +92,15 @@ aidl_interface {
                 "com.android.tethering",
                 "com.android.wifi",
             ],
-            // this is part of updatable modules(NetworkStack) which targets 30(R)
-            min_sdk_version: "30",
+            // this is part of updatable modules(NetworkStack)
+            min_sdk_version: "31",
         },
         ndk: {
             apex_available: [
                 "//apex_available:platform",
                 "com.android.tethering",
             ],
-            // This is necessary for the DnsResovler tests to run in Android R.
-            // Soong would recognize this value and produce the R compatible aidl library.
-            min_sdk_version: "30",
+            min_sdk_version: "31",
         },
     },
     versions_with_info: [
@@ -187,7 +185,7 @@ aidl_interface {
 java_library {
     name: "netd_event_listener_interface-lateststable-java",
     sdk_version: "system_current",
-    min_sdk_version: "30",
+    min_sdk_version: "31",
     static_libs: [
         "netd_event_listener_interface-V1-java",
     ],
@@ -211,7 +209,7 @@ aidl_interface {
                 "//apex_available:platform",
                 "com.android.tethering",
             ],
-            min_sdk_version: "30",
+            min_sdk_version: "31",
         },
         java: {
             apex_available: [
@@ -219,7 +217,7 @@ aidl_interface {
                 "com.android.wifi",
                 "com.android.tethering",
             ],
-            min_sdk_version: "30",
+            min_sdk_version: "31",
         },
     },
     versions_with_info: [
@@ -250,7 +248,7 @@ aidl_interface {
                 "//apex_available:platform",
                 "com.android.tethering",
             ],
-            min_sdk_version: "30",
+            min_sdk_version: "31",
         },
     },
     versions_with_info: [
