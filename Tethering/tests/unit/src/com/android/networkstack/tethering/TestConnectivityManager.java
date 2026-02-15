@@ -208,11 +208,8 @@ public class TestConnectivityManager extends ConnectivityManager {
 
     @Override
     public void requestNetwork(NetworkRequest req, NetworkCallback cb, Handler h) {
-        // For R- devices, Tethering will invoke this function in 2 cases, one is to request mobile
-        // network, the other is to track system default network.
         if (looksLikeDefaultRequest(req)) {
-            assertFalse(SdkLevel.isAtLeastS());
-            addTrackDefaultCallback(cb, h);
+            assertFalse(true);  // cannot be hit on S+
         } else {
             assertFalse(mAllCallbacks.containsKey(cb));
             mAllCallbacks.put(cb, h);
