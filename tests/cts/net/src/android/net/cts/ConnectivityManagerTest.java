@@ -78,11 +78,13 @@ import static android.net.ConnectivityManager.TYPE_PROXY;
 import static android.net.ConnectivityManager.TYPE_VPN;
 import static android.net.ConnectivityManager.TYPE_WIFI_P2P;
 import static android.net.ConnectivitySettingsManager.setUidsAllowedOnRestrictedNetworks;
+import static android.net.NetworkCapabilities.NET_CAPABILITY_ENTERPRISE;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_FOREGROUND;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_IMS;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED;
+import static android.net.NetworkCapabilities.NET_CAPABILITY_NOT_VCN_MANAGED;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_NOT_VPN;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_PARTIAL_CONNECTIVITY;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_TRUSTED;
@@ -218,8 +220,6 @@ import com.android.net.module.util.structs.Ipv4Header;
 import com.android.net.module.util.structs.Ipv6Header;
 import com.android.net.module.util.structs.UdpHeader;
 import com.android.networkstack.apishim.ConnectivityManagerShimImpl;
-import com.android.networkstack.apishim.ConstantsShim;
-import com.android.networkstack.apishim.NetworkInformationShimImpl;
 import com.android.networkstack.apishim.common.ConnectivityManagerShim;
 import com.android.testutils.AutoReleaseNetworkCallbackRule;
 import com.android.testutils.CompatUtil;
@@ -2754,10 +2754,10 @@ public class ConnectivityManagerTest {
     @Test
     public void testGetCapabilityCarrierName() {
         assumeTrue(TestUtils.shouldTestSApis());
-        assertEquals("ENTERPRISE", NetworkInformationShimImpl.newInstance()
-                .getCapabilityCarrierName(ConstantsShim.NET_CAPABILITY_ENTERPRISE));
-        assertNull(NetworkInformationShimImpl.newInstance()
-                .getCapabilityCarrierName(ConstantsShim.NET_CAPABILITY_NOT_VCN_MANAGED));
+        assertEquals("ENTERPRISE", NetworkCapabilities
+                .getCapabilityCarrierName(NET_CAPABILITY_ENTERPRISE));
+        assertNull(NetworkCapabilities
+                .getCapabilityCarrierName(NET_CAPABILITY_NOT_VCN_MANAGED));
     }
 
     @Test
