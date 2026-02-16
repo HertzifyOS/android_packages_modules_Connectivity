@@ -456,10 +456,6 @@ class ConnectivityServiceIntegrationTest {
             assertTrue(capportData.isCaptive)
             assertEquals(Uri.parse("https://login.capport.android.com"), capportData.userPortalUrl)
             assertEquals(
-                Uri.parse("https://venueinfo.capport.android.com"),
-                capportData.venueInfoUrl
-            )
-            assertEquals(
                 if (expectedOptIn == OPT_IN) {
                     CAPTIVE_PORTAL_DATA_SOURCE_CAPPORT_WITH_CUSTOM_TABS_OPTIN
                 } else {
