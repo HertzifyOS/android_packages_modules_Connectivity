@@ -219,8 +219,6 @@ import com.android.net.module.util.Struct;
 import com.android.net.module.util.structs.Ipv4Header;
 import com.android.net.module.util.structs.Ipv6Header;
 import com.android.net.module.util.structs.UdpHeader;
-import com.android.networkstack.apishim.ConnectivityManagerShimImpl;
-import com.android.networkstack.apishim.common.ConnectivityManagerShim;
 import com.android.testutils.AutoReleaseNetworkCallbackRule;
 import com.android.testutils.CompatUtil;
 import com.android.testutils.ConnectUtil;
@@ -380,7 +378,6 @@ public class ConnectivityManagerTest {
     private Context mContext;
     private Instrumentation mInstrumentation;
     private ConnectivityManager mCm;
-    private ConnectivityManagerShim mCmShim;
     private WifiManager mWifiManager;
     private PackageManager mPackageManager;
     private TelephonyManager mTm;
@@ -397,7 +394,6 @@ public class ConnectivityManagerTest {
         mInstrumentation = InstrumentationRegistry.getInstrumentation();
         mContext = mInstrumentation.getContext();
         mCm = (ConnectivityManager) mContext.getSystemService(Context.CONNECTIVITY_SERVICE);
-        mCmShim = ConnectivityManagerShimImpl.newInstance(mContext);
         mWifiManager = (WifiManager) mContext.getSystemService(Context.WIFI_SERVICE);
         mPackageManager = mContext.getPackageManager();
         mCtsNetUtils = new CtsNetUtils(mContext);
@@ -470,7 +466,7 @@ public class ConnectivityManagerTest {
     public void tearDown() throws Exception {
         if (TestUtils.shouldTestSApis()) {
             runWithShellPermissionIdentity(
-                    () -> mCmShim.setRequireVpnForUids(false, mVpnRequiredUidRanges),
+                    () -> mCm.setRequireVpnForUids(false, mVpnRequiredUidRanges),
                     NETWORK_SETTINGS);
         }
 
@@ -2629,7 +2625,7 @@ public class ConnectivityManagerTest {
 
     private void setRequireVpnForUids(boolean requireVpn, Collection<Range<Integer>> ranges)
             throws Exception {
-        mCmShim.setRequireVpnForUids(requireVpn, ranges);
+        mCm.setRequireVpnForUids(requireVpn, ranges);
         for (Range<Integer> range : ranges) {
             if (requireVpn) {
                 mVpnRequiredUidRanges.add(range);
@@ -2725,7 +2721,7 @@ public class ConnectivityManagerTest {
 
         final TestableNetworkCallback callback;
         try {
-            mCmShim.setLegacyLockdownVpnEnabled(true);
+            mCm.setLegacyLockdownVpnEnabled(true);
 
             // setLegacyLockdownVpnEnabled is asynchronous and only takes effect when the
             // ConnectivityService handler thread processes it. Ensure it has taken effect by doing
@@ -2739,7 +2735,7 @@ public class ConnectivityManagerTest {
             assertNotNull(info);
             assertEquals(DetailedState.CONNECTING, info.getDetailedState());
         } finally {
-            mCmShim.setLegacyLockdownVpnEnabled(false);
+            mCm.setLegacyLockdownVpnEnabled(false);
         }
     }
 
