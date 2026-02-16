@@ -403,7 +403,6 @@ import com.android.net.module.util.LocationPermissionChecker;
 import com.android.net.module.util.NetworkMonitorUtils;
 import com.android.net.module.util.SdkUtil;
 import com.android.networkstack.apishim.ConstantsShim;
-import com.android.networkstack.apishim.NetworkAgentConfigShimImpl;
 import com.android.networkstack.apishim.common.BroadcastOptionsShim;
 import com.android.networkstack.apishim.common.UnsupportedApiLevelException;
 import com.android.server.ConnectivityService.NetworkRequestInfo;
@@ -9280,8 +9279,8 @@ public class ConnectivityServiceTest {
         // by NetworkMonitor
         assertFalse(NetworkMonitorUtils.isValidationRequired(
                 false /* isDunValidationRequired */,
-                NetworkAgentConfigShimImpl.newInstance(mMockVpn.getNetworkAgentConfig())
-                        .isVpnValidationRequired(),
+                SdkLevel.isAtLeastT()
+                        ? mMockVpn.getNetworkAgentConfig().isVpnValidationRequired() : false,
                 mMockVpn.getAgent().getNetworkCapabilities()));
         mMockVpn.getAgent().setNetworkValid(false /* privateDnsProbeSent */);
 
@@ -9432,8 +9431,8 @@ public class ConnectivityServiceTest {
 
         assertFalse(NetworkMonitorUtils.isValidationRequired(
                 false /* isDunValidationRequired */,
-                NetworkAgentConfigShimImpl.newInstance(mMockVpn.getNetworkAgentConfig())
-                        .isVpnValidationRequired(),
+                SdkLevel.isAtLeastT()
+                        ? mMockVpn.getNetworkAgentConfig().isVpnValidationRequired() : false,
                 mMockVpn.getAgent().getNetworkCapabilities()));
         assertTrue(NetworkMonitorUtils.isPrivateDnsValidationRequired(
                 mMockVpn.getAgent().getNetworkCapabilities()));
