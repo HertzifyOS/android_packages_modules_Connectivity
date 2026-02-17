@@ -690,21 +690,33 @@ public final class DnsResolver {
 
         final LinkProperties linkProperties = mConnectivityManager == null ? null
                 : mConnectivityManager.getLinkProperties(queryNetwork);
-        final HttpsEndpointAccumulator accumulator =
-                new HttpsEndpointAccumulator(queryNetwork, linkProperties, callback, allFds.size(),
-                        httpsTimeoutMillis, queryIpv4, queryIpv6, new Handler(mLooper));
 
         synchronized (lock) {
-            for (FileDescriptor fd : allFds) {
-                registerFDListener(executor, fd, accumulator, cancellationSignal, lock);
+            if (cancellationSignal != null) {
+                cancellationSignal.setOnCancelListener(() -> {
+                    synchronized (lock) {
+                        allFds.forEach(fd -> cancelQuery(fd));
+                    }
+                });
             }
 
-            if (cancellationSignal == null) return;
-            cancellationSignal.setOnCancelListener(() -> {
+            // If more callbacks are needed between the accumulator and DNS resolver, replace this
+            // second CancellationSignal with a listener instead.
+            CancellationSignal queryCancellationSignal = new CancellationSignal();
+            queryCancellationSignal.setOnCancelListener(() -> {
                 synchronized (lock) {
                     allFds.forEach(fd -> cancelQuery(fd));
                 }
             });
+
+            final HttpsEndpointAccumulator accumulator =
+                    new HttpsEndpointAccumulator(queryNetwork, linkProperties, callback,
+                            allFds.size(), httpsTimeoutMillis, queryIpv4, queryIpv6,
+                            new Handler(mLooper), cancellationSignal, queryCancellationSignal);
+
+            for (FileDescriptor fd : allFds) {
+                registerFDListener(executor, fd, accumulator, cancellationSignal, lock);
+            }
         }
     }
 
