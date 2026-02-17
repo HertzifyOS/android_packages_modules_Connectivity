@@ -302,8 +302,7 @@ public class ConnectivityManagerTest {
             networkCallbackRule = new AutoReleaseNetworkCallbackRule();
 
     @Rule(order = 3)
-    public final DeviceConfigRule mTestValidationConfigRule = new DeviceConfigRule(
-            5 /* retryCountBeforeSIfConfigChanged */);
+    public final DeviceConfigRule mTestValidationConfigRule = new DeviceConfigRule();
 
     private static final String TAG = ConnectivityManagerTest.class.getSimpleName();
 
