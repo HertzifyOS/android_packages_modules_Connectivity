@@ -391,10 +391,7 @@ import com.android.net.module.util.netlink.NetlinkMessage;
 import com.android.net.module.util.netlink.NetlinkUtils;
 import com.android.net.module.util.netlink.RtNetlinkAddressMessage;
 import com.android.net.module.util.netlink.StructIfaddrMsg;
-import com.android.networkstack.apishim.BroadcastOptionsShimImpl;
 import com.android.networkstack.apishim.ConstantsShim;
-import com.android.networkstack.apishim.common.BroadcastOptionsShim;
-import com.android.networkstack.apishim.common.UnsupportedApiLevelException;
 import com.android.server.connectivity.AppOptInDefaultNetworkController;
 import com.android.server.connectivity.AppOptInDefaultNetworkPolicy;
 import com.android.server.connectivity.ApplicationSelfCertifiedNetworkCapabilities;
@@ -1956,13 +1953,10 @@ public class ConnectivityService extends IConnectivityManager.Stub
         }
 
         /**
-         * Wraps {@link BroadcastOptionsShimImpl#newInstance(BroadcastOptions)}
+         * Returns the BroadcastOptions object.
          */
-        // TODO: when available in all active branches:
-        //  @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-        @RequiresApi(Build.VERSION_CODES.CUR_DEVELOPMENT)
-        public BroadcastOptionsShim makeBroadcastOptionsShim(BroadcastOptions options) {
-            return BroadcastOptionsShimImpl.newInstance(options);
+        public BroadcastOptions getBroadcastOptions(BroadcastOptions options) {
+            return options;
         }
 
         /**
@@ -4477,17 +4471,13 @@ public class ConnectivityService extends IConnectivityManager.Stub
         // Delivery group policy APIs are only available on U+.
         if (!mDeps.isAtLeastU()) return;
 
-        final BroadcastOptionsShim optsShim = mDeps.makeBroadcastOptionsShim(options);
-        try {
-            // This allows us to discard older broadcasts still waiting to be delivered
-            // which have the same namespace and key.
-            optsShim.setDeliveryGroupPolicy(ConstantsShim.DELIVERY_GROUP_POLICY_MOST_RECENT);
-            optsShim.setDeliveryGroupMatchingKey(ConnectivityManager.CONNECTIVITY_ACTION,
-                    createDeliveryGroupKeyForConnectivityAction(info));
-            optsShim.setDeferralPolicy(ConstantsShim.DEFERRAL_POLICY_UNTIL_ACTIVE);
-        } catch (UnsupportedApiLevelException e) {
-            Log.wtf(TAG, "Using unsupported API" + e);
-        }
+        final BroadcastOptions opts = mDeps.getBroadcastOptions(options);
+        // This allows us to discard older broadcasts still waiting to be delivered
+        // which have the same namespace and key.
+        opts.setDeliveryGroupPolicy(BroadcastOptions.DELIVERY_GROUP_POLICY_MOST_RECENT);
+        opts.setDeliveryGroupMatchingKey(ConnectivityManager.CONNECTIVITY_ACTION,
+                createDeliveryGroupKeyForConnectivityAction(info));
+        opts.setDeferralPolicy(BroadcastOptions.DEFERRAL_POLICY_UNTIL_ACTIVE);
     }
 
     private void maybeClearTcQdiscClsact() {
