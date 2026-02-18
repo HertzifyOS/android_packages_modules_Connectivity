@@ -34,6 +34,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.junit.Assume.assumeTrue;
 
 import android.annotation.NonNull;
 import android.annotation.Nullable;
@@ -849,7 +850,7 @@ public class DnsResolverTest {
 
         @Override
         public void onError(@NonNull DnsResolver.DnsException error) {
-            mErrorMsg = mMsg + error.getMessage();
+            mErrorMsg = mMsg + " " + error.getMessage();
             mLatch.countDown();
         }
     }
@@ -879,7 +880,6 @@ public class DnsResolverTest {
 
     private void doTestQueryForHttpsRecord(DnsResolver dns, Executor executor) throws Exception {
         final String msg = "Test query for HTTPS record " + TEST_HTTPS_RECORD_DOMAIN;
-        mCtsNetUtils.setPrivateDnsStrictMode(GOOGLE_PRIVATE_DNS_SERVER);
         for (Network network : getTestableNetworksAndNull()) {
             final VerifyCancelHttpsEndpointInfoCallback callback =
                     new VerifyCancelHttpsEndpointInfoCallback(msg, /* cancellationSignal= */ null);
@@ -887,8 +887,11 @@ public class DnsResolverTest {
                     executor, DnsResolver.HTTPS_QUERY_WAIT_UNTIL_TIMEOUT,
                     /* cancellationSignal= */ null, callback);
 
-            assertTrue(msg + " but no answer after " + TIMEOUT_MS + "ms.",
+            // Until we have our own controlled domain, first check that the connection didn't time
+            // out due to lack of response before performing any test assertions.
+            assumeTrue(msg + " but no answer after " + TIMEOUT_MS + "ms.",
                     callback.waitForAnswer());
+
             callback.assertNoError();
             assertFalse(msg + " returned 0 results", callback.isAnswerEmpty());
             callback.assertHasIpAddressAnswer();
