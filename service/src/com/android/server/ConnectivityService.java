@@ -305,6 +305,7 @@ import android.os.Binder;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.ConditionVariable;
+import android.os.ConfigUpdate;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
@@ -13964,6 +13965,11 @@ public class ConnectivityService extends IConnectivityManager.Stub
                         }
                         return 0;
                     }
+                    case "log-list-update":
+                        mContext.sendBroadcast(
+                                new Intent(ConfigUpdate.ACTION_UPDATE_CT_LOGS)
+                                        .setPackage(mContext.getPackageName()));
+                        return 0;
                     case "reevaluate":
                         // Usage : adb shell cmd connectivity reevaluate <netId>
                         // If netId is omitted, then reevaluate the default network
@@ -14046,6 +14052,8 @@ public class ConnectivityService extends IConnectivityManager.Stub
             pw.println("    Set the allow bit in FIREWALL_CHAIN_BACKGROUND for the given uid.");
             pw.println("  get-background-networking-enabled-for-uid [uid]");
             pw.println("    Get the allow bit in FIREWALL_CHAIN_BACKGROUND for the given uid.");
+            pw.println("  log-list-update");
+            pw.println("    Triggers an update of the CT log list.");
             if (Build.isDebuggable()) {
                 pw.println("  set-debug-fallback-network-for-uid [uid] [transport]");
                 pw.println("    Sets [uid] to use [transport] as its default network when there is"
