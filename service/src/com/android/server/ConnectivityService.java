@@ -4582,7 +4582,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
             mAppOptInDefaultNetworkController.start();
         }
 
-        if (mCarrierPrivilegeAuthenticator != null) {
+        if (mCarrierPrivilegeAuthenticator != null && SdkLevel.isAtLeastT()) {
             mCarrierPrivilegeAuthenticator.start();
         }
 
@@ -4882,7 +4882,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
             dumpBpfProgramStatus(pw);
         }
 
-        if (null != mCarrierPrivilegeAuthenticator) {
+        if (null != mCarrierPrivilegeAuthenticator && SdkLevel.isAtLeastT()) {
             pw.println();
             mCarrierPrivilegeAuthenticator.dump(pw);
         }
@@ -5087,7 +5087,9 @@ public class ConnectivityService extends IConnectivityManager.Stub
     private void dumpTrafficController(IndentingPrintWriter pw, final FileDescriptor fd,
             boolean verbose) {
         try {
-            mBpfNetMaps.dump(pw, fd, verbose);
+            if (SdkLevel.isAtLeastT()) {
+                mBpfNetMaps.dump(pw, fd, verbose);
+            }
         } catch (ServiceSpecificException e) {
             pw.println(e.getMessage());
         } catch (IOException e) {
@@ -6345,7 +6347,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
 
     private boolean hasCarrierPrivilegeForNetworkCaps(final int callingUid,
             @NonNull final NetworkCapabilities caps) {
-        if (mCarrierPrivilegeAuthenticator != null) {
+        if (mCarrierPrivilegeAuthenticator != null && SdkLevel.isAtLeastT()) {
             return mCarrierPrivilegeAuthenticator.isCarrierServiceUidForNetworkCapabilities(
                     callingUid, caps);
         }
@@ -6353,7 +6355,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
     }
 
     private int getSubscriptionIdFromNetworkCaps(@NonNull final NetworkCapabilities caps) {
-        if (mCarrierPrivilegeAuthenticator != null) {
+        if (mCarrierPrivilegeAuthenticator != null && SdkLevel.isAtLeastT()) {
             return mCarrierPrivilegeAuthenticator.getSubIdFromNetworkCapabilities(caps);
         }
         return SubscriptionManager.INVALID_SUBSCRIPTION_ID;
