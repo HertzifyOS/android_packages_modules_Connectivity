@@ -392,7 +392,6 @@ import com.android.net.module.util.netlink.NetlinkMessage;
 import com.android.net.module.util.netlink.NetlinkUtils;
 import com.android.net.module.util.netlink.RtNetlinkAddressMessage;
 import com.android.net.module.util.netlink.StructIfaddrMsg;
-import com.android.networkstack.apishim.ConstantsShim;
 import com.android.server.connectivity.AppOptInDefaultNetworkController;
 import com.android.server.connectivity.AppOptInDefaultNetworkPolicy;
 import com.android.server.connectivity.ApplicationSelfCertifiedNetworkCapabilities;
@@ -9418,7 +9417,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
                             mContext.createContextAsUser(UserHandle.getUserHandleForUid(
                                     callingUid), 0 /* flags */).getPackageManager();
                     final PackageManager.Property networkSliceProperty = packageManager.getProperty(
-                            ConstantsShim.PROPERTY_SELF_CERTIFIED_NETWORK_CAPABILITIES,
+                            PackageManager.PROPERTY_SELF_CERTIFIED_NETWORK_CAPABILITIES,
                             callerPackageName
                     );
                     final XmlResourceParser parser = packageManager
@@ -9433,7 +9432,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
             }
         } catch (PackageManager.NameNotFoundException ne) {
             throw new SecurityException(
-                    "Cannot find " + ConstantsShim.PROPERTY_SELF_CERTIFIED_NETWORK_CAPABILITIES
+                    "Cannot find " + PackageManager.PROPERTY_SELF_CERTIFIED_NETWORK_CAPABILITIES
                             + " property");
         } catch (XmlPullParserException | IOException | InvalidTagException e) {
             throw new SecurityException(e.getMessage());

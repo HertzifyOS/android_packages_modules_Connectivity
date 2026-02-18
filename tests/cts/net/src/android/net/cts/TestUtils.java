@@ -16,10 +16,7 @@
 
 package android.net.cts;
 
-import android.os.Build;
-
 import com.android.modules.utils.build.SdkLevel;
-import com.android.networkstack.apishim.ConstantsShim;
 
 /**
  * Utils class to provide common shared test helper methods or constants that behave differently
@@ -31,7 +28,7 @@ public class TestUtils {
      * b) that the code be compiled against shims new enough to access these APIs.
      */
     public static boolean shouldTestSApis() {
-        return SdkLevel.isAtLeastS() && ConstantsShim.VERSION > Build.VERSION_CODES.R;
+        return SdkLevel.isAtLeastS();
     }
 
     /**
@@ -39,7 +36,7 @@ public class TestUtils {
      * b) that the code be compiled against shims new enough to access these APIs.
      */
     public static boolean shouldTestTApis() {
-        return SdkLevel.isAtLeastT() && ConstantsShim.VERSION > Build.VERSION_CODES.S_V2;
+        return SdkLevel.isAtLeastT();
     }
 
     /**
@@ -47,6 +44,6 @@ public class TestUtils {
      * b) that the code be compiled against shims new enough to access these APIs.
      */
     public static boolean shouldTestUApis() {
-        return SdkLevel.isAtLeastU() && ConstantsShim.VERSION > Build.VERSION_CODES.TIRAMISU;
+        return SdkLevel.isAtLeastU();
     }
 }
