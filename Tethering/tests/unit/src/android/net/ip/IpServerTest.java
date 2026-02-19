@@ -1314,7 +1314,7 @@ public class IpServerTest {
                 expectedRoutes.equals(actualRoutes));
     }
 
-    @Test @IgnoreUpTo(Build.VERSION_CODES.R)
+    @Test
     public void dadProxyUpdates() throws Exception {
         InOrder inOrder = inOrder(mDadProxy);
         initTetheredStateMachine(TETHERING_WIFI, UPSTREAM_IFACE);
@@ -1380,7 +1380,7 @@ public class IpServerTest {
         }
     }
 
-    @Test @IgnoreUpTo(Build.VERSION_CODES.R)
+    @Test
     public void testDadProxyUpdates_EnabledAfterR() throws Exception {
         checkDadProxyEnabled(true);
     }

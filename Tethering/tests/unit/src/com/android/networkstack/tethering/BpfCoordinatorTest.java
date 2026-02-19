@@ -142,7 +142,6 @@ import com.android.networkstack.tethering.BpfCoordinator.ClientInfo;
 import com.android.networkstack.tethering.BpfCoordinator.Ipv6DownstreamRule;
 import com.android.networkstack.tethering.BpfCoordinator.Ipv6UpstreamRule;
 import com.android.testutils.DevSdkIgnoreRule;
-import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo;
 import com.android.testutils.TestBpfMap;
 import com.android.testutils.TestableNetworkStatsProviderCbBinder;
 import com.android.testutils.com.android.testutils.SetFeatureFlagsRule;
@@ -1487,7 +1486,6 @@ public class BpfCoordinatorTest {
     }
 
     @Test
-    @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testBpfDisabledbyNoBpfDownstream6Map() throws Exception {
         setupFunctioningNetdInterface();
         doReturn(null).when(mDeps).getBpfDownstream6Map();
@@ -1496,7 +1494,6 @@ public class BpfCoordinatorTest {
     }
 
     @Test
-    @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testBpfDisabledbyNoBpfUpstream6Map() throws Exception {
         setupFunctioningNetdInterface();
         doReturn(null).when(mDeps).getBpfUpstream6Map();
@@ -1505,7 +1502,6 @@ public class BpfCoordinatorTest {
     }
 
     @Test
-    @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testBpfDisabledbyNoBpfDownstream4Map() throws Exception {
         setupFunctioningNetdInterface();
         doReturn(null).when(mDeps).getBpfDownstream4Map();
@@ -1514,7 +1510,6 @@ public class BpfCoordinatorTest {
     }
 
     @Test
-    @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testBpfDisabledbyNoBpfUpstream4Map() throws Exception {
         setupFunctioningNetdInterface();
         doReturn(null).when(mDeps).getBpfUpstream4Map();
@@ -1523,7 +1518,6 @@ public class BpfCoordinatorTest {
     }
 
     @Test
-    @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testBpfDisabledbyNoBpfStatsMap() throws Exception {
         setupFunctioningNetdInterface();
         doReturn(null).when(mDeps).getBpfStatsMap();
@@ -1532,7 +1526,6 @@ public class BpfCoordinatorTest {
     }
 
     @Test
-    @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testBpfDisabledbyNoBpfLimitMap() throws Exception {
         setupFunctioningNetdInterface();
         doReturn(null).when(mDeps).getBpfLimitMap();
@@ -1541,7 +1534,6 @@ public class BpfCoordinatorTest {
     }
 
     @Test
-    @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testBpfMapClear() throws Exception {
         setupFunctioningNetdInterface();
 
@@ -1555,7 +1547,6 @@ public class BpfCoordinatorTest {
     }
 
     @Test
-    @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testAttachDetachBpfProgram() throws Exception {
         setupFunctioningNetdInterface();
 
@@ -1685,7 +1676,6 @@ public class BpfCoordinatorTest {
     }
 
     @Test
-    @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testStartStopConntrackMonitoring() throws Exception {
         setupFunctioningNetdInterface();
 
@@ -1706,7 +1696,6 @@ public class BpfCoordinatorTest {
     }
 
     @Test
-    @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testStartStopConntrackMonitoringWithTwoDownstreamIfaces() throws Exception {
         setupFunctioningNetdInterface();
 
@@ -1805,7 +1794,6 @@ public class BpfCoordinatorTest {
     // TODO: Test the IPv4 and IPv6 exist concurrently.
     // TODO: Test the IPv4 rule delete failed.
     @Test
-    @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testSetDataLimitOnRule4Change() throws Exception {
         final BpfCoordinator coordinator = makeBpfCoordinator();
         initBpfCoordinatorForRule4(coordinator);
@@ -1885,7 +1873,6 @@ public class BpfCoordinatorTest {
     }
 
     @Test
-    @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testAddDevMapRule6() throws Exception {
         final BpfCoordinator coordinator = makeBpfCoordinator();
 
@@ -1909,7 +1896,6 @@ public class BpfCoordinatorTest {
     }
 
     @Test
-    @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testAddDevMapRule4() throws Exception {
         final BpfCoordinator coordinator = makeBpfCoordinator();
         initBpfCoordinatorForRule4(coordinator);
@@ -1933,7 +1919,6 @@ public class BpfCoordinatorTest {
 
     @FeatureFlag(name = TETHER_ACTIVE_SESSIONS_METRICS)
     // BPF IPv4 forwarding only supports on S+.
-    @IgnoreUpTo(Build.VERSION_CODES.R)
     @Test
     public void testMaxConnectionCount_metricsEnabled() throws Exception {
         doTestMaxConnectionCount(true);
@@ -2007,7 +1992,6 @@ public class BpfCoordinatorTest {
 
     @FeatureFlag(name = TETHER_ACTIVE_SESSIONS_METRICS)
     // BPF IPv4 forwarding only supports on S+.
-    @IgnoreUpTo(Build.VERSION_CODES.R)
     @Test
     public void doTestMaxConnectionCount_removeClient_metricsEnabled() throws Exception {
         doTestMaxConnectionCount_removeClient(true);
@@ -2080,7 +2064,6 @@ public class BpfCoordinatorTest {
 
     @FeatureFlag(name = TETHER_ACTIVE_SESSIONS_METRICS)
     // BPF IPv4 forwarding only supports on S+.
-    @IgnoreUpTo(Build.VERSION_CODES.R)
     @Test
     public void testSendActiveSessionsReported_metricsEnabled() throws Exception {
         doTestSendActiveSessionsReported(true);
@@ -2210,7 +2193,6 @@ public class BpfCoordinatorTest {
     }
 
     @Test
-    @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testRefreshConntrackTimeout_Upstream4Map() throws Exception {
         // TODO: Replace the dependencies BPF map with a non-mocked TestBpfMap object.
         final TestBpfMap<Tether4Key, Tether4Value> bpfUpstream4Map =
@@ -2226,7 +2208,6 @@ public class BpfCoordinatorTest {
     }
 
     @Test
-    @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testRefreshConntrackTimeout_Downstream4Map() throws Exception {
         // TODO: Replace the dependencies BPF map with a non-mocked TestBpfMap object.
         final TestBpfMap<Tether4Key, Tether4Value> bpfDownstream4Map =
@@ -2242,7 +2223,6 @@ public class BpfCoordinatorTest {
     }
 
     @Test
-    @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testNotAllowOffloadByConntrackMessageDestinationPort() throws Exception {
         final BpfCoordinator coordinator = makeBpfCoordinator();
         initBpfCoordinatorForRule4(coordinator);
@@ -2424,7 +2404,6 @@ public class BpfCoordinatorTest {
     }
 
     @Test
-    @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testTetherOffloadRule4Clear_RemoveDownstream() throws Exception {
         final BpfCoordinator coordinator = makeBpfCoordinator();
 
@@ -2483,7 +2462,6 @@ public class BpfCoordinatorTest {
     }
 
     @Test
-    @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testTetherOffloadRule4Clear_ChangeOrRemoveUpstream() throws Exception {
         final BpfCoordinator coordinator = makeBpfCoordinator();
 
@@ -2520,7 +2498,6 @@ public class BpfCoordinatorTest {
     }
 
     @Test
-    @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testTetherOffloadClientAddRemove() throws Exception {
         final BpfCoordinator coordinator = makeBpfCoordinator();
 
@@ -2715,28 +2692,24 @@ public class BpfCoordinatorTest {
     }
 
     @Test
-    @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testAddTetherOffloadRule4LowMtuFromLinkProperties() throws Exception {
         verifyAddTetherOffloadRule4Mtu(
                 IPV4_MIN_MTU, false /* isKernelMtu */, IPV4_MIN_MTU /* expectedMtu */);
     }
 
     @Test
-    @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testAddTetherOffloadRule4LowMtuFromKernel() throws Exception {
         verifyAddTetherOffloadRule4Mtu(
                 IPV4_MIN_MTU, true /* isKernelMtu */, IPV4_MIN_MTU /* expectedMtu */);
     }
 
     @Test
-    @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testAddTetherOffloadRule4LessThanIpv4MinMtu() throws Exception {
         verifyAddTetherOffloadRule4Mtu(
                 IPV4_MIN_MTU - 1, false /* isKernelMtu */, IPV4_MIN_MTU /* expectedMtu */);
     }
 
     @Test
-    @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testAddTetherOffloadRule4InvalidMtu() throws Exception {
         verifyAddTetherOffloadRule4Mtu(INVALID_MTU, false /* isKernelMtu */,
                 NetworkStackConstants.ETHER_MTU /* expectedMtu */);
@@ -2903,7 +2876,6 @@ public class BpfCoordinatorTest {
     }
 
     @Test
-    @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testUpdateUpstreamNetworkState() throws Exception {
         verifyUpdateUpstreamNetworkState();
     }

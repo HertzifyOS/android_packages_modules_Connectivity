@@ -24,7 +24,6 @@ import androidx.test.filters.SmallTest
 import androidx.test.runner.AndroidJUnit4
 import com.android.testutils.ConnectivityModuleTest
 import com.android.testutils.DevSdkIgnoreRule
-import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo
 import com.android.testutils.assertParcelingIsLossless
 import org.junit.Assert.assertFalse
 import org.junit.Rule
@@ -51,7 +50,6 @@ class MatchAllNetworkSpecifierTest {
     }
 
     @Test(expected = IllegalStateException::class)
-    @IgnoreUpTo(Build.VERSION_CODES.R)
     fun testCanBeSatisfiedBy() {
         specifier.canBeSatisfiedBy(wifiAwareNetworkSpecifier)
     }

@@ -592,7 +592,7 @@ public class TetheringConfigurationTest {
         assertChooseUpstreamAutomaticallyIs(true);
     }
 
-    @Test @IgnoreUpTo(Build.VERSION_CODES.R) @IgnoreAfter(Build.VERSION_CODES.TIRAMISU)
+    @Test  @IgnoreAfter(Build.VERSION_CODES.TIRAMISU)
     public void testChooseUpstreamAutomatically_FlagOverrideOnSAndT() throws Exception {
         when(mResources.getBoolean(R.bool.config_tether_upstream_automatic))
                 .thenReturn(false);

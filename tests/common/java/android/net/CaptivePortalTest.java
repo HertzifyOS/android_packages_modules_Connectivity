@@ -26,7 +26,6 @@ import androidx.test.filters.SmallTest;
 import androidx.test.runner.AndroidJUnit4;
 
 import com.android.testutils.DevSdkIgnoreRule;
-import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo;
 
 import org.junit.Rule;
 import org.junit.Test;
@@ -101,7 +100,6 @@ public class CaptivePortalTest {
         assertEquals(result.mCode, CaptivePortal.APP_REQUEST_REEVALUATION_REQUIRED);
     }
 
-    @IgnoreUpTo(Build.VERSION_CODES.R)
     @Test
     public void testLogEvent() {
         /**

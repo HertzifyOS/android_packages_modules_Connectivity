@@ -1322,7 +1322,7 @@ public class LinkPropertiesTest {
         }
     }
 
-    @Test @IgnoreUpTo(Build.VERSION_CODES.R)
+    @Test
     @CtsNetTestCasesMaxTargetSdk31(reason = "Testing behaviour for target SDK 31")
     public void testExcludedRoutesNotVisibleOnTargetSdk31() {
         checkExcludeRoutesNotVisibleAfterS();

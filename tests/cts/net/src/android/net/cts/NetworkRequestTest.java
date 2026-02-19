@@ -99,7 +99,6 @@ public class NetworkRequestTest {
         }
     }
 
-    @IgnoreUpTo(Build.VERSION_CODES.R)
     @Test
     public void testParceling() {
         NetworkCapabilities nc = new NetworkCapabilities.Builder().build();
@@ -121,7 +120,7 @@ public class NetworkRequestTest {
         verifyNoCapabilities(nr);
     }
 
-    @Test @IgnoreUpTo(Build.VERSION_CODES.R)
+    @Test
     public void testForbiddenCapabilities() {
         final NetworkRequest.Builder builder = new NetworkRequest.Builder();
         builder.addForbiddenCapability(NET_CAPABILITY_MMS);
@@ -402,7 +401,7 @@ public class NetworkRequestTest {
 
     // TODO: 1. Refactor test cases with helper method.
     //       2. Test capability that does not yet exist.
-    @Test @IgnoreUpTo(Build.VERSION_CODES.R)
+    @Test
     public void testBypassingVcn() {
         // Make an empty request. Verify the NOT_VCN_MANAGED is added.
         final NetworkRequest emptyRequest = new NetworkRequest.Builder().build();
@@ -489,7 +488,7 @@ public class NetworkRequestTest {
         assertEquals(orig, copy);
     }
 
-    @Test @IgnoreUpTo(Build.VERSION_CODES.R)
+    @Test
     public void testGetCapabilities() {
         final int[] netCapabilities = new int[] {
                 NET_CAPABILITY_INTERNET,
@@ -507,7 +506,7 @@ public class NetworkRequestTest {
     // Default capabilities and default forbidden capabilities must not be changed on U- because
     // this could cause the system server crash when there is a module rollback (b/313030307)
     @Test
-    @IgnoreUpTo(Build.VERSION_CODES.R) @IgnoreAfter(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+     @IgnoreAfter(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     public void testDefaultCapabilities() {
         final NetworkRequest defaultNR = new NetworkRequest.Builder().build();
 
@@ -552,7 +551,6 @@ public class NetworkRequestTest {
     }
 
     @Test
-    @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testNetworkReservation() {
         final NetworkCapabilities nc = new NetworkCapabilities();
         final NetworkCapabilities blanketOffer = new NetworkCapabilities(nc);
@@ -580,7 +578,6 @@ public class NetworkRequestTest {
     }
 
     @Test
-    @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testNetworkRequest_throwsWhenPassingCapsWithReservationId() {
         final NetworkCapabilities capsWithResId = new NetworkCapabilities();
         capsWithResId.setReservationId(42);
