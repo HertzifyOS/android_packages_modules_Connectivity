@@ -200,20 +200,20 @@ struct ElfObject {
         return bytes.subspan(sh[id].sh_offset, sh[id].sh_size);
     }
 
-    // Get name from offset in strtab
-    int getSymName(unsigned nameOff, string& name) const {
-        if (nameOff >= strtab.size()) return -1;
-
-        name = string(strtab.data() + nameOff);
-        return 0;
+    // Get string from offset in strtab.
+    // This is safe because ELF string tables are null-terminated, and we have
+    // verified above that the ELF file is a trusted file from our own filesystem.
+    const char* getStr(unsigned off) const {
+        if (off >= strtab.size()) return nullptr;
+        return strtab.data() + off;
     }
 
     // Reads a full section by name - example to get the GPL license
     template <typename T>
     int readSectionByName(const char* name, vector<T>& data) const {
         for (unsigned i = 0; i < sh.size(); i++) {
-            if (sh[i].sh_name >= strtab.size()) continue;
-            const char* secname = strtab.data() + sh[i].sh_name;
+            const char* secname = getStr(sh[i].sh_name);
+            if (!secname) continue;
 
             if (!strcmp(secname, name)) {
                 auto s = getSectionByIdx(i);
@@ -265,7 +265,6 @@ struct ElfObject {
     int getSectionSymNames(const string& sectionName, vector<string>& names,
                            optional<unsigned> symbolType = std::nullopt) const {
         int ret;
-        string name;
         vector<Elf64_Sym> symtab;
 
         ret = readSymTab(1 /* sort */, symtab);
@@ -274,10 +273,10 @@ struct ElfObject {
         // Get index of section
         int sec_idx = -1;
         for (unsigned i = 0; i < sh.size(); i++) {
-            ret = getSymName(sh[i].sh_name, name);
-            if (ret) return ret;
+            const char* name = getStr(sh[i].sh_name);
+            if (!name) return -1;
 
-            if (!name.compare(sectionName)) {
+            if (!sectionName.compare(name)) {
                 sec_idx = i;
                 break;
             }
@@ -293,9 +292,8 @@ struct ElfObject {
             if (symbolType.has_value() && ELF_ST_TYPE(symtab[i].st_info) != symbolType) continue;
 
             if (symtab[i].st_shndx == sec_idx) {
-                string s;
-                ret = getSymName(symtab[i].st_name, s);
-                if (ret) return ret;
+                const char* s = getStr(symtab[i].st_name);
+                if (!s) return -1;
                 names.push_back(s);
             }
         }
@@ -312,7 +310,10 @@ struct ElfObject {
 
         if (index >= symtab.size()) return -1;
 
-        return getSymName(symtab[index].st_name, name);
+        const char* s = getStr(symtab[index].st_name);
+        if (!s) return -1;
+        name = s;
+        return 0;
     }
 
     int getSymOffsetByName(const char *name, int *off) const {
@@ -320,10 +321,9 @@ struct ElfObject {
         int ret = readSymTab(1 /* sort */, symtab);
         if (ret) return ret;
         for (unsigned i = 0; i < symtab.size(); i++) {
-            string s;
-            ret = getSymName(symtab[i].st_name, s);
-            if (ret) continue;
-            if (!strcmp(s.c_str(), name)) {
+            const char* s = getStr(symtab[i].st_name);
+            if (!s) continue;
+            if (!strcmp(s, name)) {
                 *off = symtab[i].st_value;
                 return 0;
             }
@@ -345,11 +345,8 @@ int readCodeSections(const ElfObject& elfObj, vector<codeSection>& cs) {
     if (!pd.empty() && ret) return ret;
 
     for (int i = 0; i < entries; i++) {
-        string name;
-        codeSection cs_temp;
-
-        ret = elfObj.getSymName(elfObj.sh[i].sh_name, name);
-        if (ret) return ret;
+        const char* name = elfObj.getStr(elfObj.sh[i].sh_name);
+        if (!name) return -1;
 
         // all we want to process is sections FOO/BAR, but:
         // - section 0 has an empty name (experimentally observed)
@@ -358,20 +355,22 @@ int readCodeSections(const ElfObject& elfObj, vector<codeSection>& cs) {
         if (name[0] == '.') continue;
 
         // Find the first slash
-        size_t first_slash_pos = name.find('/');
+        const char* first_slash = strchr(name, '/');
 
         // Ignore sections without a /  (basically 'license' section)
-        if (first_slash_pos == std::string::npos) continue;
+        if (!first_slash) continue;
 
         string oldName = name;
-        name[first_slash_pos] = '_';
+        string sanitizedName = name;
+        sanitizedName[first_slash - name] = '_';
 
-        if (name.find('/') != std::string::npos) abort(); // There should only be one!
+        if (strchr(sanitizedName.c_str() + (first_slash - name) + 1, '/')) abort(); // There should only be one!
 
         auto s = elfObj.getSectionByIdx(i);
         if (s.empty() && elfObj.sh[i].sh_size > 0) return -1;
+        codeSection cs_temp;
         cs_temp.data.assign(s.begin(), s.end());
-        ALOGV("Loaded code section %d (%s)", i, name.c_str());
+        ALOGV("Loaded code section %d (%s)", i, sanitizedName.c_str());
 
         vector<string> csSymNames;
         ret = elfObj.getSectionSymNames(oldName, csSymNames, STT_FUNC);
@@ -388,14 +387,14 @@ int readCodeSections(const ElfObject& elfObj, vector<codeSection>& cs) {
 
         // Check for rel section
         if (cs_temp.data.size() > 0 && i + 1 < entries) {
-            ret = elfObj.getSymName(elfObj.sh[i + 1].sh_name, name);
-            if (ret) return ret;
+            const char* next_name = elfObj.getStr(elfObj.sh[i + 1].sh_name);
+            if (!next_name) return -1;
 
-            if (name == (".rel" + oldName)) {
+            if (!strcmp(next_name, (".rel" + oldName).c_str())) {
                 auto rel_s = elfObj.getSectionByIdx(i + 1);
                 if (rel_s.empty() && elfObj.sh[i + 1].sh_size > 0) return -1;
                 cs_temp.rel_data.assign(rel_s.begin(), rel_s.end());
-                ALOGV("Loaded relo section %d (%s)", i, name.c_str());
+                ALOGV("Loaded relo section %d (%s)", i, next_name);
             }
         }
 
