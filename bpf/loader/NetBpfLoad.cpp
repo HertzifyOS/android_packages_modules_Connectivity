@@ -25,7 +25,6 @@
 #include <errno.h>
 #include <error.h>
 #include <fcntl.h>
-#include <fstream>
 #include <inttypes.h>
 #include <iostream>
 #include <linux/unistd.h>
@@ -77,8 +76,6 @@ using android::base::Split;
 using android::base::StartsWith;
 using android::base::Tokenize;
 using android::base::unique_fd;
-using std::ifstream;
-using std::ios;
 using std::optional;
 using std::string;
 using std::vector;
@@ -132,57 +129,77 @@ typedef struct {
 
 struct ElfObject {
     const char * path;
-    ifstream file;
+    void* base;
+    size_t size;
 
-    ElfObject(const char* elfPath) : path(elfPath), file(path, ios::in | ios::binary) {
-        if (!file.is_open()) abort();
+    ElfObject(const char* elfPath) : path(elfPath), base(MAP_FAILED), size(0) {
+        unique_fd fd(open(path, O_RDONLY | O_CLOEXEC));
+        if (fd < 0) {
+            ALOGE("open(%s) failed: %s", path, strerror(errno));
+            abort();
+        }
+        struct stat st;
+        if (fstat(fd, &st) < 0) {
+            ALOGE("fstat(%s) failed: %s", path, strerror(errno));
+            abort();
+        }
+        size = static_cast<size_t>(st.st_size);
+        if (size < sizeof(Elf64_Ehdr)) {
+            ALOGE("file %s too small: %zu", path, size);
+            abort();
+        }
+        base = mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, 0);
+        if (base == MAP_FAILED) {
+            ALOGE("mmap(%s) failed: %s", path, strerror(errno));
+            abort();
+        }
     }
 
-    int readElfHeader(Elf64_Ehdr* eh) {
-        file.seekg(0);
-        if (file.fail()) return -1;
+    ~ElfObject() {
+        if (base != MAP_FAILED) munmap(base, size);
+    }
 
-        if (!file.read((char*)eh, sizeof(*eh))) return -1;
-
+    int readElfHeader(Elf64_Ehdr* eh) const {
+        if (size < sizeof(*eh)) return -1;
+        memcpy(eh, base, sizeof(*eh));
         return 0;
     }
 
     // Reads all section header tables into an Shdr array
-    int readSectionHeadersAll(vector<Elf64_Shdr>& shTable) {
+    int readSectionHeadersAll(vector<Elf64_Shdr>& shTable) const {
         Elf64_Ehdr eh;
         int ret = 0;
 
         ret = readElfHeader(&eh);
         if (ret) return ret;
 
-        file.seekg(eh.e_shoff);
-        if (file.fail()) return -1;
+        if (eh.e_shoff + eh.e_shnum * eh.e_shentsize > size) return -1;
 
         // Read shdr table entries
         shTable.resize(eh.e_shnum);
 
-        if (!file.read((char*)shTable.data(), (eh.e_shnum * eh.e_shentsize))) return -ENOMEM;
+        memcpy(shTable.data(), (char*)base + eh.e_shoff, eh.e_shnum * eh.e_shentsize);
 
         return 0;
     }
 
     // Read a section by its index - for ex to get sec hdr strtab blob
-    int readSectionByIdx(int id, vector<char>& sec) {
+    int readSectionByIdx(int id, vector<char>& sec) const {
         vector<Elf64_Shdr> shTable;
         int ret = readSectionHeadersAll(shTable);
         if (ret) return ret;
 
-        file.seekg(shTable[id].sh_offset);
-        if (file.fail()) return -1;
+        if (id < 0 || id >= (int)shTable.size()) return -1;
+        if (shTable[id].sh_offset + shTable[id].sh_size > size) return -1;
 
         sec.resize(shTable[id].sh_size);
-        if (!file.read(sec.data(), shTable[id].sh_size)) return -1;
+        memcpy(sec.data(), (char*)base + shTable[id].sh_offset, shTable[id].sh_size);
 
         return 0;
     }
 
     // Read whole section header string table
-    int readSectionHeaderStrtab(vector<char>& strtab) {
+    int readSectionHeaderStrtab(vector<char>& strtab) const {
         Elf64_Ehdr eh;
         int ret = readElfHeader(&eh);
         if (ret) return ret;
@@ -194,14 +211,14 @@ struct ElfObject {
     }
 
     // Get name from offset in strtab
-    int getSymName(int nameOff, string& name) {
+    int getSymName(int nameOff, string& name) const {
         int ret;
         vector<char> secStrTab;
 
         ret = readSectionHeaderStrtab(secStrTab);
         if (ret) return ret;
 
-        if (nameOff >= (int)secStrTab.size()) return -1;
+        if (nameOff < 0 || nameOff >= (int)secStrTab.size()) return -1;
 
         name = string((char*)secStrTab.data() + nameOff);
         return 0;
@@ -209,7 +226,7 @@ struct ElfObject {
 
     // Reads a full section by name - example to get the GPL license
     template <typename T>
-    int readSectionByName(const char* name, vector<T>& data) {
+    int readSectionByName(const char* name, vector<T>& data) const {
         vector<char> secStrTab;
         vector<Elf64_Shdr> shTable;
         int ret;
@@ -221,17 +238,15 @@ struct ElfObject {
         if (ret) return ret;
 
         for (int i = 0; i < (int)shTable.size(); i++) {
+            if (shTable[i].sh_name >= secStrTab.size()) continue;
             char* secname = secStrTab.data() + shTable[i].sh_name;
-            if (!secname) continue;
 
             if (!strcmp(secname, name)) {
-                file.seekg(shTable[i].sh_offset);
-                if (file.fail()) return -1;
+                if (shTable[i].sh_offset + shTable[i].sh_size > size) return -1;
 
                 if (shTable[i].sh_size % sizeof(T)) return -1;
                 data.resize(shTable[i].sh_size / sizeof(T));
-                if (!file.read(reinterpret_cast<char*>(data.data()), shTable[i].sh_size))
-                    return -1;
+                memcpy(data.data(), (char*)base + shTable[i].sh_offset, shTable[i].sh_size);
 
                 return 0;
             }
@@ -239,7 +254,7 @@ struct ElfObject {
         return -2;
     }
 
-    int readSectionByType(int type, vector<char>& data) {
+    int readSectionByType(int type, vector<char>& data) const {
         int ret;
         vector<Elf64_Shdr> shTable;
 
@@ -249,11 +264,10 @@ struct ElfObject {
         for (int i = 0; i < (int)shTable.size(); i++) {
             if ((int)shTable[i].sh_type != type) continue;
 
-            file.seekg(shTable[i].sh_offset);
-            if (file.fail()) return -1;
+            if (shTable[i].sh_offset + shTable[i].sh_size > size) return -1;
 
             data.resize(shTable[i].sh_size);
-            if (!file.read(data.data(), shTable[i].sh_size)) return -1;
+            memcpy(data.data(), (char*)base + shTable[i].sh_offset, shTable[i].sh_size);
 
             return 0;
         }
@@ -264,7 +278,7 @@ struct ElfObject {
         return (a.st_value < b.st_value);
     }
 
-    int readSymTab(int sort, vector<Elf64_Sym>& data) {
+    int readSymTab(int sort, vector<Elf64_Sym>& data) const {
         int ret, numElems;
         Elf64_Sym* buf;
         vector<char> secData;
@@ -281,7 +295,7 @@ struct ElfObject {
     }
 
     int getSectionSymNames(const string& sectionName, vector<string>& names,
-                           optional<unsigned> symbolType = std::nullopt) {
+                           optional<unsigned> symbolType = std::nullopt) const {
         int ret;
         string name;
         vector<Elf64_Sym> symtab;
@@ -325,7 +339,7 @@ struct ElfObject {
         return 0;
     }
 
-    int getSymNameByIdx(int index, string& name) {
+    int getSymNameByIdx(int index, string& name) const {
         vector<Elf64_Sym> symtab;
         int ret = 0;
 
@@ -337,7 +351,7 @@ struct ElfObject {
         return getSymName(symtab[index].st_name, name);
     }
 
-    int getSymOffsetByName(const char *name, int *off) {
+    int getSymOffsetByName(const char *name, int *off) const {
         vector<Elf64_Sym> symtab;
         int ret = readSymTab(1 /* sort */, symtab);
         if (ret) return ret;
@@ -355,7 +369,7 @@ struct ElfObject {
 };
 
 // Read a section by its index - for ex to get sec hdr strtab blob
-int readCodeSections(ElfObject& elfObj, vector<codeSection>& cs) {
+int readCodeSections(const ElfObject& elfObj, vector<codeSection>& cs) {
     vector<Elf64_Shdr> shTable;
     int entries, ret = 0;
 
@@ -493,7 +507,7 @@ static bool mapMatchesExpectations(const unique_fd& fd,
     return false;
 }
 
-static int setBtfDatasecSize(ElfObject &elfObj, struct btf *btf,
+static int setBtfDatasecSize(const ElfObject &elfObj, struct btf *btf,
                              struct btf_type *bt) {
     const char *name = btf__name_by_offset(btf, bt->name_off);
     if (!name) {
@@ -511,7 +525,7 @@ static int setBtfDatasecSize(ElfObject &elfObj, struct btf *btf,
     return 0;
 }
 
-static int setBtfVarOffset(ElfObject &elfObj, struct btf *btf,
+static int setBtfVarOffset(const ElfObject &elfObj, struct btf *btf,
                            struct btf_type *datasecBt) {
     int i, vars = btf_vlen(datasecBt);
     struct btf_var_secinfo *vsi;
@@ -611,7 +625,7 @@ static int sanitizeBtf(struct btf *btf) {
     return 0;
 }
 
-static int loadBtf(ElfObject &elfObj, struct btf *btf) {
+static int loadBtf(const ElfObject &elfObj, struct btf *btf) {
     int ret;
     for (unsigned int i = 1; i < btf__type_cnt(btf); ++i) {
         struct btf_type *bt = (struct btf_type *)btf__type_by_id(btf, i);
@@ -817,7 +831,7 @@ static enum bpf_map_type sanitizeMapType(enum bpf_map_type type) {
     return type;
 }
 
-static int createMaps(ElfObject& elfObj, vector<struct bpf_map_def>& md, vector<unique_fd>& mapFds) {
+static int createMaps(const ElfObject& elfObj, vector<struct bpf_map_def>& md, vector<unique_fd>& mapFds) {
     int ret = 0;
     vector<char> btfData;
     struct btf *btf = NULL;
@@ -965,7 +979,7 @@ static void applyRelo(void* insnsPtr, Elf64_Addr offset, int fd) {
     insn->src_reg = BPF_PSEUDO_MAP_FD;
 }
 
-static void applyMapRelo(ElfObject& elfObj, const vector<struct bpf_map_def>& md,
+static void applyMapRelo(const ElfObject& elfObj, const vector<struct bpf_map_def>& md,
                          vector<unique_fd> &mapFds, vector<codeSection>& cs) {
     for (unsigned k = 0; k < cs.size(); k++) {
         Elf64_Rel* rel = (Elf64_Rel*)(cs[k].rel_data.data());
@@ -1070,7 +1084,7 @@ static enum bpf_attach_type fixup_attach(enum bpf_prog_type prog_type, enum bpf_
     return expected_attach_type;
 }
 
-static int loadCodeSections(ElfObject& elfObj, vector<codeSection>& cs, const string& license) {
+static int loadCodeSections(const ElfObject& elfObj, vector<codeSection>& cs, const string& license) {
     for (int i = 0; i < (int)cs.size(); i++) {
         unique_fd& fd = cs[i].prog_fd;
         int ret;
