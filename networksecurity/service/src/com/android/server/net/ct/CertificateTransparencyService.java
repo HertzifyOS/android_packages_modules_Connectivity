@@ -23,7 +23,6 @@ import static com.android.net.ct.flags.Flags.flatbuffersLogList;
 
 import android.annotation.RequiresApi;
 import android.content.Context;
-import android.net.ct.ICertificateTransparencyManager;
 import android.os.Build;
 import android.provider.DeviceConfig;
 import android.provider.DeviceConfig.Properties;
@@ -37,8 +36,7 @@ import java.util.concurrent.Executors;
 
 /** Implementation of the Certificate Transparency service. */
 @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
-public class CertificateTransparencyService extends ICertificateTransparencyManager.Stub
-        implements DeviceConfig.OnPropertiesChangedListener {
+public class CertificateTransparencyService implements DeviceConfig.OnPropertiesChangedListener {
 
     private static final String TAG = "CertificateTransparencyService";
 
