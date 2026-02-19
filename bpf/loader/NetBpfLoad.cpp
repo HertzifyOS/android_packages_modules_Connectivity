@@ -31,6 +31,7 @@
 #include <log/log.h>
 #include <net/if.h>
 #include <optional>
+#include <span>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -132,6 +133,7 @@ struct ElfObject {
     void* base;
     size_t size;
     const Elf64_Ehdr* eh;
+    std::span<const Elf64_Shdr> sh;
 
     ElfObject(const char* elfPath) : path(elfPath), base(MAP_FAILED), size(0), eh(nullptr) {
         unique_fd fd(open(path, O_RDONLY | O_CLOEXEC));
@@ -155,35 +157,29 @@ struct ElfObject {
             abort();
         }
         eh = (const Elf64_Ehdr*)base;
+
+        if (eh->e_shoff + eh->e_shnum * eh->e_shentsize > size) {
+            ALOGE("file %s shdr table beyond file size", path);
+            abort();
+        }
+        if (eh->e_shentsize != sizeof(Elf64_Shdr)) {
+            ALOGE("file %s shdr entry size mismatch", path);
+            abort();
+        }
+        sh = {(const Elf64_Shdr*)((char*)base + eh->e_shoff), eh->e_shnum};
     }
 
     ~ElfObject() {
         if (base != MAP_FAILED) munmap(base, size);
     }
 
-    // Reads all section header tables into an Shdr array
-    int readSectionHeadersAll(vector<Elf64_Shdr>& shTable) const {
-        if (eh->e_shoff + eh->e_shnum * eh->e_shentsize > size) return -1;
-
-        // Read shdr table entries
-        shTable.resize(eh->e_shnum);
-
-        memcpy(shTable.data(), (char*)base + eh->e_shoff, eh->e_shnum * eh->e_shentsize);
-
-        return 0;
-    }
-
     // Read a section by its index - for ex to get sec hdr strtab blob
     int readSectionByIdx(unsigned id, vector<char>& sec) const {
-        vector<Elf64_Shdr> shTable;
-        int ret = readSectionHeadersAll(shTable);
-        if (ret) return ret;
+        if (id >= sh.size()) return -1;
+        if (sh[id].sh_offset + sh[id].sh_size > size) return -1;
 
-        if (id >= shTable.size()) return -1;
-        if (shTable[id].sh_offset + shTable[id].sh_size > size) return -1;
-
-        sec.resize(shTable[id].sh_size);
-        memcpy(sec.data(), (char*)base + shTable[id].sh_offset, shTable[id].sh_size);
+        sec.resize(sh[id].sh_size);
+        memcpy(sec.data(), (char*)base + sh[id].sh_offset, sh[id].sh_size);
 
         return 0;
     }
@@ -211,25 +207,21 @@ struct ElfObject {
     template <typename T>
     int readSectionByName(const char* name, vector<T>& data) const {
         vector<char> secStrTab;
-        vector<Elf64_Shdr> shTable;
         int ret;
-
-        ret = readSectionHeadersAll(shTable);
-        if (ret) return ret;
 
         ret = readSectionHeaderStrtab(secStrTab);
         if (ret) return ret;
 
-        for (unsigned i = 0; i < shTable.size(); i++) {
-            if (shTable[i].sh_name >= secStrTab.size()) continue;
-            char* secname = secStrTab.data() + shTable[i].sh_name;
+        for (unsigned i = 0; i < sh.size(); i++) {
+            if (sh[i].sh_name >= secStrTab.size()) continue;
+            char* secname = secStrTab.data() + sh[i].sh_name;
 
             if (!strcmp(secname, name)) {
-                if (shTable[i].sh_offset + shTable[i].sh_size > size) return -1;
+                if (sh[i].sh_offset + sh[i].sh_size > size) return -1;
 
-                if (shTable[i].sh_size % sizeof(T)) return -1;
-                data.resize(shTable[i].sh_size / sizeof(T));
-                memcpy(data.data(), (char*)base + shTable[i].sh_offset, shTable[i].sh_size);
+                if (sh[i].sh_size % sizeof(T)) return -1;
+                data.resize(sh[i].sh_size / sizeof(T));
+                memcpy(data.data(), (char*)base + sh[i].sh_offset, sh[i].sh_size);
 
                 return 0;
             }
@@ -238,19 +230,13 @@ struct ElfObject {
     }
 
     int readSectionByType(unsigned type, vector<char>& data) const {
-        int ret;
-        vector<Elf64_Shdr> shTable;
+        for (unsigned i = 0; i < sh.size(); i++) {
+            if (sh[i].sh_type != type) continue;
 
-        ret = readSectionHeadersAll(shTable);
-        if (ret) return ret;
+            if (sh[i].sh_offset + sh[i].sh_size > size) return -1;
 
-        for (unsigned i = 0; i < shTable.size(); i++) {
-            if (shTable[i].sh_type != type) continue;
-
-            if (shTable[i].sh_offset + shTable[i].sh_size > size) return -1;
-
-            data.resize(shTable[i].sh_size);
-            memcpy(data.data(), (char*)base + shTable[i].sh_offset, shTable[i].sh_size);
+            data.resize(sh[i].sh_size);
+            memcpy(data.data(), (char*)base + sh[i].sh_offset, sh[i].sh_size);
 
             return 0;
         }
@@ -282,18 +268,14 @@ struct ElfObject {
         int ret;
         string name;
         vector<Elf64_Sym> symtab;
-        vector<Elf64_Shdr> shTable;
 
         ret = readSymTab(1 /* sort */, symtab);
         if (ret) return ret;
 
         // Get index of section
-        ret = readSectionHeadersAll(shTable);
-        if (ret) return ret;
-
         int sec_idx = -1;
-        for (unsigned i = 0; i < shTable.size(); i++) {
-            ret = getSymName(shTable[i].sh_name, name);
+        for (unsigned i = 0; i < sh.size(); i++) {
+            ret = getSymName(sh[i].sh_name, name);
             if (ret) return ret;
 
             if (!name.compare(sectionName)) {
@@ -353,12 +335,8 @@ struct ElfObject {
 
 // Read a section by its index - for ex to get sec hdr strtab blob
 int readCodeSections(const ElfObject& elfObj, vector<codeSection>& cs) {
-    vector<Elf64_Shdr> shTable;
-    int entries, ret = 0;
-
-    ret = elfObj.readSectionHeadersAll(shTable);
-    if (ret) return ret;
-    entries = shTable.size();
+    int entries = elfObj.sh.size();
+    int ret = 0;
 
     vector<struct bpf_prog_def> pd;
     ret = elfObj.readSectionByName(".android_progs", pd);
@@ -371,7 +349,7 @@ int readCodeSections(const ElfObject& elfObj, vector<codeSection>& cs) {
         string name;
         codeSection cs_temp;
 
-        ret = elfObj.getSymName(shTable[i].sh_name, name);
+        ret = elfObj.getSymName(elfObj.sh[i].sh_name, name);
         if (ret) return ret;
 
         // all we want to process is sections FOO/BAR, but:
@@ -409,8 +387,8 @@ int readCodeSections(const ElfObject& elfObj, vector<codeSection>& cs) {
         if (!cs_temp.prog_def) abort();
 
         // Check for rel section
-        if (cs_temp.data.size() > 0 && i < entries) {
-            ret = elfObj.getSymName(shTable[i + 1].sh_name, name);
+        if (cs_temp.data.size() > 0 && i + 1 < entries) {
+            ret = elfObj.getSymName(elfObj.sh[i + 1].sh_name, name);
             if (ret) return ret;
 
             if (name == (".rel" + oldName)) {
