@@ -1707,7 +1707,6 @@ public class BpfCoordinatorTest {
     }
 
     @Test
-    @IgnoreUpTo(Build.VERSION_CODES.Q)
     @IgnoreAfter(Build.VERSION_CODES.R)
     // Only run this test on Android R.
     public void testStartStopConntrackMonitoring_R() throws Exception {

@@ -96,7 +96,6 @@ public class CaptivePortalTest {
         assertEquals(result.mCode, CaptivePortal.APP_RETURN_WANTED_AS_IS);
     }
 
-    @IgnoreUpTo(Build.VERSION_CODES.Q)
     @Test
     public void testReevaluateNetwork() {
         final MyCaptivePortalImpl result = runCaptivePortalTest(c -> c.reevaluateNetwork());
