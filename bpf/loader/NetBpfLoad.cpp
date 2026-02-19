@@ -184,12 +184,12 @@ struct ElfObject {
     }
 
     // Read a section by its index - for ex to get sec hdr strtab blob
-    int readSectionByIdx(int id, vector<char>& sec) const {
+    int readSectionByIdx(unsigned id, vector<char>& sec) const {
         vector<Elf64_Shdr> shTable;
         int ret = readSectionHeadersAll(shTable);
         if (ret) return ret;
 
-        if (id < 0 || id >= (int)shTable.size()) return -1;
+        if (id >= shTable.size()) return -1;
         if (shTable[id].sh_offset + shTable[id].sh_size > size) return -1;
 
         sec.resize(shTable[id].sh_size);
@@ -211,14 +211,14 @@ struct ElfObject {
     }
 
     // Get name from offset in strtab
-    int getSymName(int nameOff, string& name) const {
+    int getSymName(unsigned nameOff, string& name) const {
         int ret;
         vector<char> secStrTab;
 
         ret = readSectionHeaderStrtab(secStrTab);
         if (ret) return ret;
 
-        if (nameOff < 0 || nameOff >= (int)secStrTab.size()) return -1;
+        if (nameOff >= secStrTab.size()) return -1;
 
         name = string((char*)secStrTab.data() + nameOff);
         return 0;
@@ -237,7 +237,7 @@ struct ElfObject {
         ret = readSectionHeaderStrtab(secStrTab);
         if (ret) return ret;
 
-        for (int i = 0; i < (int)shTable.size(); i++) {
+        for (unsigned i = 0; i < shTable.size(); i++) {
             if (shTable[i].sh_name >= secStrTab.size()) continue;
             char* secname = secStrTab.data() + shTable[i].sh_name;
 
@@ -254,15 +254,15 @@ struct ElfObject {
         return -2;
     }
 
-    int readSectionByType(int type, vector<char>& data) const {
+    int readSectionByType(unsigned type, vector<char>& data) const {
         int ret;
         vector<Elf64_Shdr> shTable;
 
         ret = readSectionHeadersAll(shTable);
         if (ret) return ret;
 
-        for (int i = 0; i < (int)shTable.size(); i++) {
-            if ((int)shTable[i].sh_type != type) continue;
+        for (unsigned i = 0; i < shTable.size(); i++) {
+            if (shTable[i].sh_type != type) continue;
 
             if (shTable[i].sh_offset + shTable[i].sh_size > size) return -1;
 
@@ -309,7 +309,7 @@ struct ElfObject {
         if (ret) return ret;
 
         int sec_idx = -1;
-        for (int i = 0; i < (int)shTable.size(); i++) {
+        for (unsigned i = 0; i < shTable.size(); i++) {
             ret = getSymName(shTable[i].sh_name, name);
             if (ret) return ret;
 
@@ -325,7 +325,7 @@ struct ElfObject {
             return -1;
         }
 
-        for (int i = 0; i < (int)symtab.size(); i++) {
+        for (unsigned i = 0; i < symtab.size(); i++) {
             if (symbolType.has_value() && ELF_ST_TYPE(symtab[i].st_info) != symbolType) continue;
 
             if (symtab[i].st_shndx == sec_idx) {
@@ -339,14 +339,14 @@ struct ElfObject {
         return 0;
     }
 
-    int getSymNameByIdx(int index, string& name) const {
+    int getSymNameByIdx(unsigned index, string& name) const {
         vector<Elf64_Sym> symtab;
         int ret = 0;
 
         ret = readSymTab(0 /* !sort */, symtab);
         if (ret) return ret;
 
-        if (index >= (int)symtab.size()) return -1;
+        if (index >= symtab.size()) return -1;
 
         return getSymName(symtab[index].st_name, name);
     }
@@ -355,7 +355,7 @@ struct ElfObject {
         vector<Elf64_Sym> symtab;
         int ret = readSymTab(1 /* sort */, symtab);
         if (ret) return ret;
-        for (int i = 0; i < (int)symtab.size(); i++) {
+        for (unsigned i = 0; i < symtab.size(); i++) {
             string s;
             ret = getSymName(symtab[i].st_name, s);
             if (ret) continue;
@@ -1085,7 +1085,7 @@ static enum bpf_attach_type fixup_attach(enum bpf_prog_type prog_type, enum bpf_
 }
 
 static int loadCodeSections(const ElfObject& elfObj, vector<codeSection>& cs, const string& license) {
-    for (int i = 0; i < (int)cs.size(); i++) {
+    for (unsigned i = 0; i < cs.size(); i++) {
         unique_fd& fd = cs[i].prog_fd;
         int ret;
 
@@ -1222,7 +1222,7 @@ static int prepareLoadMaps(const struct bpf_object* obj, const vector<struct bpf
 }
 
 static int prepareLoadProgs(const struct bpf_object* obj, const vector<codeSection>& cs) {
-    for (int i = 0; i < (int)cs.size(); i++) {
+    for (unsigned i = 0; i < cs.size(); i++) {
         if (!cs[i].prog_def.has_value()) {
             ALOGE("[%d] missing program definition! bad bpf.o build?", i);
             return -EINVAL;
@@ -1289,7 +1289,7 @@ static int pinProgs(const struct bpf_object * obj,
                     const vector<codeSection>& cs) {
     int ret;
 
-    for (int i = 0; i < (int)cs.size(); i++) {
+    for (unsigned i = 0; i < cs.size(); i++) {
         string program_name = cs[i].program_name;
         struct bpf_program* prog = bpf_object__find_program_by_name(obj, program_name.c_str());
         if (!prog) {
