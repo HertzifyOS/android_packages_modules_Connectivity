@@ -24,14 +24,6 @@ import com.android.modules.utils.build.SdkLevel;
  */
 public class TestUtils {
     /**
-     * Whether to test S+ APIs. This requires a) that the test be running on an S+ device, and
-     * b) that the code be compiled against shims new enough to access these APIs.
-     */
-    public static boolean shouldTestSApis() {
-        return SdkLevel.isAtLeastS();
-    }
-
-    /**
      * Whether to test T+ APIs. This requires a) that the test be running on an T+ device, and
      * b) that the code be compiled against shims new enough to access these APIs.
      */
