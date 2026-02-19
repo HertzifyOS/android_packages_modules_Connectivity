@@ -135,6 +135,7 @@ struct ElfObject {
     const Elf64_Ehdr* eh;
     std::span<const Elf64_Shdr> sh;
     std::span<const char> bytes;
+    std::span<const char> strtab;
 
     ElfObject(const char* elfPath) : path(elfPath), base(MAP_FAILED), size(0), eh(nullptr) {
         unique_fd fd(open(path, O_RDONLY | O_CLOEXEC));
@@ -169,6 +170,7 @@ struct ElfObject {
             abort();
         }
         sh = {(const Elf64_Shdr*)((char*)base + eh->e_shoff), eh->e_shnum};
+        strtab = getSectionByIdx(eh->e_shstrndx);
     }
 
     ~ElfObject() {
@@ -182,40 +184,20 @@ struct ElfObject {
         return bytes.subspan(sh[id].sh_offset, sh[id].sh_size);
     }
 
-    // Read whole section header string table
-    int readSectionHeaderStrtab(vector<char>& strtab) const {
-        auto s = getSectionByIdx(eh->e_shstrndx);
-        if (s.empty() && eh->e_shstrndx != SHN_UNDEF) return -1;
-        strtab.assign(s.begin(), s.end());
-        return 0;
-    }
-
     // Get name from offset in strtab
     int getSymName(unsigned nameOff, string& name) const {
-        int ret;
-        vector<char> secStrTab;
+        if (nameOff >= strtab.size()) return -1;
 
-        ret = readSectionHeaderStrtab(secStrTab);
-        if (ret) return ret;
-
-        if (nameOff >= secStrTab.size()) return -1;
-
-        name = string((char*)secStrTab.data() + nameOff);
+        name = string(strtab.data() + nameOff);
         return 0;
     }
 
     // Reads a full section by name - example to get the GPL license
     template <typename T>
     int readSectionByName(const char* name, vector<T>& data) const {
-        vector<char> secStrTab;
-        int ret;
-
-        ret = readSectionHeaderStrtab(secStrTab);
-        if (ret) return ret;
-
         for (unsigned i = 0; i < sh.size(); i++) {
-            if (sh[i].sh_name >= secStrTab.size()) continue;
-            char* secname = secStrTab.data() + sh[i].sh_name;
+            if (sh[i].sh_name >= strtab.size()) continue;
+            const char* secname = strtab.data() + sh[i].sh_name;
 
             if (!strcmp(secname, name)) {
                 auto s = getSectionByIdx(i);
