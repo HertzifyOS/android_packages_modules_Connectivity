@@ -134,6 +134,7 @@ struct ElfObject {
     size_t size;
     const Elf64_Ehdr* eh;
     std::span<const Elf64_Shdr> sh;
+    std::span<const char> bytes;
 
     ElfObject(const char* elfPath) : path(elfPath), base(MAP_FAILED), size(0), eh(nullptr) {
         unique_fd fd(open(path, O_RDONLY | O_CLOEXEC));
@@ -157,6 +158,7 @@ struct ElfObject {
             abort();
         }
         eh = (const Elf64_Ehdr*)base;
+        bytes = {(const char*)base, size};
 
         if (eh->e_shoff + eh->e_shnum * eh->e_shentsize > size) {
             ALOGE("file %s shdr table beyond file size", path);
@@ -173,20 +175,19 @@ struct ElfObject {
         if (base != MAP_FAILED) munmap(base, size);
     }
 
-    // Read a section by its index - for ex to get sec hdr strtab blob
-    int readSectionByIdx(unsigned id, vector<char>& sec) const {
-        if (id >= sh.size()) return -1;
-        if (sh[id].sh_offset + sh[id].sh_size > size) return -1;
-
-        sec.resize(sh[id].sh_size);
-        memcpy(sec.data(), (char*)base + sh[id].sh_offset, sh[id].sh_size);
-
-        return 0;
+    // Get a span pointing to a section by its index
+    std::span<const char> getSectionByIdx(unsigned id) const {
+        if (id >= sh.size()) return {};
+        if (sh[id].sh_offset > size || sh[id].sh_size > size - sh[id].sh_offset) return {};
+        return bytes.subspan(sh[id].sh_offset, sh[id].sh_size);
     }
 
     // Read whole section header string table
     int readSectionHeaderStrtab(vector<char>& strtab) const {
-        return readSectionByIdx(eh->e_shstrndx, strtab);
+        auto s = getSectionByIdx(eh->e_shstrndx);
+        if (s.empty() && eh->e_shstrndx != SHN_UNDEF) return -1;
+        strtab.assign(s.begin(), s.end());
+        return 0;
     }
 
     // Get name from offset in strtab
@@ -217,11 +218,11 @@ struct ElfObject {
             char* secname = secStrTab.data() + sh[i].sh_name;
 
             if (!strcmp(secname, name)) {
-                if (sh[i].sh_offset + sh[i].sh_size > size) return -1;
+                auto s = getSectionByIdx(i);
+                if (s.empty() && sh[i].sh_size > 0) return -1;
 
-                if (sh[i].sh_size % sizeof(T)) return -1;
-                data.resize(sh[i].sh_size / sizeof(T));
-                memcpy(data.data(), (char*)base + sh[i].sh_offset, sh[i].sh_size);
+                if (s.size() % sizeof(T)) return -1;
+                data.assign((const T*)s.data(), (const T*)(s.data() + s.size()));
 
                 return 0;
             }
@@ -233,10 +234,10 @@ struct ElfObject {
         for (unsigned i = 0; i < sh.size(); i++) {
             if (sh[i].sh_type != type) continue;
 
-            if (sh[i].sh_offset + sh[i].sh_size > size) return -1;
+            auto s = getSectionByIdx(i);
+            if (s.empty() && sh[i].sh_size > 0) return -1;
 
-            data.resize(sh[i].sh_size);
-            memcpy(data.data(), (char*)base + sh[i].sh_offset, sh[i].sh_size);
+            data.assign(s.begin(), s.end());
 
             return 0;
         }
@@ -369,8 +370,9 @@ int readCodeSections(const ElfObject& elfObj, vector<codeSection>& cs) {
 
         if (name.find('/') != std::string::npos) abort(); // There should only be one!
 
-        ret = elfObj.readSectionByIdx(i, cs_temp.data);
-        if (ret) return ret;
+        auto s = elfObj.getSectionByIdx(i);
+        if (s.empty() && elfObj.sh[i].sh_size > 0) return -1;
+        cs_temp.data.assign(s.begin(), s.end());
         ALOGV("Loaded code section %d (%s)", i, name.c_str());
 
         vector<string> csSymNames;
@@ -392,8 +394,9 @@ int readCodeSections(const ElfObject& elfObj, vector<codeSection>& cs) {
             if (ret) return ret;
 
             if (name == (".rel" + oldName)) {
-                ret = elfObj.readSectionByIdx(i + 1, cs_temp.rel_data);
-                if (ret) return ret;
+                auto rel_s = elfObj.getSectionByIdx(i + 1);
+                if (rel_s.empty() && elfObj.sh[i + 1].sh_size > 0) return -1;
+                cs_temp.rel_data.assign(rel_s.begin(), rel_s.end());
                 ALOGV("Loaded relo section %d (%s)", i, name.c_str());
             }
         }
