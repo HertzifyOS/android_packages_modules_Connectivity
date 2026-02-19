@@ -148,6 +148,22 @@ struct ElfObject {
             ALOGE("fstat(%s) failed: %s", path, strerror(errno));
             abort();
         }
+
+        static const dev_t self_dev = []() {
+            struct stat self_st;
+            if (stat("/proc/self/exe", &self_st) < 0) {
+                ALOGE("stat(/proc/self/exe) failed: %s", strerror(errno));
+                abort();
+            }
+            return self_st.st_dev;
+        }();
+
+        if (st.st_dev != self_dev) {
+            ALOGE("file %s is on device %llu, while we are on device %llu",
+                  path, (unsigned long long)st.st_dev, (unsigned long long)self_dev);
+            abort();
+        }
+
         size = static_cast<size_t>(st.st_size);
         if (size < sizeof(Elf64_Ehdr)) {
             ALOGE("file %s too small: %zu", path, size);
