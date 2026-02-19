@@ -403,8 +403,6 @@ import com.android.net.module.util.LocationPermissionChecker;
 import com.android.net.module.util.NetworkMonitorUtils;
 import com.android.net.module.util.SdkUtil;
 import com.android.networkstack.apishim.ConstantsShim;
-import com.android.networkstack.apishim.common.BroadcastOptionsShim;
-import com.android.networkstack.apishim.common.UnsupportedApiLevelException;
 import com.android.server.ConnectivityService.NetworkRequestInfo;
 import com.android.server.ConnectivityServiceTest.ConnectivityServiceDependencies.DestroySocketsWrapper;
 import com.android.server.ConnectivityServiceTest.ConnectivityServiceDependencies.ReportedInterfaces;
@@ -650,7 +648,7 @@ public class ConnectivityServiceTest {
     @Mock BpfNetMaps mBpfNetMaps;
     @Mock CarrierPrivilegeAuthenticator mCarrierPrivilegeAuthenticator;
     @Mock TetheringManager mTetheringManager;
-    @Mock BroadcastOptionsShim mBroadcastOptionsShim;
+    @Mock BroadcastOptions mBroadcastOptions;
     @Mock ActivityManager mActivityManager;
     @Mock DestroySocketsWrapper mDestroySocketsWrapper;
     @Mock SubscriptionManager mSubscriptionManager;
@@ -919,19 +917,16 @@ public class ConnectivityServiceTest {
         public void sendStickyBroadcast(Intent intent, Bundle options) {
             // Verify that delivery group policy APIs were used on U.
             if (mDeps.isAtLeastU() && CONNECTIVITY_ACTION.equals(intent.getAction())) {
+                assertNotNull(options);
                 final NetworkInfo ni = intent.getParcelableExtra(EXTRA_NETWORK_INFO,
                         NetworkInfo.class);
-                try {
-                    verify(mBroadcastOptionsShim).setDeliveryGroupPolicy(
-                            eq(ConstantsShim.DELIVERY_GROUP_POLICY_MOST_RECENT));
-                    verify(mBroadcastOptionsShim).setDeliveryGroupMatchingKey(
-                            eq(CONNECTIVITY_ACTION),
-                            eq(createDeliveryGroupKeyForConnectivityAction(ni)));
-                    verify(mBroadcastOptionsShim).setDeferralPolicy(
-                            eq(ConstantsShim.DEFERRAL_POLICY_UNTIL_ACTIVE));
-                } catch (UnsupportedApiLevelException e) {
-                    throw new RuntimeException(e);
-                }
+                verify(mBroadcastOptions).setDeliveryGroupPolicy(
+                        eq(BroadcastOptions.DELIVERY_GROUP_POLICY_MOST_RECENT));
+                verify(mBroadcastOptions).setDeliveryGroupMatchingKey(
+                        eq(CONNECTIVITY_ACTION),
+                        eq(createDeliveryGroupKeyForConnectivityAction(ni)));
+                verify(mBroadcastOptions).setDeferralPolicy(
+                        eq(BroadcastOptions.DEFERRAL_POLICY_UNTIL_ACTIVE));
             }
             super.sendStickyBroadcast(intent, options);
         }
@@ -2371,9 +2366,9 @@ public class ConnectivityServiceTest {
         }
 
         @Override
-        public BroadcastOptionsShim makeBroadcastOptionsShim(BroadcastOptions options) {
-            reset(mBroadcastOptionsShim);
-            return mBroadcastOptionsShim;
+        public BroadcastOptions getBroadcastOptions(BroadcastOptions options) {
+            reset(mBroadcastOptions);
+            return mBroadcastOptions;
         }
 
         @GuardedBy("this")
