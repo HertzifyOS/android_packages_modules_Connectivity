@@ -184,16 +184,6 @@ public class NetworkTest {
         assertEquals(network.getNetIdForResolv(), recreatedNetwork.getNetIdForResolv());
     }
 
-    @Test @IgnoreAfter(Build.VERSION_CODES.R)
-    public void testFromNetworkHandlePrivateDnsBypass_R() {
-        final Network network = new Network(1234, true);
-
-        final Network recreatedNetwork = Network.fromNetworkHandle(network.getNetworkHandle());
-        assertEquals(network.netId, recreatedNetwork.netId);
-        // Until R included, fromNetworkHandle would not parse the private DNS bypass flag
-        assertEquals(network.netId, recreatedNetwork.getNetIdForResolv());
-    }
-
     @Test
     public void testGetPrivateDnsBypassingCopy() {
         final Network copy = mNetwork.getPrivateDnsBypassingCopy();

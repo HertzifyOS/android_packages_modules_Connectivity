@@ -142,7 +142,6 @@ import com.android.networkstack.tethering.BpfCoordinator.ClientInfo;
 import com.android.networkstack.tethering.BpfCoordinator.Ipv6DownstreamRule;
 import com.android.networkstack.tethering.BpfCoordinator.Ipv6UpstreamRule;
 import com.android.testutils.DevSdkIgnoreRule;
-import com.android.testutils.DevSdkIgnoreRule.IgnoreAfter;
 import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo;
 import com.android.testutils.TestBpfMap;
 import com.android.testutils.TestableNetworkStatsProviderCbBinder;
@@ -1704,21 +1703,6 @@ public class BpfCoordinatorTest {
         // [3] Stop monitoring.
         coordinator.removeIpServer(mIpServer);
         verify(mConntrackMonitor).stop();
-    }
-
-    @Test
-    @IgnoreAfter(Build.VERSION_CODES.R)
-    // Only run this test on Android R.
-    public void testStartStopConntrackMonitoring_R() throws Exception {
-        setupFunctioningNetdInterface();
-
-        final BpfCoordinator coordinator = makeBpfCoordinator(false /* addDefaultIpServer */);
-
-        coordinator.addIpServer(mIpServer);
-        verify(mConntrackMonitor, never()).start();
-
-        coordinator.removeIpServer(mIpServer);
-        verify(mConntrackMonitor, never()).stop();
     }
 
     @Test

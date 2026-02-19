@@ -44,7 +44,6 @@ import com.android.modules.utils.build.SdkLevel;
 import com.android.net.module.util.LinkPropertiesUtils.CompareResult;
 import com.android.testutils.ConnectivityModuleTest;
 import com.android.testutils.DevSdkIgnoreRule;
-import com.android.testutils.DevSdkIgnoreRule.IgnoreAfter;
 import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo;
 import com.android.testutils.filters.CtsNetTestCasesMaxTargetSdk31;
 
@@ -1002,12 +1001,6 @@ public class LinkPropertiesTest {
         source.addStackedLink(stacked);
 
         return source;
-    }
-
-    @Test @IgnoreAfter(Build.VERSION_CODES.Q)
-    public void testLinkPropertiesParcelable_Q() throws Exception {
-        final LinkProperties source = makeLinkPropertiesForParceling();
-        assertParcelingIsLossless(source);
     }
 
     @Test

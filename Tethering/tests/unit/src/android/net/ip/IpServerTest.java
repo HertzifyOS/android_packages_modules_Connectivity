@@ -1379,10 +1379,7 @@ public class IpServerTest {
             verify(mDependencies, never()).getDadProxy(any(), any());
         }
     }
-    @Test @IgnoreAfter(Build.VERSION_CODES.R)
-    public void testDadProxyUpdates_DisabledUpToR() throws Exception {
-        checkDadProxyEnabled(false);
-    }
+
     @Test @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testDadProxyUpdates_EnabledAfterR() throws Exception {
         checkDadProxyEnabled(true);

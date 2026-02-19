@@ -24,7 +24,6 @@ import androidx.test.filters.SmallTest
 import androidx.test.runner.AndroidJUnit4
 import com.android.testutils.ConnectivityModuleTest
 import com.android.testutils.DevSdkIgnoreRule
-import com.android.testutils.DevSdkIgnoreRule.IgnoreAfter
 import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo
 import com.android.testutils.assertParcelingIsLossless
 import org.junit.Assert.assertFalse
@@ -49,19 +48,6 @@ class MatchAllNetworkSpecifierTest {
     @Test
     fun testParcel() {
         assertParcelingIsLossless(MatchAllNetworkSpecifier())
-    }
-
-    @Test
-    @IgnoreAfter(Build.VERSION_CODES.R)
-    // Only run this test on Android R.
-    // The method - satisfiedBy() has changed to canBeSatisfiedBy() starting from Android R, so the
-    // method - canBeSatisfiedBy() cannot be found when running this test on Android Q.
-    fun testCanBeSatisfiedBy_OnlyForR() {
-        // MatchAllNetworkSpecifier didn't follow its parent class to change the satisfiedBy() to
-        // canBeSatisfiedBy(), so if a caller calls MatchAllNetworkSpecifier#canBeSatisfiedBy(), the
-        // NetworkSpecifier#canBeSatisfiedBy() will be called actually, and false will be returned.
-        // Although it's not meeting the expectation, the behavior still needs to be verified.
-        assertFalse(specifier.canBeSatisfiedBy(wifiAwareNetworkSpecifier))
     }
 
     @Test(expected = IllegalStateException::class)

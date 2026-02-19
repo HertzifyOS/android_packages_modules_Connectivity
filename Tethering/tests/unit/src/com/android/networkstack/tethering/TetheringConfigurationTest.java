@@ -592,21 +592,6 @@ public class TetheringConfigurationTest {
         assertChooseUpstreamAutomaticallyIs(true);
     }
 
-    // The flag override only works on R-
-    @Test @IgnoreAfter(Build.VERSION_CODES.R)
-    public void testChooseUpstreamAutomatically_FlagOverride() throws Exception {
-        when(mResources.getBoolean(R.bool.config_tether_upstream_automatic))
-                .thenReturn(false);
-        setTetherForceUpstreamAutomaticFlagEnabled(true);
-        assertChooseUpstreamAutomaticallyIs(true);
-
-        setTetherForceUpstreamAutomaticFlagEnabled(null);
-        assertChooseUpstreamAutomaticallyIs(false);
-
-        setTetherForceUpstreamAutomaticFlagEnabled(false);
-        assertChooseUpstreamAutomaticallyIs(false);
-    }
-
     @Test @IgnoreUpTo(Build.VERSION_CODES.R) @IgnoreAfter(Build.VERSION_CODES.TIRAMISU)
     public void testChooseUpstreamAutomatically_FlagOverrideOnSAndT() throws Exception {
         when(mResources.getBoolean(R.bool.config_tether_upstream_automatic))
