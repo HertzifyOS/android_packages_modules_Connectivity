@@ -131,8 +131,9 @@ struct ElfObject {
     const char * path;
     void* base;
     size_t size;
+    const Elf64_Ehdr* eh;
 
-    ElfObject(const char* elfPath) : path(elfPath), base(MAP_FAILED), size(0) {
+    ElfObject(const char* elfPath) : path(elfPath), base(MAP_FAILED), size(0), eh(nullptr) {
         unique_fd fd(open(path, O_RDONLY | O_CLOEXEC));
         if (fd < 0) {
             ALOGE("open(%s) failed: %s", path, strerror(errno));
@@ -153,32 +154,21 @@ struct ElfObject {
             ALOGE("mmap(%s) failed: %s", path, strerror(errno));
             abort();
         }
+        eh = (const Elf64_Ehdr*)base;
     }
 
     ~ElfObject() {
         if (base != MAP_FAILED) munmap(base, size);
     }
 
-    int readElfHeader(Elf64_Ehdr* eh) const {
-        if (size < sizeof(*eh)) return -1;
-        memcpy(eh, base, sizeof(*eh));
-        return 0;
-    }
-
     // Reads all section header tables into an Shdr array
     int readSectionHeadersAll(vector<Elf64_Shdr>& shTable) const {
-        Elf64_Ehdr eh;
-        int ret = 0;
-
-        ret = readElfHeader(&eh);
-        if (ret) return ret;
-
-        if (eh.e_shoff + eh.e_shnum * eh.e_shentsize > size) return -1;
+        if (eh->e_shoff + eh->e_shnum * eh->e_shentsize > size) return -1;
 
         // Read shdr table entries
-        shTable.resize(eh.e_shnum);
+        shTable.resize(eh->e_shnum);
 
-        memcpy(shTable.data(), (char*)base + eh.e_shoff, eh.e_shnum * eh.e_shentsize);
+        memcpy(shTable.data(), (char*)base + eh->e_shoff, eh->e_shnum * eh->e_shentsize);
 
         return 0;
     }
@@ -200,14 +190,7 @@ struct ElfObject {
 
     // Read whole section header string table
     int readSectionHeaderStrtab(vector<char>& strtab) const {
-        Elf64_Ehdr eh;
-        int ret = readElfHeader(&eh);
-        if (ret) return ret;
-
-        ret = readSectionByIdx(eh.e_shstrndx, strtab);
-        if (ret) return ret;
-
-        return 0;
+        return readSectionByIdx(eh->e_shstrndx, strtab);
     }
 
     // Get name from offset in strtab
