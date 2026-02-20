@@ -304,19 +304,29 @@ typedef struct {
 STRUCT_SIZE(LocalNetUidHostAllowlistKey, 4 + 4 + 4 + 16);  // 28
 
 // LINT.IfChange(uid_permission_chunk_type)
-// Each UID costs 3 bits (3 permissions ACCESS_LOCAL_NETWORK / INTERNET /
-// UPDATE_DEVICE_STATS)
-// One int64 can store up to 21 UIDs (3 * 21 = 63 bits per int64)
-#define PERMISSION_COUNT 3
-#define UIDS_PER_INT64 21
+// Each UID costs 7 bits (permissions ACCESS_LOCAL_NETWORK / INTERNET /
+// UPDATE_DEVICE_STATS or loopback related perms)
+// One int64 can store up to 9 UIDs (7 * 9 = 63 bits per int64)
+#define PERMISSION_COUNT 7
+#define UIDS_PER_INT64 (64 / PERMISSION_COUNT)
 #define CHUNK_INT64_COUNT 128
-// One chunk can store 128 * 21 = 2688 UIDs using 128 int64
-#define CHUNK_UID_COUNT 2688
-#define UID_PERMISSION_MASK 7
+// One chunk can store 128 * 9 = 1152 UIDs using 128 int64
+#define CHUNK_UID_COUNT (CHUNK_INT64_COUNT * UIDS_PER_INT64)
+#define UID_PERMISSION_MASK ((1 << PERMISSION_COUNT) - 1)
 #define PERMISSION_BIT_NONE 0
-#define PERMISSION_BIT_ACCESS_LOCAL_NETWORK 1
-#define PERMISSION_BIT_UPDATE_DEVICE_STATS 2
-#define PERMISSION_BIT_NO_INTERNET 4
+#define PERMISSION_BIT_ACCESS_LOCAL_NETWORK (1 << 0)
+#define PERMISSION_BIT_UPDATE_DEVICE_STATS (1 << 1)
+#define PERMISSION_BIT_NO_INTERNET (1 << 2)
+// Required for an app to interact with other applications via IP packets on the
+// loopback interface.
+#define PERMISSION_BIT_USE_LOOPBACK_INTERFACE (1 << 3)
+// Required to be able to interact with other applications via IP packets on the
+// loopback interface without requiring permissions from the other app
+#define PERMISSION_BIT_FORCE_USE_LOOPBACK_INTERFACE (1 << 4)
+// Permissions below are required to interact across users/profiles via IP
+// packets on the loopback interface.
+#define PERMISSION_BIT_INTERACT_ACROSS_USERS_FULL (1 << 5)
+#define PERMISSION_BIT_INTERACT_ACROSS_USERS_OR_PROFILES (1 << 6)
 // LINT.ThenChange(../../common/src/com/android/net/module/util/bpf/UidPermissionChunk.java)
 
 typedef struct {
