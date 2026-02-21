@@ -220,9 +220,7 @@ public final class ConnectivityServiceInitializer extends SystemService {
     @Nullable
     private CertificateTransparencyService createCertificateTransparencyService(
             final Context context) {
-        return SdkLevel.isAtLeastV() && CertificateTransparencyService.enabled(context)
-                ? new CertificateTransparencyService(context)
-                : null;
+        return SdkLevel.isAtLeastB() ? new CertificateTransparencyService(context) : null;
     }
 
     // TODO: b/374174952 After VCN code is moved to the Connectivity folder, merge

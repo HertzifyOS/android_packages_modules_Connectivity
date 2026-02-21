@@ -1187,18 +1187,16 @@ public class ConnectivityManagerTest {
         final TestableNetworkCallback perUidCallback = new TestableNetworkCallback();
         final TestableNetworkCallback bestMatchingCallback = new TestableNetworkCallback();
         final Handler h = new Handler(Looper.getMainLooper());
-        if (TestUtils.shouldTestSApis()) {
-            assertThrows(SecurityException.class, () ->
-                    networkCallbackRule.registerSystemDefaultNetworkCallback(
-                            systemDefaultCallback, h));
-            runWithShellPermissionIdentity(() -> {
-                networkCallbackRule.registerSystemDefaultNetworkCallback(systemDefaultCallback, h);
-                networkCallbackRule.registerDefaultNetworkCallbackForUid(Process.myUid(),
-                        perUidCallback, h);
-            }, NETWORK_SETTINGS);
-            networkCallbackRule.registerBestMatchingNetworkCallback(
-                    makeDefaultRequest(), bestMatchingCallback, h);
-        }
+        assertThrows(SecurityException.class, () ->
+                networkCallbackRule.registerSystemDefaultNetworkCallback(
+                        systemDefaultCallback, h));
+        runWithShellPermissionIdentity(() -> {
+            networkCallbackRule.registerSystemDefaultNetworkCallback(systemDefaultCallback, h);
+            networkCallbackRule.registerDefaultNetworkCallbackForUid(Process.myUid(),
+                    perUidCallback, h);
+        }, NETWORK_SETTINGS);
+        networkCallbackRule.registerBestMatchingNetworkCallback(
+                makeDefaultRequest(), bestMatchingCallback, h);
 
         Network wifiNetwork = null;
         mCtsNetUtils.ensureWifiConnected();
@@ -1215,15 +1213,13 @@ public class ConnectivityManagerTest {
         assertNotNull("Did not receive onAvailable on default network callback",
                 defaultNetwork);
 
-        if (TestUtils.shouldTestSApis()) {
-            systemDefaultCallback.eventuallyExpect(Event.AVAILABLE);
-            final Network perUidNetwork = perUidCallback.eventuallyExpect(Event.AVAILABLE)
-                    .getNetwork();
-            assertEquals(defaultNetwork, perUidNetwork);
-            final Network bestMatchingNetwork = bestMatchingCallback.eventuallyExpect(
-                    Event.AVAILABLE).getNetwork();
-            assertEquals(defaultNetwork, bestMatchingNetwork);
-        }
+        systemDefaultCallback.eventuallyExpect(Event.AVAILABLE);
+        final Network perUidNetwork = perUidCallback.eventuallyExpect(Event.AVAILABLE)
+                .getNetwork();
+        assertEquals(defaultNetwork, perUidNetwork);
+        final Network bestMatchingNetwork = bestMatchingCallback.eventuallyExpect(
+                Event.AVAILABLE).getNetwork();
+        assertEquals(defaultNetwork, bestMatchingNetwork);
     }
 
     @ConnectivityModuleTest

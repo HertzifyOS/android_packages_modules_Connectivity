@@ -16,9 +16,7 @@
 
 package com.android.server.net.ct;
 
-import static android.security.Flags.certificateTransparencyConfiguration;
 
-import static com.android.net.ct.flags.Flags.certificateTransparencyService;
 import static com.android.net.ct.flags.Flags.flatbuffersLogList;
 
 import android.annotation.RequiresApi;
@@ -41,13 +39,6 @@ public class CertificateTransparencyService implements DeviceConfig.OnProperties
     private static final String TAG = "CertificateTransparencyService";
 
     private final CertificateTransparencyJob mCertificateTransparencyJob;
-
-    /**
-     * @return true if the CertificateTransparency service is enabled.
-     */
-    public static boolean enabled(Context context) {
-        return certificateTransparencyService() && certificateTransparencyConfiguration();
-    }
 
     /** Creates a new {@link CertificateTransparencyService} object. */
     public CertificateTransparencyService(Context context) {

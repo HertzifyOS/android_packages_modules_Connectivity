@@ -355,8 +355,6 @@ public class NetworkRequestTest {
 
     @Test
     public void testSetIncludeOtherUidNetworks() throws Exception {
-        assumeTrue(TestUtils.shouldTestSApis());
-
         final NetworkRequest.Builder builder = new NetworkRequest.Builder();
         // NetworkRequests have NET_CAPABILITY_NOT_VCN_MANAGED by default.
         builder.removeCapability(NET_CAPABILITY_NOT_VCN_MANAGED);
@@ -521,7 +519,6 @@ public class NetworkRequestTest {
 
     @Test
     public void testBuildRequestFromExistingRequestWithBuilder() {
-        assumeTrue(TestUtils.shouldTestSApis());
         final NetworkRequest.Builder builder = new NetworkRequest.Builder();
 
         final NetworkRequest baseRequest = builder.build();
