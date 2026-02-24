@@ -115,7 +115,7 @@ struct sdk_level_uint { unsigned int sdk_level; };
 #define IS_VALID_PIN_DIR(min_loader, pin_subdir) \
     ( \
         !__builtin_strcmp(pin_subdir, "tethering") || \
-        (min_loader >= BPFLOADER_MAINLINE_T_VERSION) && \
+        (min_loader >= BPFLOADER_T_VER) && \
             ( \
                 !__builtin_strcmp(pin_subdir, "net_private")   || \
                 !__builtin_strcmp(pin_subdir, "net_shared")    || \
@@ -131,7 +131,7 @@ struct sdk_level_uint { unsigned int sdk_level; };
     _Static_assert(IS_EMPTY_STRING(pin_subdir) \
                 || IS_VALID_PIN_DIR(min_loader, pin_subdir), pin_subdir " is invalid"); \
     _Static_assert(IS_EMPTY_STRING(pin_subdir) \
-                || (min_loader >= BPFLOADER_MAINLINE_T_VERSION), "selinux_context requires T+")
+                || (min_loader >= BPFLOADER_T_VER), "selinux_context requires T+")
 
 #define VALIDATE_PIN_DIR(min_loader, pin_subdir) \
     _Static_assert(IS_VALID_PIN_DIR(min_loader, pin_subdir), pin_subdir " is invalid")
@@ -343,7 +343,7 @@ static long (*bpf_sk_storage_delete_unsafe) (const void* sk_storage,
 
 #ifdef THIS_BPF_PROGRAM_IS_FOR_TEST_PURPOSES_ONLY
 #define BPF_MAP_ASSERT_OK(type, entries, mode)
-#elif BPFLOADER_MIN_VER >= BPFLOADER_MAINLINE_T_VERSION
+#elif BPFLOADER_MIN_VER >= BPFLOADER_T_VER
 #define BPF_MAP_ASSERT_OK(type, entries, mode)
 #else
 #define BPF_MAP_ASSERT_OK(type, entries, mode) \

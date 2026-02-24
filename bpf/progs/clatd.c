@@ -15,7 +15,7 @@
  */
 
 // The resulting .o needs to load on Android T+
-#define BPFLOADER_MIN_VER BPFLOADER_MAINLINE_T_VERSION
+#define BPFLOADER_MIN_VER BPFLOADER_T_VER
 #define BPF_OBJ_NAME "clatd"
 #define DEFAULT_BPF_PIN_SUBDIR "net_shared"
 
