@@ -138,8 +138,8 @@ struct bpf_map_def {
     unsigned int gid;   // gid_t
     unsigned int mode;  // mode_t
 
-    int bpfloader_min_ver;
-    int bpfloader_max_ver;
+    int min_api_level_full;
+    int max_api_level_full;
 
     // kernelVer must be >= min_kver and < max_kver
     unsigned int min_kver;
@@ -181,8 +181,8 @@ struct bpf_prog_def {
 
     char pad0[3];  // manually pad up to 4 byte alignment, may be used for extensions in the future
 
-    int bpfloader_min_ver;
-    int bpfloader_max_ver;
+    int min_api_level_full;
+    int max_api_level_full;
 
     char create_location[BPF_DEF_CHAR_ARRAY_SIZE];
     char pin_location[BPF_DEF_CHAR_ARRAY_SIZE];
