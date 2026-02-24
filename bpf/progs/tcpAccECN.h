@@ -30,7 +30,7 @@
 #define ETH_IP4_TCP_FLAGS_OFF (ETH_HLEN + IP4_TCP_FLAGS_OFF)
 #define ETH_IP6_TCP_FLAGS_OFF (ETH_HLEN + IP6_TCP_FLAGS_OFF)
 
-#define CUSTOM_TCP_OPTION_SIZE 11
+#define TCP_OPTION_ACCECN1_SIZE 11
 #define TCPHDR_SYN 0x02
 
 DEFINE_BPF_MAP(l4s_conn_counter, ARRAY, uint32_t, uint32_t, 1)
@@ -127,10 +127,10 @@ is_l4s_enabled() {
 static const struct {
     __u8 kind;
     __u8 length;
-    __u8 data[CUSTOM_TCP_OPTION_SIZE - 2];
+    __u8 data[TCP_OPTION_ACCECN1_SIZE - 2];
 } __attribute__((packed)) tcp_option = {
     .kind = 174,
-    .length = CUSTOM_TCP_OPTION_SIZE,
+    .length = TCP_OPTION_ACCECN1_SIZE,
     .data = {0},
 };
 
@@ -159,7 +159,7 @@ DEFINE_BPF_PROG_KVER(sockops, accecn_option, , AID_SYSTEM, 6_1)
             if (!st || !st->byte_inited) {
                 break;
             }
-            bpf_reserve_hdr_opt(skops, CUSTOM_TCP_OPTION_SIZE, 0);
+            bpf_reserve_hdr_opt(skops, TCP_OPTION_ACCECN1_SIZE, 0);
             break;
         }
         case BPF_SOCK_OPS_WRITE_HDR_OPT_CB:
@@ -172,7 +172,7 @@ DEFINE_BPF_PROG_KVER(sockops, accecn_option, , AID_SYSTEM, 6_1)
             if (!st || !st->byte_inited) {
                 break;
             }
-            bpf_store_hdr_opt(skops, &tcp_option, CUSTOM_TCP_OPTION_SIZE, 0);
+            bpf_store_hdr_opt(skops, &tcp_option, TCP_OPTION_ACCECN1_SIZE, 0);
             break;
         }
         default:
