@@ -15,7 +15,7 @@
  */
 
 // The resulting .o needs to load on Android T+
-#define NETBPFLOAD_MIN_VER NETBPFLOAD_T_VER
+#define NETBPFLOAD_MINAPI_VER NETBPFLOAD_T_VER
 #define BPF_OBJ_NAME "dscpPolicy"
 #define DEFAULT_BPF_PIN_SUBDIR "net_shared"
 

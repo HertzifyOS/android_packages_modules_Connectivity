@@ -6,11 +6,11 @@
 
 #include "bpf_map_def.h"
 
-/* You should #define NETBPFLOAD_{MIN/MAXAPI}_VER before #include "bpf_helpers.h"
+/* You should #define NETBPFLOAD_{MINAPI/MAXAPI}_VER before #include "bpf_helpers.h"
  * to change which bpfloaders will process the resulting .o file.
  */
-#ifndef NETBPFLOAD_MIN_VER
-#error "You must define NETBPFLOAD_MIN_VER"  // inclusive, ie. >=
+#ifndef NETBPFLOAD_MINAPI_VER
+#error "You must define NETBPFLOAD_MINAPI_VER"  // inclusive, ie. >=
 #endif
 
 #ifndef NETBPFLOAD_MAXAPI_VER
@@ -269,7 +269,7 @@ static long (*bpf_sk_storage_delete_unsafe) (const void* sk_storage,
 //   accessing the ring buffer should set a program level min_kver >= 5.10,
 //   since 5.10 is the next LTS version.
 // * The definition below sets a map min_kver of 5.10 which requires targeting
-//   a NETBPFLOAD_MIN_VER >= NETBPFLOAD_S_VERSION.
+//   a NETBPFLOAD_MINAPI_VER >= NETBPFLOAD_S_VERSION.
 #define DEFINE_BPF_RINGBUF_EXT(the_map, ValueType, size_bytes, usr, grp, md,   \
                                selinux, pindir, min_loader, max_loader)        \
     DEFINE_BPF_MAP_BASE(the_map, RINGBUF, 0, 0, size_bytes, usr, grp, md,      \
@@ -305,7 +305,7 @@ static long (*bpf_sk_storage_delete_unsafe) (const void* sk_storage,
 #define DEFINE_BPF_RINGBUF(the_map, ValueType, size_bytes, usr, grp, md)            \
     DEFINE_BPF_RINGBUF_EXT(the_map, ValueType, size_bytes, usr, grp, md,            \
                            DEFAULT_BPF_MAP_SELINUX_CONTEXT, DEFAULT_BPF_PIN_SUBDIR, \
-                           NETBPFLOAD_MIN_VER, NETBPFLOAD_MAXAPI_VER)
+                           NETBPFLOAD_MINAPI_VER, NETBPFLOAD_MAXAPI_VER)
 
 // Type safe macro to declare a sk storage and related accessor functions.
 // BPF_MAP_TYPE_SK_STORAGE was introduced in kernel 5.2 but this map requires BTF and
@@ -332,7 +332,7 @@ static long (*bpf_sk_storage_delete_unsafe) (const void* sk_storage,
     DEFINE_BPF_SK_STORAGE_EXT(the_map, TypeOfValue,                          \
                               AID_ROOT, AID_NET_BW_ACCT, 0060, "net_shared", \
                               DEFAULT_BPF_PIN_SUBDIR,                        \
-                              NETBPFLOAD_MIN_VER, NETBPFLOAD_MAXAPI_VER, 0)
+                              NETBPFLOAD_MINAPI_VER, NETBPFLOAD_MAXAPI_VER, 0)
 
 /* There exist buggy kernels with pre-T OS, that due to
  * kernel patch "[ALPS05162612] bpf: fix ubsan error"
@@ -343,7 +343,7 @@ static long (*bpf_sk_storage_delete_unsafe) (const void* sk_storage,
 
 #ifdef THIS_BPF_PROGRAM_IS_FOR_TEST_PURPOSES_ONLY
 #define BPF_MAP_ASSERT_OK(type, entries, mode)
-#elif NETBPFLOAD_MIN_VER >= NETBPFLOAD_T_VER
+#elif NETBPFLOAD_MINAPI_VER >= NETBPFLOAD_T_VER
 #define BPF_MAP_ASSERT_OK(type, entries, mode)
 #else
 #define BPF_MAP_ASSERT_OK(type, entries, mode) \
@@ -396,12 +396,12 @@ static long (*bpf_sk_storage_delete_unsafe) (const void* sk_storage,
 // for maps not meant to be accessed from userspace
 #define DEFINE_BPF_MAP_KERNEL_INTERNAL(the_map, TYPE, KeyType, ValueType, num_entries)           \
     DEFINE_BPF_MAP_EXT(the_map, TYPE, KeyType, ValueType, num_entries, AID_ROOT, AID_ROOT, 0000, \
-                       "loader", DEFAULT_BPF_PIN_SUBDIR, NETBPFLOAD_MIN_VER, NETBPFLOAD_MAXAPI_VER, 0)
+                       "loader", DEFAULT_BPF_PIN_SUBDIR, NETBPFLOAD_MINAPI_VER, NETBPFLOAD_MAXAPI_VER, 0)
 
 #define DEFINE_BPF_MAP_UGM(the_map, TYPE, KeyType, ValueType, num_entries, usr, grp, md) \
     DEFINE_BPF_MAP_EXT(the_map, TYPE, KeyType, ValueType, num_entries, usr, grp, md,     \
                        DEFAULT_BPF_MAP_SELINUX_CONTEXT, DEFAULT_BPF_PIN_SUBDIR,          \
-                       NETBPFLOAD_MIN_VER, NETBPFLOAD_MAXAPI_VER, 0)
+                       NETBPFLOAD_MINAPI_VER, NETBPFLOAD_MAXAPI_VER, 0)
 
 #define DEFINE_BPF_MAP(the_map, TYPE, KeyType, ValueType, num_entries) \
     DEFINE_BPF_MAP_UGM(the_map, TYPE, KeyType, ValueType, num_entries, \
@@ -537,7 +537,7 @@ static long (*bpf_trace_printk)(const char* fmt, int fmt_size, ...) = (void*) BP
 
 #define DEFINE_BPF_PROG_KVER_RANGE_OPT(TYPE, NAME, VER, prog_gid, min_kv, max_kv, opt) \
     DEFINE_BPF_PROG_EXT(TYPE, NAME, VER, AID_ROOT, prog_gid, min_kv, max_kv,           \
-                        NETBPFLOAD_MIN_VER, NETBPFLOAD_MAXAPI_VER, opt,                \
+                        NETBPFLOAD_MINAPI_VER, NETBPFLOAD_MAXAPI_VER, opt,             \
                         DEFAULT_BPF_MAP_SELINUX_CONTEXT, DEFAULT_BPF_PIN_SUBDIR)
 
 // Programs (here used in the sense of functions/sections) marked optional are allowed to fail

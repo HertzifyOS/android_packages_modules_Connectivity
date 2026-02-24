@@ -15,7 +15,7 @@
  */
 
 // The resulting .o needs to load on Android T+
-#define NETBPFLOAD_MIN_VER NETBPFLOAD_T_VER
+#define NETBPFLOAD_MINAPI_VER NETBPFLOAD_T_VER
 #define BPF_OBJ_NAME "netd"
 #define DEFAULT_BPF_PIN_SUBDIR "netd_shared"
 
@@ -51,13 +51,13 @@ static const int DROP_UNLESS_DNS = 2;  // internal to our program
                        NETBPFLOAD_ ## minApi ## _VER, NETBPFLOAD_MAXAPI_VER, 0)
 
 #define DEFINE_BPF_MAP_NO_NETD(the_map, TYPE, TypeOfKey, TypeOfValue, num_entries) \
-    DEFINE_BPF_MAP_NO_NETD_API(the_map, TYPE, TypeOfKey, TypeOfValue, num_entries, MIN)
+    DEFINE_BPF_MAP_NO_NETD_API(the_map, TYPE, TypeOfKey, TypeOfValue, num_entries, MINAPI)
 
 // For maps netd only needs read only access to
 #define DEFINE_BPF_MAP_RO_NETD(the_map, TYPE, TypeOfKey, TypeOfValue, num_entries)  \
     DEFINE_BPF_MAP_EXT(the_map, TYPE, TypeOfKey, TypeOfValue, num_entries,          \
                        AID_ROOT, AID_NET_BW_ACCT, 0460, "netd_readonly", DEFAULT_BPF_PIN_SUBDIR, \
-                       NETBPFLOAD_MIN_VER, NETBPFLOAD_MAXAPI_VER, 0)
+                       NETBPFLOAD_MINAPI_VER, NETBPFLOAD_MAXAPI_VER, 0)
 
 // For maps netd needs to be able to read and write
 #define DEFINE_BPF_MAP_RW_NETD(the_map, TYPE, TypeOfKey, TypeOfValue, num_entries) \
@@ -164,7 +164,7 @@ DEFINE_BPF_MAP_RO_NETD(loopback_access_metrics_enabled_map, ARRAY, uint32_t, boo
                         "netd_readonly", DEFAULT_BPF_PIN_SUBDIR)
 
 #define DEFINE_NETD_BPF_PROG_KVER_RANGE(TYPE, NAME, VER, minKV, maxKV) \
-    DEFINE_NETD_BPF_PROG_RANGES(TYPE, NAME, VER, minKV, maxKV, NETBPFLOAD_MIN_VER, NETBPFLOAD_MAXAPI_VER)
+    DEFINE_NETD_BPF_PROG_RANGES(TYPE, NAME, VER, minKV, maxKV, NETBPFLOAD_MINAPI_VER, NETBPFLOAD_MAXAPI_VER)
 
 #define DEFINE_NETD_BPF_PROG_KVER(TYPE, NAME, VER, min_kv) \
     DEFINE_NETD_BPF_PROG_KVER_RANGE(TYPE, NAME, VER, min_kv, INF)
@@ -183,7 +183,7 @@ DEFINE_BPF_MAP_RO_NETD(loopback_access_metrics_enabled_map, ARRAY, uint32_t, boo
 // programs that only need to be usable by the system server
 #define DEFINE_SYS_BPF_PROG(TYPE, NAME, VER) \
     DEFINE_BPF_PROG_EXT(TYPE, NAME, VER, AID_ROOT, AID_NET_ADMIN, 4_9, INF, \
-                        NETBPFLOAD_MIN_VER, NETBPFLOAD_MAXAPI_VER, MANDATORY, \
+                        NETBPFLOAD_MINAPI_VER, NETBPFLOAD_MAXAPI_VER, MANDATORY, \
                         "net_shared", DEFAULT_BPF_PIN_SUBDIR)
 
 /*
