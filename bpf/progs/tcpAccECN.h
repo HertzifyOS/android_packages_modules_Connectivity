@@ -30,7 +30,6 @@
 #define ETH_IP4_TCP_FLAGS_OFF (ETH_HLEN + IP4_TCP_FLAGS_OFF)
 #define ETH_IP6_TCP_FLAGS_OFF (ETH_HLEN + IP6_TCP_FLAGS_OFF)
 
-#define CUSTOM_TCP_OPTION_KIND 174
 #define CUSTOM_TCP_OPTION_SIZE 11
 #define TCPHDR_SYN 0x02
 
@@ -130,7 +129,7 @@ static const struct {
     __u8 length;
     __u8 data[CUSTOM_TCP_OPTION_SIZE - 2];
 } __attribute__((packed)) tcp_option = {
-    .kind = CUSTOM_TCP_OPTION_KIND,
+    .kind = 174,
     .length = CUSTOM_TCP_OPTION_SIZE,
     .data = {0},
 };
