@@ -13958,9 +13958,13 @@ public class ConnectivityService extends IConnectivityManager.Stub
                         return 0;
                     }
                     case "log-list-update":
-                        mContext.sendBroadcast(
+                        Intent updateIntent =
                                 new Intent(ConfigUpdate.ACTION_UPDATE_CT_LOGS)
-                                        .setPackage(mContext.getPackageName()));
+                                        .setPackage(mContext.getPackageName());
+                        if ("delete".equals(getNextArg())) {
+                            updateIntent.putExtra("delete", true);
+                        }
+                        mContext.sendBroadcast(updateIntent);
                         return 0;
                     case "reevaluate":
                         // Usage : adb shell cmd connectivity reevaluate <netId>
