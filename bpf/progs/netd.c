@@ -1319,6 +1319,6 @@ DEFINE_NETD_V_BPF_PROG_KVER(setsockopt, prog, , 5_4)
     return BPF_ALLOW;
 }
 
-#include "tcpAccECN.c"
+#include "tcpAccECN.h"
 
 LICENSE("Apache 2.0");

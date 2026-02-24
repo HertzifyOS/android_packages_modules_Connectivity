@@ -15,7 +15,6 @@
  *
  * Authors: Jayendra Reddy Kovvuri, Madhan Raj Kanagarathinam, Sandeep Irlanki
  *
- * Filename: tcpAccECN.c
  * Description: eBPF-based implementation of AccECN for IPv4 and IPv6 TCP connections.
  *              Includes separate handling for Ethernet and raw IP packets.
  */
