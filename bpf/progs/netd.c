@@ -158,9 +158,9 @@ DEFINE_BPF_MAP_RO_NETD(loopback_access_metrics_enabled_map, ARRAY, uint32_t, boo
 // programs that need to be usable by netd, but not by netutils_wrappers
 // (this is because these are currently attached by the mainline provided libnetd_updatable .so
 // which is loaded into netd and thus runs as netd uid/gid/selinux context)
-#define DEFINE_NETD_BPF_PROG_RANGES(TYPE, NAME, VER, minKV, maxKV, min_loader, max_loader) \
-    DEFINE_BPF_PROG_EXT(TYPE, NAME, VER, AID_ROOT, AID_ROOT,                               \
-                        minKV, maxKV, min_loader, max_loader, MANDATORY,                   \
+#define DEFINE_NETD_BPF_PROG_RANGES(TYPE, NAME, VER, minKV, maxKV, min_api, max_api) \
+    DEFINE_BPF_PROG_EXT(TYPE, NAME, VER, AID_ROOT, AID_ROOT,                         \
+                        minKV, maxKV, min_api, max_api, MANDATORY,                   \
                         "netd_readonly", DEFAULT_BPF_PIN_SUBDIR)
 
 #define DEFINE_NETD_BPF_PROG_KVER_RANGE(TYPE, NAME, VER, minKV, maxKV) \
