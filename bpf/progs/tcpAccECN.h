@@ -23,9 +23,6 @@
 #undef NETBPFLOAD_MINAPI_VER
 #define NETBPFLOAD_MINAPI_VER NETBPFLOAD_26Q2_VER
 
-#include "bpf_net_helpers.h"
-#include "netd.h"
-
 #define TCP_FLAGS_OFF 12
 #define IP4_TCP_FLAGS_OFF (sizeof(struct iphdr) + TCP_FLAGS_OFF)
 #define IP6_TCP_FLAGS_OFF (sizeof(struct ipv6hdr) + TCP_FLAGS_OFF)
