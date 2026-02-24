@@ -39,7 +39,7 @@
 
 DEFINE_BPF_MAP(l4s_conn_counter, ARRAY, uint32_t, uint32_t, 1)
 DEFINE_BPF_SK_STORAGE(sk_l4s_storage, L4SStorage)
-DEFINE_BPF_MAP_NO_NETD_API(l4s_accecn_enabled_map, ARRAY, uint32_t, bool, 1, 26Q2)
+DEFINE_BPF_MAP_NO_NETD(l4s_accecn_enabled_map, ARRAY, uint32_t, bool, 1)
 
 static long (*bpf_sock_ops_cb_flags_set)(struct bpf_sock_ops *skops, int flags) = (void *) BPF_FUNC_sock_ops_cb_flags_set;
 static long (*bpf_reserve_hdr_opt)(struct bpf_sock_ops *skops, int space, long flags) = (void *) BPF_FUNC_reserve_hdr_opt;

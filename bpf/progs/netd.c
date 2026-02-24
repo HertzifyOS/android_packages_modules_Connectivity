@@ -51,7 +51,7 @@ static const int DROP_UNLESS_DNS = 2;  // internal to our program
                        BPFLOADER_ ## minApi ## _VER, BPFLOADER_MAX_VER, 0)
 
 #define DEFINE_BPF_MAP_NO_NETD(the_map, TYPE, TypeOfKey, TypeOfValue, num_entries) \
-    DEFINE_BPF_MAP_NO_NETD_API(the_map, TYPE, TypeOfKey, TypeOfValue, num_entries, T)
+    DEFINE_BPF_MAP_NO_NETD_API(the_map, TYPE, TypeOfKey, TypeOfValue, num_entries, MIN)
 
 // For maps netd only needs read only access to
 #define DEFINE_BPF_MAP_RO_NETD(the_map, TYPE, TypeOfKey, TypeOfValue, num_entries)  \
