@@ -6,15 +6,15 @@
 
 #include "bpf_map_def.h"
 
-/* You should #define BPFLOADER_{MIN/MAX}_VER before #include "bpf_helpers.h"
+/* You should #define NETBPFLOAD_{MIN/MAX}_VER before #include "bpf_helpers.h"
  * to change which bpfloaders will process the resulting .o file.
  */
-#ifndef BPFLOADER_MIN_VER
-#error "You must define BPFLOADER_MIN_VER"  // inclusive, ie. >=
+#ifndef NETBPFLOAD_MIN_VER
+#error "You must define NETBPFLOAD_MIN_VER"  // inclusive, ie. >=
 #endif
 
-#ifndef BPFLOADER_MAX_VER
-#define BPFLOADER_MAX_VER 0x10000u  // exclusive, ie. < v1.0
+#ifndef NETBPFLOAD_MAX_VER
+#define NETBPFLOAD_MAX_VER 0x10000u  // exclusive, ie. < v1.0
 #endif
 
 /* place things in different elf sections */
@@ -115,7 +115,7 @@ struct sdk_level_uint { unsigned int sdk_level; };
 #define IS_VALID_PIN_DIR(min_loader, pin_subdir) \
     ( \
         !__builtin_strcmp(pin_subdir, "tethering") || \
-        (min_loader >= BPFLOADER_T_VER) && \
+        (min_loader >= NETBPFLOAD_T_VER) && \
             ( \
                 !__builtin_strcmp(pin_subdir, "net_private")   || \
                 !__builtin_strcmp(pin_subdir, "net_shared")    || \
@@ -131,7 +131,7 @@ struct sdk_level_uint { unsigned int sdk_level; };
     _Static_assert(IS_EMPTY_STRING(pin_subdir) \
                 || IS_VALID_PIN_DIR(min_loader, pin_subdir), pin_subdir " is invalid"); \
     _Static_assert(IS_EMPTY_STRING(pin_subdir) \
-                || (min_loader >= BPFLOADER_T_VER), "selinux_context requires T+")
+                || (min_loader >= NETBPFLOAD_T_VER), "selinux_context requires T+")
 
 #define VALIDATE_PIN_DIR(min_loader, pin_subdir) \
     _Static_assert(IS_VALID_PIN_DIR(min_loader, pin_subdir), pin_subdir " is invalid")
@@ -269,7 +269,7 @@ static long (*bpf_sk_storage_delete_unsafe) (const void* sk_storage,
 //   accessing the ring buffer should set a program level min_kver >= 5.10,
 //   since 5.10 is the next LTS version.
 // * The definition below sets a map min_kver of 5.10 which requires targeting
-//   a BPFLOADER_MIN_VER >= BPFLOADER_S_VERSION.
+//   a NETBPFLOAD_MIN_VER >= NETBPFLOAD_S_VERSION.
 #define DEFINE_BPF_RINGBUF_EXT(the_map, ValueType, size_bytes, usr, grp, md,   \
                                selinux, pindir, min_loader, max_loader)        \
     DEFINE_BPF_MAP_BASE(the_map, RINGBUF, 0, 0, size_bytes, usr, grp, md,      \
@@ -305,7 +305,7 @@ static long (*bpf_sk_storage_delete_unsafe) (const void* sk_storage,
 #define DEFINE_BPF_RINGBUF(the_map, ValueType, size_bytes, usr, grp, md)            \
     DEFINE_BPF_RINGBUF_EXT(the_map, ValueType, size_bytes, usr, grp, md,            \
                            DEFAULT_BPF_MAP_SELINUX_CONTEXT, DEFAULT_BPF_PIN_SUBDIR, \
-                           BPFLOADER_MIN_VER, BPFLOADER_MAX_VER)
+                           NETBPFLOAD_MIN_VER, NETBPFLOAD_MAX_VER)
 
 // Type safe macro to declare a sk storage and related accessor functions.
 // BPF_MAP_TYPE_SK_STORAGE was introduced in kernel 5.2 but this map requires BTF and
@@ -332,7 +332,7 @@ static long (*bpf_sk_storage_delete_unsafe) (const void* sk_storage,
     DEFINE_BPF_SK_STORAGE_EXT(the_map, TypeOfValue,                          \
                               AID_ROOT, AID_NET_BW_ACCT, 0060, "net_shared", \
                               DEFAULT_BPF_PIN_SUBDIR,                        \
-                              BPFLOADER_MIN_VER, BPFLOADER_MAX_VER, 0)
+                              NETBPFLOAD_MIN_VER, NETBPFLOAD_MAX_VER, 0)
 
 /* There exist buggy kernels with pre-T OS, that due to
  * kernel patch "[ALPS05162612] bpf: fix ubsan error"
@@ -343,7 +343,7 @@ static long (*bpf_sk_storage_delete_unsafe) (const void* sk_storage,
 
 #ifdef THIS_BPF_PROGRAM_IS_FOR_TEST_PURPOSES_ONLY
 #define BPF_MAP_ASSERT_OK(type, entries, mode)
-#elif BPFLOADER_MIN_VER >= BPFLOADER_T_VER
+#elif NETBPFLOAD_MIN_VER >= NETBPFLOAD_T_VER
 #define BPF_MAP_ASSERT_OK(type, entries, mode)
 #else
 #define BPF_MAP_ASSERT_OK(type, entries, mode) \
@@ -396,12 +396,12 @@ static long (*bpf_sk_storage_delete_unsafe) (const void* sk_storage,
 // for maps not meant to be accessed from userspace
 #define DEFINE_BPF_MAP_KERNEL_INTERNAL(the_map, TYPE, KeyType, ValueType, num_entries)           \
     DEFINE_BPF_MAP_EXT(the_map, TYPE, KeyType, ValueType, num_entries, AID_ROOT, AID_ROOT, 0000, \
-                       "loader", DEFAULT_BPF_PIN_SUBDIR, BPFLOADER_MIN_VER, BPFLOADER_MAX_VER, 0)
+                       "loader", DEFAULT_BPF_PIN_SUBDIR, NETBPFLOAD_MIN_VER, NETBPFLOAD_MAX_VER, 0)
 
 #define DEFINE_BPF_MAP_UGM(the_map, TYPE, KeyType, ValueType, num_entries, usr, grp, md) \
     DEFINE_BPF_MAP_EXT(the_map, TYPE, KeyType, ValueType, num_entries, usr, grp, md,     \
                        DEFAULT_BPF_MAP_SELINUX_CONTEXT, DEFAULT_BPF_PIN_SUBDIR,          \
-                       BPFLOADER_MIN_VER, BPFLOADER_MAX_VER, 0)
+                       NETBPFLOAD_MIN_VER, NETBPFLOAD_MAX_VER, 0)
 
 #define DEFINE_BPF_MAP(the_map, TYPE, KeyType, ValueType, num_entries) \
     DEFINE_BPF_MAP_UGM(the_map, TYPE, KeyType, ValueType, num_entries, \
@@ -537,7 +537,7 @@ static long (*bpf_trace_printk)(const char* fmt, int fmt_size, ...) = (void*) BP
 
 #define DEFINE_BPF_PROG_KVER_RANGE_OPT(TYPE, NAME, VER, prog_gid, min_kv, max_kv, opt) \
     DEFINE_BPF_PROG_EXT(TYPE, NAME, VER, AID_ROOT, prog_gid, min_kv, max_kv,           \
-                        BPFLOADER_MIN_VER, BPFLOADER_MAX_VER, opt,                     \
+                        NETBPFLOAD_MIN_VER, NETBPFLOAD_MAX_VER, opt,                   \
                         DEFAULT_BPF_MAP_SELINUX_CONTEXT, DEFAULT_BPF_PIN_SUBDIR)
 
 // Programs (here used in the sense of functions/sections) marked optional are allowed to fail

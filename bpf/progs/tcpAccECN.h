@@ -20,8 +20,8 @@
  */
 
 // The resulting maps/programs need to load on Android 26Q2+
-#undef BPFLOADER_MIN_VER
-#define BPFLOADER_MIN_VER BPFLOADER_26Q2_VER
+#undef NETBPFLOAD_MIN_VER
+#define NETBPFLOAD_MIN_VER NETBPFLOAD_26Q2_VER
 
 #include "bpf_net_helpers.h"
 #include "netd.h"

@@ -1030,7 +1030,7 @@ static int validateProg(const borrowed_fd& fd, const char* const progPinLoc) {
     }
     ALOGI("prog %s id %d len jit:%d xlat:%d", progPinLoc, progId, jitLen, xlatLen);
 
-    if (!jitLen && api_level_full >= BPFLOADER_25Q2_VER) {
+    if (!jitLen && api_level_full >= NETBPFLOAD_25Q2_VER) {
         ALOGE("Kernel eBPF JIT failure for %s", progPinLoc);
         return -ENOTSUP;
     }
