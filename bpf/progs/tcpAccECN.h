@@ -37,8 +37,7 @@
 #define CUSTOM_TCP_OPTION_SIZE 11
 #define TCPHDR_SYN 0x02
 
-#define L4S_CONN_COUNTER_SIZE 1
-DEFINE_BPF_MAP(l4s_conn_counter, ARRAY, uint32_t, uint32_t, L4S_CONN_COUNTER_SIZE)
+DEFINE_BPF_MAP(l4s_conn_counter, ARRAY, uint32_t, uint32_t, 1)
 DEFINE_BPF_SK_STORAGE(sk_l4s_storage, L4SStorage)
 DEFINE_BPF_MAP_NO_NETD_API(l4s_accecn_enabled_map, ARRAY, uint32_t, bool, 1, 26Q2)
 
