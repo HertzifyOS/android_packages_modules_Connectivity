@@ -115,7 +115,7 @@ struct sdk_level_uint { unsigned int sdk_level; };
 #define IS_VALID_PIN_DIR(min_loader, pin_subdir) \
     ( \
         !__builtin_strcmp(pin_subdir, "tethering") || \
-        (min_loader >= NETBPFLOAD_T_VER) && \
+        (NETBPFLOAD_##min_loader##_VER >= NETBPFLOAD_T_VER) && \
             ( \
                 !__builtin_strcmp(pin_subdir, "net_private")   || \
                 !__builtin_strcmp(pin_subdir, "net_shared")    || \
@@ -131,7 +131,7 @@ struct sdk_level_uint { unsigned int sdk_level; };
     _Static_assert(IS_EMPTY_STRING(pin_subdir) \
                 || IS_VALID_PIN_DIR(min_loader, pin_subdir), pin_subdir " is invalid"); \
     _Static_assert(IS_EMPTY_STRING(pin_subdir) \
-                || (min_loader >= NETBPFLOAD_T_VER), "selinux_context requires T+")
+                || (NETBPFLOAD_##min_loader##_VER >= NETBPFLOAD_T_VER), "selinux_context requires T+")
 
 #define VALIDATE_PIN_DIR(min_loader, pin_subdir) \
     _Static_assert(IS_VALID_PIN_DIR(min_loader, pin_subdir), pin_subdir " is invalid")
@@ -236,8 +236,8 @@ static long (*bpf_sk_storage_delete_unsafe) (const void* sk_storage,
         .uid = (usr),                                                                           \
         .gid = (grp),                                                                           \
         .mode = (md),                                                                           \
-        .bpfloader_min_ver = (minloader),                                                       \
-        .bpfloader_max_ver = (maxloader),                                                       \
+        .bpfloader_min_ver = NETBPFLOAD_##minloader##_VER,                                      \
+        .bpfloader_max_ver = NETBPFLOAD_##maxloader##_VER,                                      \
         .min_kver = (minkver).kver,                                                             \
         .max_kver = (maxkver).kver,                                                             \
         .create_location = CREATE_LOCATION(selinux),                                            \
@@ -305,7 +305,7 @@ static long (*bpf_sk_storage_delete_unsafe) (const void* sk_storage,
 #define DEFINE_BPF_RINGBUF(the_map, ValueType, size_bytes, usr, grp, md)            \
     DEFINE_BPF_RINGBUF_EXT(the_map, ValueType, size_bytes, usr, grp, md,            \
                            DEFAULT_BPF_MAP_SELINUX_CONTEXT, DEFAULT_BPF_PIN_SUBDIR, \
-                           NETBPFLOAD_MINAPI_VER, NETBPFLOAD_MAXAPI_VER)
+                           MINAPI, MAXAPI)
 
 // Type safe macro to declare a sk storage and related accessor functions.
 // BPF_MAP_TYPE_SK_STORAGE was introduced in kernel 5.2 but this map requires BTF and
@@ -331,8 +331,7 @@ static long (*bpf_sk_storage_delete_unsafe) (const void* sk_storage,
 #define DEFINE_BPF_SK_STORAGE(the_map, TypeOfValue)                          \
     DEFINE_BPF_SK_STORAGE_EXT(the_map, TypeOfValue,                          \
                               AID_ROOT, AID_NET_BW_ACCT, 0060, "net_shared", \
-                              DEFAULT_BPF_PIN_SUBDIR,                        \
-                              NETBPFLOAD_MINAPI_VER, NETBPFLOAD_MAXAPI_VER, 0)
+                              DEFAULT_BPF_PIN_SUBDIR, MINAPI, MAXAPI, 0)
 
 /* There exist buggy kernels with pre-T OS, that due to
  * kernel patch "[ALPS05162612] bpf: fix ubsan error"
@@ -396,12 +395,12 @@ static long (*bpf_sk_storage_delete_unsafe) (const void* sk_storage,
 // for maps not meant to be accessed from userspace
 #define DEFINE_BPF_MAP_KERNEL_INTERNAL(the_map, TYPE, KeyType, ValueType, num_entries)           \
     DEFINE_BPF_MAP_EXT(the_map, TYPE, KeyType, ValueType, num_entries, AID_ROOT, AID_ROOT, 0000, \
-                       "loader", DEFAULT_BPF_PIN_SUBDIR, NETBPFLOAD_MINAPI_VER, NETBPFLOAD_MAXAPI_VER, 0)
+                       "loader", DEFAULT_BPF_PIN_SUBDIR, MINAPI, MAXAPI, 0)
 
 #define DEFINE_BPF_MAP_UGM(the_map, TYPE, KeyType, ValueType, num_entries, usr, grp, md) \
     DEFINE_BPF_MAP_EXT(the_map, TYPE, KeyType, ValueType, num_entries, usr, grp, md,     \
                        DEFAULT_BPF_MAP_SELINUX_CONTEXT, DEFAULT_BPF_PIN_SUBDIR,          \
-                       NETBPFLOAD_MINAPI_VER, NETBPFLOAD_MAXAPI_VER, 0)
+                       MINAPI, MAXAPI, 0)
 
 #define DEFINE_BPF_MAP(the_map, TYPE, KeyType, ValueType, num_entries) \
     DEFINE_BPF_MAP_UGM(the_map, TYPE, KeyType, ValueType, num_entries, \
@@ -526,8 +525,8 @@ static long (*bpf_trace_printk)(const char* fmt, int fmt_size, ...) = (void*) BP
         .min_kver = (KVER_##min_kv).kver,                                                     \
         .max_kver = (KVER_##max_kv).kver,                                                     \
         .optional = (opt).optional,                                                           \
-        .bpfloader_min_ver = (min_loader),                                                    \
-        .bpfloader_max_ver = (max_loader),                                                    \
+        .bpfloader_min_ver = NETBPFLOAD_##min_loader##_VER,                                   \
+        .bpfloader_max_ver = NETBPFLOAD_##max_loader##_VER,                                   \
         .create_location = CREATE_LOCATION(selinux),                                          \
         .pin_location = "/sys/fs/bpf/" pindir "/prog_" BPF_OBJ_NAME "_" #TYPE "_" #NAME "\0", \
         .name_idx = __builtin_strlen("/sys/fs/bpf/" pindir "/prog_" BPF_OBJ_NAME "_"),        \
@@ -536,9 +535,8 @@ static long (*bpf_trace_printk)(const char* fmt, int fmt_size, ...) = (void*) BP
     long TYPE##_##NAME##_##VER
 
 #define DEFINE_BPF_PROG_KVER_RANGE_OPT(TYPE, NAME, VER, prog_gid, min_kv, max_kv, opt) \
-    DEFINE_BPF_PROG_EXT(TYPE, NAME, VER, AID_ROOT, prog_gid, min_kv, max_kv,           \
-                        NETBPFLOAD_MINAPI_VER, NETBPFLOAD_MAXAPI_VER, opt,             \
-                        DEFAULT_BPF_MAP_SELINUX_CONTEXT, DEFAULT_BPF_PIN_SUBDIR)
+    DEFINE_BPF_PROG_EXT(TYPE, NAME, VER, AID_ROOT, prog_gid, min_kv, max_kv, MINAPI, MAXAPI, \
+                        opt, DEFAULT_BPF_MAP_SELINUX_CONTEXT, DEFAULT_BPF_PIN_SUBDIR)
 
 // Programs (here used in the sense of functions/sections) marked optional are allowed to fail
 // to load (for example due to missing kernel patches).
