@@ -699,8 +699,8 @@ public class NsdService extends INsdManager.Stub {
                 return;
             }
             final String serviceTypeNoDot = serviceType.substring(0, serviceType.length() - 1);
-            mAccessRepository.addAllowedService(mClientInfo.mUid, service.getServiceName(),
-                    serviceTypeNoDot);
+            mAccessRepository.addAllowedService(mClientInfo.mUid, mClientInfo.mPackageName,
+                    service.getServiceName(), serviceTypeNoDot);
             mClientInfo.log("Service selected for request " + mClientRequestId + ": " + service);
             final int ifIndex = service.getInterfaceIndex();
             if (service.getNetwork() != null) {
@@ -911,7 +911,8 @@ public class NsdService extends INsdManager.Stub {
         }
         final String serviceType = joinServiceType(service);
         return serviceType != null && mAccessRepository.isServiceAllowed(
-                clientInfo.mUid, service.getServiceInstanceName(), serviceType);
+                clientInfo.mUid, clientInfo.mPackageName, service.getServiceInstanceName(),
+                serviceType);
     }
 
     /**
@@ -1797,7 +1798,8 @@ public class NsdService extends INsdManager.Stub {
             @NonNull Runnable disallowedCb, @NonNull Consumer<Boolean> allowedCb) {
         final boolean isServiceAllowed = mDeps.isAconfigFlagEnabled(FLAG_NSD_SERVICE_PICKER)
                 && serviceName != null && serviceType != null
-                && mAccessRepository.isServiceAllowed(clientInfo.mUid, serviceName, serviceType);
+                && mAccessRepository.isServiceAllowed(clientInfo.mUid, clientInfo.mPackageName,
+                serviceName, serviceType);
 
         // If the service is in the allowlist, no need for permissions.
         // Otherwise first check for local network permission. If it is not granted, still allow
@@ -2069,7 +2071,7 @@ public class NsdService extends INsdManager.Stub {
             return;
         }
         final boolean isServiceAllowed = mAccessRepository.isServiceAllowed(
-                clientInfo.mUid, args.mServiceName, args.mServiceType);
+                clientInfo.mUid, clientInfo.mPackageName, args.mServiceName, args.mServiceType);
         args.mResultReceiver.send(isServiceAllowed
                 ? NsdManager.SERVICE_PERMISSION_GRANTED
                 : NsdManager.SERVICE_PERMISSION_DENIED, /* resultData= */null);
@@ -2100,8 +2102,9 @@ public class NsdService extends INsdManager.Stub {
                 mLegacyClientCount -= 1;
             }
             if (mDeps.isAconfigFlagEnabled(FLAG_NSD_SERVICE_PICKER)
-                    && !CollectionUtils.any(mClients.values(), c -> c.mUid == clientInfo.mUid)) {
-                mAccessRepository.unloadUid(clientInfo.mUid);
+                    && !CollectionUtils.any(mClients.values(), c -> c.mUid == clientInfo.mUid
+                    && Objects.equals(c.mPackageName, clientInfo.mPackageName))) {
+                mAccessRepository.unloadPackage(clientInfo.mUid, clientInfo.mPackageName);
             }
         }
         maybeStopMonitoringSocketsIfNoActiveRequest();
@@ -3344,11 +3347,7 @@ public class NsdService extends INsdManager.Stub {
         mContext.enforceCallingOrSelfPermission(android.Manifest.permission.INTERNET, "NsdService");
         final int uid = mDeps.getCallingUid();
         final int pid = mDeps.getCallingPid();
-        if (mEnablePicker) {
-            enforcePackageNameMatchesUid(mContext, uid, packageName);
-        } else {
-            packageName = "";
-        }
+        enforcePackageNameMatchesUid(mContext, uid, packageName);
         if (cb == null) {
             throw new IllegalArgumentException("Unknown client callback from uid=" + uid);
         }
