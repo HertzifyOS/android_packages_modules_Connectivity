@@ -15,6 +15,8 @@
  */
 package com.android.server.net.ct;
 
+import static com.android.server.net.ct.Config.TAG;
+
 import android.annotation.RequiresApi;
 import android.app.AlarmManager;
 import android.app.DownloadManager;
@@ -36,8 +38,6 @@ import java.util.concurrent.Future;
 /** Implementation of the Certificate Transparency job */
 @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
 public class CertificateTransparencyJob extends BroadcastReceiver {
-
-    private static final String TAG = "CertificateTransparencyJob";
 
     private final Context mContext;
     private final CertificateTransparencyDownloader mCertificateTransparencyDownloader;
