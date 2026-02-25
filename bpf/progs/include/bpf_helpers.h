@@ -165,8 +165,8 @@ _Static_assert(sizeof(void*) == 8, "eBPF is 64-bit arch");
  * This defines the map (hence this should not be used in a header file included
  * from multiple locations) and provides type safe accessors:
  *   ValueType * bpf_foo_map_lookup_elem(const KeyType *)
- *   int bpf_foo_map_update_elem(const KeyType *, const ValueType *, flags)
- *   int bpf_foo_map_delete_elem(const KeyType *)
+ *   long bpf_foo_map_update_elem(const KeyType *, const ValueType *, flags)
+ *   long bpf_foo_map_delete_elem(const KeyType *)
  *
  * This will make sure that if you change the type of a map you'll get compile
  * errors at any spots you forget to update with the new type.
@@ -285,7 +285,7 @@ static long (*bpf_sk_storage_delete_unsafe) (const void* sk_storage,
     _Static_assert(((size_bytes) & ((size_bytes) - 1)) == 0,                   \
                    "ring buffer size must be a power of two");                 \
                                                                                \
-    static inline __always_inline __unused int bpf_##the_map##_output(         \
+    static inline __always_inline __unused long bpf_##the_map##_output(        \
             const ValueType* v) {                                              \
         return bpf_ringbuf_output_unsafe(&the_map, v, sizeof(*v), 0);          \
     }                                                                          \
@@ -326,7 +326,7 @@ static long (*bpf_sk_storage_delete_unsafe) (const void* sk_storage,
         return bpf_sk_storage_get_unsafe(&the_map, sk, v, flags);                       \
     };                                                                                  \
                                                                                         \
-    static inline __always_inline __unused int bpf_##the_map##_delete(                  \
+    static inline __always_inline __unused long bpf_##the_map##_delete(                 \
             const struct bpf_sock* sk) {                                                \
         return bpf_sk_storage_delete_unsafe(&the_map, sk);                              \
     };
@@ -370,12 +370,12 @@ static long (*bpf_sk_storage_delete_unsafe) (const void* sk_storage,
         return bpf_map_lookup_elem_unsafe(&the_map, k);                                          \
     };                                                                                           \
                                                                                                  \
-    static inline __always_inline __unused int bpf_##the_map##_update_elem(                      \
+    static inline __always_inline __unused long bpf_##the_map##_update_elem(                     \
             const KeyType* k, const ValueType* v, unsigned long flags) {                         \
         return bpf_map_update_elem_unsafe(&the_map, k, v, flags);                                \
     };                                                                                           \
                                                                                                  \
-    static inline __always_inline __unused int bpf_##the_map##_delete_elem(const KeyType* k) {   \
+    static inline __always_inline __unused long bpf_##the_map##_delete_elem(const KeyType* k) {  \
         return bpf_map_delete_elem_unsafe(&the_map, k);                                          \
     };
 
