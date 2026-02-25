@@ -144,6 +144,9 @@ struct sdk_level_uint { unsigned int sdk_level; };
  * implemented in the kernel sources.
  */
 
+_Static_assert(sizeof(long) == 8, "eBPF is 64-bit arch");
+_Static_assert(sizeof(void*) == 8, "eBPF is 64-bit arch");
+
 /* generic functions */
 
 /*
@@ -177,7 +180,7 @@ struct sdk_level_uint { unsigned int sdk_level; };
 static void* (*bpf_map_lookup_elem_unsafe)(const void* map,
                                            const void* key) = (void*)BPF_FUNC_map_lookup_elem;
 static long (*bpf_map_update_elem_unsafe)(const void* map, const void* key,
-                                          const void* value, unsigned long long flags) = (void*)
+                                          const void* value, unsigned long flags) = (void*)
         BPF_FUNC_map_update_elem;
 static long (*bpf_map_delete_elem_unsafe)(const void* map,
                                           const void* key) = (void*)BPF_FUNC_map_delete_elem;
@@ -192,7 +195,7 @@ static void (*bpf_ringbuf_discard_unsafe)(const void *data, __u64 flags) = (void
 static void (*bpf_ringbuf_submit_unsafe)(const void* data, __u64 flags) = (void*)
         BPF_FUNC_ringbuf_submit;
 static void* (*bpf_sk_storage_get_unsafe) (const void* sk_storage, const void* sk,
-                                           const void* value, unsigned long long flags) = (void*)
+                                           const void* value, unsigned long flags) = (void*)
         BPF_FUNC_sk_storage_get;
 static long (*bpf_sk_storage_delete_unsafe) (const void* sk_storage,
                                              const void* sk) = (void*) BPF_FUNC_sk_storage_delete;
@@ -319,7 +322,7 @@ static long (*bpf_sk_storage_delete_unsafe) (const void* sk_storage,
     BPF_ANNOTATE_KV_PAIR(the_map, uint32_t, ValueType);                                 \
                                                                                         \
     static inline __always_inline __unused ValueType* bpf_##the_map##_get(              \
-            const struct bpf_sock* sk, const ValueType* v, unsigned long long flags) {  \
+            const struct bpf_sock* sk, const ValueType* v, unsigned long flags) {       \
         return bpf_sk_storage_get_unsafe(&the_map, sk, v, flags);                       \
     };                                                                                  \
                                                                                         \
@@ -368,7 +371,7 @@ static long (*bpf_sk_storage_delete_unsafe) (const void* sk_storage,
     };                                                                                           \
                                                                                                  \
     static inline __always_inline __unused int bpf_##the_map##_update_elem(                      \
-            const KeyType* k, const ValueType* v, unsigned long long flags) {                    \
+            const KeyType* k, const ValueType* v, unsigned long flags) {                         \
         return bpf_map_update_elem_unsafe(&the_map, k, v, flags);                                \
     };                                                                                           \
                                                                                                  \
@@ -439,19 +442,19 @@ static long (*bpf_sk_storage_delete_unsafe) (const void* sk_storage,
   } while (0)
 
 // LLVM eBPF builtins: they directly generate BPF_LD_ABS/BPF_LD_IND (skb may be ignored?)
-unsigned long long load_byte(void* skb, unsigned long long off) asm("llvm.bpf.load.byte");
-unsigned long long load_half(void* skb, unsigned long long off) asm("llvm.bpf.load.half");
-unsigned long long load_word(void* skb, unsigned long long off) asm("llvm.bpf.load.word");
+unsigned long load_byte(void* skb, unsigned long off) asm("llvm.bpf.load.byte");
+unsigned long load_half(void* skb, unsigned long off) asm("llvm.bpf.load.half");
+unsigned long load_word(void* skb, unsigned long off) asm("llvm.bpf.load.word");
 
 static long (*bpf_probe_read)(void* dst, int size, void* unsafe_ptr) = (void*) BPF_FUNC_probe_read;
 static long (*bpf_probe_read_str)(void* dst, int size, void* unsafe_ptr) = (void*) BPF_FUNC_probe_read_str;
 static long (*bpf_probe_read_user)(void* dst, int size, const void* unsafe_ptr) = (void*)BPF_FUNC_probe_read_user;
 static long (*bpf_probe_read_user_str)(void* dst, int size, const void* unsafe_ptr) = (void*) BPF_FUNC_probe_read_user_str;
-static unsigned long long (*bpf_ktime_get_ns)(void) = (void*) BPF_FUNC_ktime_get_ns;
-static unsigned long long (*bpf_ktime_get_boot_ns)(void) = (void*)BPF_FUNC_ktime_get_boot_ns;
-static unsigned long long (*bpf_get_current_pid_tgid)(void) = (void*) BPF_FUNC_get_current_pid_tgid;
-static unsigned long long (*bpf_get_current_uid_gid)(void) = (void*) BPF_FUNC_get_current_uid_gid;
-static unsigned long long (*bpf_get_smp_processor_id)(void) = (void*) BPF_FUNC_get_smp_processor_id;
+static unsigned long (*bpf_ktime_get_ns)(void) = (void*) BPF_FUNC_ktime_get_ns;
+static unsigned long (*bpf_ktime_get_boot_ns)(void) = (void*)BPF_FUNC_ktime_get_boot_ns;
+static unsigned long (*bpf_get_current_pid_tgid)(void) = (void*) BPF_FUNC_get_current_pid_tgid;
+static unsigned long (*bpf_get_current_uid_gid)(void) = (void*) BPF_FUNC_get_current_uid_gid;
+static unsigned long (*bpf_get_smp_processor_id)(void) = (void*) BPF_FUNC_get_smp_processor_id;
 static long (*bpf_get_stackid)(void* ctx, void* map, uint64_t flags) = (void*) BPF_FUNC_get_stackid;
 static long (*bpf_get_current_comm)(void* buf, uint32_t buf_size) = (void*) BPF_FUNC_get_current_comm;
 // bpf_sk_fullsock requires 5.1+ kernel
