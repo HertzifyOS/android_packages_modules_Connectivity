@@ -815,16 +815,16 @@ static int createMaps(const ElfObject& elfObj, vector<struct bpf_map_def>& md, v
     }
 
     for (unsigned i = 0; i < md.size(); i++) {
-        if (api_level_full < md[i].bpfloader_min_ver) {
-            ALOGD("skipping map %s which requires bpfloader min ver 0x%05x", md[i].name(),
-                  md[i].bpfloader_min_ver);
+        if (api_level_full < md[i].min_api_level_full) {
+            ALOGD("skipping map %s which requires api >= %d", md[i].name(),
+                  md[i].min_api_level_full);
             mapFds.push_back(unique_fd());
             continue;
         }
 
-        if (api_level_full >= md[i].bpfloader_max_ver) {
-            ALOGD("skipping map %s which requires bpfloader max ver 0x%05x", md[i].name(),
-                  md[i].bpfloader_max_ver);
+        if (api_level_full >= md[i].max_api_level_full) {
+            ALOGD("skipping map %s which requires api < %d", md[i].name(),
+                  md[i].max_api_level_full);
             mapFds.push_back(unique_fd());
             continue;
         }
@@ -1030,7 +1030,7 @@ static int validateProg(const borrowed_fd& fd, const char* const progPinLoc) {
     }
     ALOGI("prog %s id %d len jit:%d xlat:%d", progPinLoc, progId, jitLen, xlatLen);
 
-    if (!jitLen && api_level_full >= BPFLOADER_MAINLINE_25Q2_VERSION) {
+    if (!jitLen && api_level_full >= NETBPFLOAD_25Q2_VER) {
         ALOGE("Kernel eBPF JIT failure for %s", progPinLoc);
         return -ENOTSUP;
     }
@@ -1055,15 +1055,15 @@ static int loadCodeSections(const ElfObject& elfObj, vector<codeSection>& cs, co
             return -EINVAL;
         }
 
-        ALOGD("cs[%d].name:%s kver in [%x,%x) bpfloader ver in [0x%05x,0x%05x)",
+        ALOGD("cs[%d].name:%s kver in [%x,%x) api level in [%d,%d)",
               i, cs[i].prog_def->name(),
               cs[i].prog_def->min_kver, cs[i].prog_def->max_kver,
-              cs[i].prog_def->bpfloader_min_ver, cs[i].prog_def->bpfloader_max_ver);
+              cs[i].prog_def->min_api_level_full, cs[i].prog_def->max_api_level_full);
 
         if (kernelVer < cs[i].prog_def->min_kver) continue;
         if (kernelVer >= cs[i].prog_def->max_kver) continue;
-        if (api_level_full < cs[i].prog_def->bpfloader_min_ver) continue;
-        if (api_level_full >= cs[i].prog_def->bpfloader_max_ver) continue;
+        if (api_level_full < cs[i].prog_def->min_api_level_full) continue;
+        if (api_level_full >= cs[i].prog_def->max_api_level_full) continue;
 
         bool reuse = false;
         if (access(cs[i].prog_def->pin_location, F_OK) == 0) {
@@ -1155,10 +1155,11 @@ static int prepareLoadMaps(const struct bpf_object* obj, const vector<struct bpf
             return -1;
         }
 
-        if (api_level_full < md[i].bpfloader_min_ver || api_level_full >= md[i].bpfloader_max_ver) {
-            ALOGD("skipping map %s: bpfloader 0x%05x is outside required range [0x%05x, 0x%05x)",
+        if (api_level_full < md[i].min_api_level_full ||
+            api_level_full >= md[i].max_api_level_full) {
+            ALOGD("skipping map %s: api %d is outside required range [%d, %d)",
                   md[i].name(), api_level_full,
-                  md[i].bpfloader_min_ver, md[i].bpfloader_max_ver);
+                  md[i].min_api_level_full, md[i].max_api_level_full);
             bpf_map__set_autocreate(m, false);
             continue;
         }
@@ -1204,11 +1205,11 @@ static int prepareLoadProgs(const struct bpf_object* obj, const vector<codeSecti
             continue;
         }
 
-        int bpfMinVer = cs[i].prog_def->bpfloader_min_ver;
-        int bpfMaxVer = cs[i].prog_def->bpfloader_max_ver;
-        if (api_level_full < bpfMinVer || api_level_full >= bpfMaxVer) {
-            ALOGD("skipping prog %s: bpfloader 0x%05x is outside required range [0x%05x, 0x%05x)",
-                  cs[i].prog_def->name(), api_level_full, bpfMinVer, bpfMaxVer);
+        if (api_level_full < cs[i].prog_def->min_api_level_full ||
+            api_level_full >= cs[i].prog_def->max_api_level_full) {
+            ALOGD("skipping prog %s: api %d is outside required range [%d, %d)",
+                  cs[i].prog_def->name(), api_level_full,
+                  cs[i].prog_def->min_api_level_full, cs[i].prog_def->max_api_level_full);
             bpf_program__set_autoload(prog, false);
             continue;
         }
