@@ -387,7 +387,7 @@ static long (*bpf_sk_storage_delete_unsafe) (const void* sk_storage,
                                                                                                  \
     static inline __always_inline __unused long bpf_for_each_##the_map##_elem(                   \
             for_each_##the_map##_callback fn, void *ctx) {                                       \
-        return bpf_for_each_map_elem_unsafe(&the_map, (callback)fn, (void*)ctx, 0);              \
+        return bpf_for_each_map_elem_unsafe(&the_map, (callback)fn, ctx, 0);                     \
     };
 
 #ifndef BPF_OBJ_NAME
