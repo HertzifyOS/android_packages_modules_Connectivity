@@ -133,6 +133,13 @@ static int (*bpf_sk_release)(void *sock) = (void *)BPF_FUNC_sk_release;
 
 static int (*bpf_set_retval)(int retval) = (void *)BPF_FUNC_set_retval;
 
+static long (*bpf_sock_ops_cb_flags_set)(struct bpf_sock_ops *skops, int argval)
+    = (void *)BPF_FUNC_sock_ops_cb_flags_set;
+static long (*bpf_reserve_hdr_opt)(struct bpf_sock_ops *skops, __u32 space, __u64 flags)
+    = (void *)BPF_FUNC_reserve_hdr_opt;
+static long (*bpf_store_hdr_opt)(struct bpf_sock_ops *skops, const void *from, __u32 len, __u64 flags)
+    = (void *)BPF_FUNC_store_hdr_opt;
+
 // Android only supports little endian architectures
 #define htons(x) (__builtin_constant_p(x) ? ___constant_swab16(x) : __builtin_bswap16(x))
 #define htonl(x) (__builtin_constant_p(x) ? ___constant_swab32(x) : __builtin_bswap32(x))

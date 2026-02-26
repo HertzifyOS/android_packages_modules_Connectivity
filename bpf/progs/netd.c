@@ -263,11 +263,11 @@ DEFINE_UPDATE_STATS(stats_map_A, StatsKey)
 DEFINE_UPDATE_STATS(stats_map_B, StatsKey)
 
 // both of these return 0 on success or -EFAULT on failure (and zero out the buffer)
-static __always_inline inline int bpf_skb_load_bytes_net(const struct __sk_buff* const skb,
-                                                         const int L3_off,
-                                                         void* const to,
-                                                         const int len,
-                                                         const struct kver_uint kver) {
+static __always_inline inline long bpf_skb_load_bytes_net(const struct __sk_buff* const skb,
+                                                          const int L3_off,
+                                                          void* const to,
+                                                          const int len,
+                                                          const struct kver_uint kver) {
     // 'kver' (here and throughout) is the compile time guaranteed minimum kernel version,
     // ie. we're building (a version of) the bpf program for kver (or newer!) kernels.
     //
