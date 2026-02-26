@@ -133,11 +133,11 @@ class ElfObject {
     size_t size;
     const Elf64_Ehdr* eh;
     std::span<const char> bytes;
+    std::span<const Elf64_Shdr> sh;
     std::span<const char> strtab;
 
   public:
     const char * const path;
-    std::span<const Elf64_Shdr> sh;  // TODO: this should be const to public
 
     ElfObject(const char* elfPath) : base(MAP_FAILED), size(0), eh(nullptr), path(elfPath) {
         unique_fd fd(open(path, O_RDONLY | O_CLOEXEC));
@@ -194,6 +194,13 @@ class ElfObject {
     ~ElfObject() {
         if (base != MAP_FAILED) munmap(base, size);
     }
+
+    const Elf64_Ehdr & EH() const { return *eh; }
+
+    auto SHsize() const { return sh.size(); }
+
+    // UB if idx > SHsize()
+    const Elf64_Shdr & SH(unsigned idx) const { return sh[idx]; }
 
     // Get a span pointing to a section by its index
     std::span<const char> getSectionByIdx(unsigned id) const {
@@ -336,7 +343,7 @@ class ElfObject {
 
 // Read a section by its index - for ex to get sec hdr strtab blob
 int readCodeSections(const ElfObject& elfObj, vector<codeSection>& cs) {
-    int entries = elfObj.sh.size();
+    int entries = elfObj.SHsize();
     int ret = 0;
 
     vector<struct bpf_prog_def> pd;
@@ -347,7 +354,7 @@ int readCodeSections(const ElfObject& elfObj, vector<codeSection>& cs) {
     if (!pd.empty() && ret) return ret;
 
     for (int i = 0; i < entries; i++) {
-        const char* name = elfObj.getStr(elfObj.sh[i].sh_name);
+        const char* name = elfObj.getStr(elfObj.SH(i).sh_name);
         if (!name) return -1;
 
         // all we want to process is sections FOO/BAR, but:
@@ -369,7 +376,7 @@ int readCodeSections(const ElfObject& elfObj, vector<codeSection>& cs) {
         if (strchr(sanitizedName.c_str() + (first_slash - name) + 1, '/')) abort(); // There should only be one!
 
         auto s = elfObj.getSectionByIdx(i);
-        if (s.empty() && elfObj.sh[i].sh_size > 0) return -1;
+        if (s.empty() && elfObj.SH(i).sh_size > 0) return -1;
         codeSection cs_temp;
         cs_temp.data.assign(s.begin(), s.end());
         ALOGV("Loaded code section %d (%s)", i, sanitizedName.c_str());
@@ -389,12 +396,12 @@ int readCodeSections(const ElfObject& elfObj, vector<codeSection>& cs) {
 
         // Check for rel section
         if (cs_temp.data.size() > 0 && i + 1 < entries) {
-            const char* next_name = elfObj.getStr(elfObj.sh[i + 1].sh_name);
+            const char* next_name = elfObj.getStr(elfObj.SH(i + 1).sh_name);
             if (!next_name) return -1;
 
             if (!strcmp(next_name, (".rel" + oldName).c_str())) {
                 auto rel_s = elfObj.getSectionByIdx(i + 1);
-                if (rel_s.empty() && elfObj.sh[i + 1].sh_size > 0) return -1;
+                if (rel_s.empty() && elfObj.SH(i + 1).sh_size > 0) return -1;
                 cs_temp.rel_data.assign(rel_s.begin(), rel_s.end());
                 ALOGV("Loaded relo section %d (%s)", i, next_name);
             }
