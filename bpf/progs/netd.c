@@ -31,14 +31,17 @@ static const int DROP_UNLESS_DNS = 2;  // internal to our program
 // offsetof(struct iphdr, ihl) -- but that's a bitfield
 #define IPPROTO_IHL_OFF 0
 
-// This is offsetof(struct tcphdr, "32 bit tcp flag field")
-// The tcp flags are after be16 source, dest & be32 seq, ack_seq, hence 12 bytes in.
-//
 // Note that TCP_FLAG_{ACK,PSH,RST,SYN,FIN} are htonl(0x00{10,08,04,02,01}0000)
-// see include/uapi/linux/tcp.h
-#define TCP_FLAG32_OFF 12
+// see include/uapi/linux/tcp.h.
+//
+// Since we only support little endian, that effectively
+// means they're 0x0000{10,08,04,02,01}00 which is the same as 0x{10,08,04,02,01}00,
+// which in turn is the same as htons(0x{10,08,04,02,01})
+//
+// This means they can *also* be used to match against __be16 flags16 field.
 
-#define TCP_FLAG8_OFF (TCP_FLAG32_OFF + 1)
+// This is the offset of the 2nd byte of tcp flags
+#define TCP_FLAG8_OFF (TCP_OFFSET(flags16) + 1)
 #define TCP_FLAG8_SYN 0x02
 
 #define EINVAL  22
@@ -680,7 +683,7 @@ static __always_inline inline void do_packet_tracing(
 static __always_inline inline bool skip_owner_match(struct __sk_buff* skb,
                                                     const struct egress_bool egress,
                                                     const struct kver_uint kver) {
-    uint32_t flag = 0;
+    __be16 flags16 = 0;
     if (skb->protocol == htons(ETH_P_IP)) {
         uint8_t proto;
         // no need to check for success, proto will be zeroed if bpf_skb_load_bytes_net() fails
@@ -695,8 +698,8 @@ static __always_inline inline bool skip_owner_match(struct __sk_buff* skb,
         // (we also don't check that ihl in [0x45,0x4F] nor that ipv4 header checksum is correct)
         (void)bpf_skb_load_bytes_net(skb, IPPROTO_IHL_OFF, &ihl, sizeof(ihl), kver);
         // if the read below fails, we'll just assume no TCP flags are set, which is fine.
-        (void)bpf_skb_load_bytes_net(skb, (ihl & 0xF) * 4 + TCP_FLAG32_OFF,
-                                     &flag, sizeof(flag), kver);
+        (void)bpf_skb_load_bytes_net(skb, (ihl & 0xF) * 4 + TCP_OFFSET(flags16),
+                                     &flags16, sizeof(flags16), kver);
     } else if (skb->protocol == htons(ETH_P_IPV6)) {
         uint8_t proto;
         // no need to check for success, proto will be zeroed if bpf_skb_load_bytes_net() fails
@@ -704,13 +707,13 @@ static __always_inline inline bool skip_owner_match(struct __sk_buff* skb,
         if (proto == IPPROTO_ESP) return true;
         if (proto != IPPROTO_TCP) return false;  // handles read failure above
         // if the read below fails, we'll just assume no TCP flags are set, which is fine.
-        (void)bpf_skb_load_bytes_net(skb, sizeof(struct ipv6hdr) + TCP_FLAG32_OFF,
-                                     &flag, sizeof(flag), kver);
+        (void)bpf_skb_load_bytes_net(skb, sizeof(struct ipv6hdr) + TCP_OFFSET(flags16),
+                                     &flags16, sizeof(flags16), kver);
     } else {
         return false;
     }
     // Always allow RST's, and additionally allow ingress FINs
-    return flag & (TCP_FLAG_RST | (egress.egress ? 0 : TCP_FLAG_FIN));  // false on read failure
+    return flags16 & (TCP_FLAG_RST | (egress.egress ? 0 : TCP_FLAG_FIN));  // false on read failure
 }
 
 static __always_inline inline BpfConfig getConfig(uint32_t configKey) {
