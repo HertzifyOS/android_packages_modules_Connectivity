@@ -1304,12 +1304,27 @@ DEFINE_NETD_V_BPF_PROG_KVER_RANGE(getsockopt, prog, 5_4, 5_4, 5_10)
 
 // --- SETSOCKOPT HOOK ---
 
-DEFINE_NETD_V_BPF_PROG_KVER(setsockopt, prog, , 5_4)
-(struct bpf_sockopt *ctx) {
+static inline __always_inline int inet_setsockopt(struct bpf_sockopt *ctx,
+                                                  __unused const struct kver_uint kver) {
     // Tell kernel to use/process original buffer provided by userspace.
     // This is important if it is larger than PAGE_SIZE (max size this bpf hook can handle).
     ctx->optlen = 0;
     return BPF_ALLOW;
+}
+
+DEFINE_NETD_V_BPF_PROG_KVER(setsockopt, prog, 6_1, 6_1)
+(struct bpf_sockopt *ctx) {
+    return inet_setsockopt(ctx, KVER_6_1);
+}
+
+DEFINE_NETD_V_BPF_PROG_KVER_RANGE(setsockopt, prog, 5_10, 5_10, 6_1)
+(struct bpf_sockopt *ctx) {
+    return inet_setsockopt(ctx, KVER_5_10);
+}
+
+DEFINE_NETD_V_BPF_PROG_KVER_RANGE(setsockopt, prog, 5_4, 5_4, 5_10)
+(struct bpf_sockopt *ctx) {
+    return inet_setsockopt(ctx, KVER_5_4);
 }
 
 #include "tcpAccECN.h"
