@@ -373,7 +373,7 @@ int readCodeSections(const ElfObject& elfObj, vector<codeSection>& cs) {
         string sanitizedName = name;
         sanitizedName[first_slash - name] = '_';
 
-        if (strchr(sanitizedName.c_str() + (first_slash - name) + 1, '/')) abort(); // There should only be one!
+        if (strchr(sanitizedName.c_str(), '/')) abort(); // There should only be one!
 
         auto s = elfObj.getSectionByIdx(i);
         if (s.empty() && elfObj.SH(i).sh_size > 0) return -1;
