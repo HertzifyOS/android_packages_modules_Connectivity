@@ -10230,12 +10230,6 @@ public class ConnectivityService extends IConnectivityManager.Stub
         final LinkProperties lpCopy = new LinkProperties(linkProperties);
         // No need to copy |localNetworkConfiguration| as it is immutable.
 
-        if (isAppSpecificNetwork) {
-            // For app specific network, set the app's UID and make network restricted.
-            ncCopy.setSingleUid(uid);
-            ncCopy.removeCapability(NET_CAPABILITY_NOT_RESTRICTED);
-        }
-
         // At this point the capabilities/properties are untrusted and unverified, e.g. checks that
         // the capabilities' access UIDs comply with security limitations. They will be sanitized
         // as the NAI registration finishes, in handleRegisterNetworkAgent(). This is
