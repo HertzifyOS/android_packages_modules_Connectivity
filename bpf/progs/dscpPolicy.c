@@ -38,10 +38,14 @@ static inline __always_inline uint64_t calculate_u64(uint64_t v) {
     return v;
 }
 
-    // Lookup failure cannot happen on an array with MAX_POLICIES entries.
-    // While 'continue' would make logical sense here, 'return' should be
-    // easier for the verifier to analyze.
-    if (!policy) return;
+struct compute_ctx {
+    uint64_t best_score;
+    RuleEntry e;
+};
+
+static long
+compute(__unused const void *map, __unused const uint32_t *key, DscpPolicy *policy, void *ctx_) {
+    struct compute_ctx *ctx = ctx_;
 
     // Think of 'nomatch' as a 64-bit boolean: false iff zero, true iff non-zero.
     // Start off with nomatch being false, ie. we assume things *are* matching.
@@ -55,22 +59,22 @@ static inline __always_inline uint64_t calculate_u64(uint64_t v) {
     //   match &&= (a == b)
 
     // If policy iface index does not match skb, then skip to next policy.
-    nomatch |= (policy->ifindex ^ skb->ifindex);
+    nomatch |= (policy->ifindex ^ ctx->e.ifindex);
 
     // policy->match_* are normal booleans, and should thus always be 0 or 1,
     // thus you can think of these as:
     //   if (policy->match_foo) match &&= (foo == policy->foo);
-    nomatch |= policy->match_proto * (protocol ^ policy->proto);
-    nomatch |= policy->match_src_ip * v6_not_equal(src_ip, policy->src_ip);
-    nomatch |= policy->match_dst_ip * v6_not_equal(dst_ip, policy->dst_ip);
-    nomatch |= policy->match_src_port * (sport ^ policy->src_port);
+    nomatch |= policy->match_proto * (ctx->e.proto ^ policy->proto);
+    nomatch |= policy->match_src_ip * v6_not_equal(ctx->e.src_ip, policy->src_ip);
+    nomatch |= policy->match_dst_ip * v6_not_equal(ctx->e.dst_ip, policy->dst_ip);
+    nomatch |= policy->match_src_port * (ctx->e.src_port ^ policy->src_port);
 
     // Since these values are u16s (<=63 bits), we can rely on u64 subtraction
     // underflow setting the topmost bit.  Basically, you can think of:
     //   nomatch |= (a - b) >> 63
     // as:
     //   match &&= (a >= b)
-    uint64_t dport64 = dport;  // Note: dst_port_{start_end} range is inclusive of both ends.
+    uint64_t dport64 = ctx->e.dst_port;  // dst_port_{start_end} range is inclusive of both ends.
     nomatch |= calculate_u64(dport64 - policy->dst_port_start) >> 63;
     nomatch |= calculate_u64(policy->dst_port_end - dport64) >> 63;
 
@@ -92,14 +96,16 @@ static inline __always_inline uint64_t calculate_u64(uint64_t v) {
     // which is the same as
     //   match &&= (score >= best_score + 1)
     // > not >= because we want equal score matches to prefer choosing earlier policies
-    nomatch |= calculate_u64(score - best_score - 1) >> 63;
+    nomatch |= calculate_u64(score - ctx->best_score - 1) >> 63;
 
     COMPILER_FORCE_CALCULATION(nomatch);
-    if (nomatch) continue;
+    if (nomatch) return 0;
 
     // only reachable if we matched the policy and (score > best_score)
-    best_score = score;
-    new_dscp = policy->dscp_val;
+    ctx->best_score = score;
+    ctx->e.dscp_val = policy->dscp_val;
+    return 0;
+}
 
 static inline __always_inline void match_policy(struct __sk_buff* skb, const bool ipv4) {
     void* data = (void*)(long)skb->data;
@@ -221,44 +227,36 @@ static inline __always_inline void match_policy(struct __sk_buff* skb, const boo
         return;  // cached DSCP mutation
     }
 
+    struct compute_ctx ctx = {
+        .best_score = 0,
+        .e.src_ip = src_ip,
+        .e.dst_ip = dst_ip,
+        .e.ifindex = skb->ifindex,
+        .e.src_port = sport,
+        .e.dst_port = dport,
+        .e.proto = protocol,
+        .e.dscp_val = -1,  // meaning no mutation
+    };
+
     // Linear scan ipv?_dscp_policies_map since stored params didn't match skb.
-    uint64_t best_score = 0;
-    int8_t new_dscp = -1;  // meaning no mutation
-
-    for (register uint64_t i = 0; i < MAX_POLICIES; i++) {
-        // Using a uint64 in for loop prevents infinite loop during BPF load,
-        // but the key is uint32, so convert back.
-        uint32_t key = i;
-
-        DscpPolicy* policy;
-        if (ipv4) {
-            policy = bpf_ipv4_dscp_policies_map_lookup_elem(&key);
-        } else {
-            policy = bpf_ipv6_dscp_policies_map_lookup_elem(&key);
-        }
-
+    if (ipv4) {
+        bpf_for_each_ipv4_dscp_policies_map_elem(compute, &ctx);
+    } else {
+        bpf_for_each_ipv6_dscp_policies_map_elem(compute, &ctx);
     }
 
     // Update cache with found policy.
-    *existing_rule = (RuleEntry){
-        .src_ip = src_ip,
-        .dst_ip = dst_ip,
-        .ifindex = skb->ifindex,
-        .src_port = sport,
-        .dst_port = dport,
-        .proto = protocol,
-        .dscp_val = new_dscp,
-    };
+    *existing_rule = ctx.e;
 
-    if (new_dscp < 0) return;
+    if (ctx.e.dscp_val < 0) return;  // no mutation
 
     // Need to store bytes after updating map or program will not load.
     if (ipv4) {
-        uint8_t new_tos = UPDATE_TOS(new_dscp, tos);
+        uint8_t new_tos = UPDATE_TOS(ctx.e.dscp_val, tos);
         bpf_l3_csum_replace(skb, l2_header_size + IP4_OFFSET(check), htons(tos), htons(new_tos), 2);
         bpf_skb_store_bytes(skb, l2_header_size + IP4_OFFSET(tos), &new_tos, sizeof(new_tos), 0);
     } else {
-        __be32 new_first_be32 = htonl(ntohl(old_first_be32) & 0xF03FFFFF | (new_dscp << 22));
+        __be32 new_first_be32 = htonl(ntohl(old_first_be32) & 0xF03FFFFF | (ctx.e.dscp_val << 22));
         bpf_skb_store_bytes(skb, l2_header_size, &new_first_be32, sizeof(__be32),
             BPF_F_RECOMPUTE_CSUM);
     }
