@@ -23,15 +23,7 @@
 #undef NETBPFLOAD_MINAPI_VER
 #define NETBPFLOAD_MINAPI_VER NETBPFLOAD_26Q2_VER
 
-#define TCP_FLAGS_OFF 12
-#define IP4_TCP_FLAGS_OFF (sizeof(struct iphdr) + TCP_FLAGS_OFF)
-#define IP6_TCP_FLAGS_OFF (sizeof(struct ipv6hdr) + TCP_FLAGS_OFF)
-
-#define ETH_IP4_TCP_FLAGS_OFF (ETH_HLEN + IP4_TCP_FLAGS_OFF)
-#define ETH_IP6_TCP_FLAGS_OFF (ETH_HLEN + IP6_TCP_FLAGS_OFF)
-
 #define TCP_OPTION_ACCECN1_SIZE 11
-#define TCPHDR_SYN 0x02
 
 DEFINE_BPF_MAP(l4s_conn_counter, ARRAY, uint32_t, uint32_t, 1)
 DEFINE_BPF_SK_STORAGE(sk_l4s_storage, L4SStorage)
@@ -147,7 +139,7 @@ DEFINE_BPF_PROG_KVER(sockops, accecn_option, , AID_SYSTEM, 6_1)
             break;
         case BPF_SOCK_OPS_HDR_OPT_LEN_CB:
         {
-            if (skops->skb_tcp_flags & TCPHDR_SYN) {
+            if (skops->skb_tcp_flags & TCP_FLAG8_SYN) {
                 break;
             }
 
@@ -160,7 +152,7 @@ DEFINE_BPF_PROG_KVER(sockops, accecn_option, , AID_SYSTEM, 6_1)
         }
         case BPF_SOCK_OPS_WRITE_HDR_OPT_CB:
         {
-            if (skops->skb_tcp_flags & TCPHDR_SYN) {
+            if (skops->skb_tcp_flags & TCP_FLAG8_SYN) {
                 break;
             }
 
@@ -222,7 +214,7 @@ DEFINE_BPF_PROG_KVER(schedcls, egress_accecn_eth, , AID_SYSTEM, 6_1)
         return TC_ACT_PIPE;
     }
 
-    int tcp_flags_offset = isIpv4 ? ETH_IP4_TCP_FLAGS_OFF : ETH_IP6_TCP_FLAGS_OFF;
+    int tcp_flags_offset = isIpv4 ? ETH_IP4_TCP_OFFSET(flags16) : ETH_IP6_TCP_OFFSET(flags16);
     int tcp_csum_offset = isIpv4 ? ETH_IP4_TCP_OFFSET(check) : ETH_IP6_TCP_OFFSET(check);
     int ret = 0;
 
@@ -364,7 +356,7 @@ DEFINE_BPF_PROG_KVER(ingress, accecn_common, , AID_SYSTEM, 6_1)
         return 1;
     }
 
-    int tcp_flags_offset = isIpv4 ? IP4_TCP_FLAGS_OFF : IP6_TCP_FLAGS_OFF;
+    int tcp_flags_offset = isIpv4 ? IP4_TCP_OFFSET(flags16) : IP6_TCP_OFFSET(flags16);
 
     if (tcph->syn && tcph->ack) {
         __u16 flags;
@@ -489,7 +481,7 @@ DEFINE_BPF_PROG_KVER(schedcls, egress_accecn_rawip, , AID_SYSTEM, 6_1)
         return TC_ACT_PIPE;
     }
 
-    int tcp_flags_offset = isIpv4 ? IP4_TCP_FLAGS_OFF : IP6_TCP_FLAGS_OFF;
+    int tcp_flags_offset = isIpv4 ? IP4_TCP_OFFSET(flags16) : IP6_TCP_OFFSET(flags16);
     int tcp_csum_offset = isIpv4 ? IP4_TCP_OFFSET(check) : IP6_TCP_OFFSET(check);
     int ret = 0;
 

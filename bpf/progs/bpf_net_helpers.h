@@ -62,8 +62,21 @@ struct frag_hdr {
 #define TCP_HLEN sizeof(struct tcphdr)
 #define UDP_HLEN sizeof(struct udphdr)
 
+// copied from //bionic/libc/include/bits/tcphdr.h 'struct tcphdr' but with bitfield replaced with flags16
+struct tcphdr_with_flags16 {
+  uint16_t source;
+  uint16_t dest;
+  uint32_t seq;
+  uint32_t ack_seq;
+  uint16_t flags16;
+  uint16_t window;
+  uint16_t check;
+  uint16_t urg_ptr;
+};
+_Static_assert(sizeof(struct tcphdr_with_flags16) == sizeof(struct tcphdr), "struct tcphdr_with_flags16 ?!?");
+
 // Offsets from beginning of L4 (TCP/UDP) header
-#define TCP_OFFSET(field) offsetof(struct tcphdr, field)
+#define TCP_OFFSET(field) offsetof(struct tcphdr_with_flags16, field)
 #define UDP_OFFSET(field) offsetof(struct udphdr, field)
 
 // Offsets from beginning of L3 (IPv4) header
