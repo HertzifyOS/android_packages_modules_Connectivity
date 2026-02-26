@@ -19,10 +19,6 @@
  *              Includes separate handling for Ethernet and raw IP packets.
  */
 
-// The resulting maps/programs need to load on Android 26Q2+
-#undef NETBPFLOAD_MINAPI_VER
-#define NETBPFLOAD_MINAPI_VER NETBPFLOAD_26Q2_VER
-
 DEFINE_BPF_MAP(l4s_conn_counter, ARRAY, uint32_t, uint32_t, 1)
 DEFINE_BPF_SK_STORAGE(sk_l4s_storage, L4SStorage)
 DEFINE_BPF_MAP_NO_NETD(l4s_accecn_enabled_map, ARRAY, uint32_t, bool, 1)

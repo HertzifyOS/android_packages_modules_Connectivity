@@ -187,6 +187,16 @@ DEFINE_BPF_MAP_RO_NETD(loopback_access_metrics_enabled_map, ARRAY, uint32_t, boo
     DEFINE_BPF_PROG_EXT(TYPE, NAME, VER, AID_ROOT, AID_NET_ADMIN, 4_9, INF, \
                         MINAPI, MAXAPI, MANDATORY, "net_shared", DEFAULT_BPF_PIN_SUBDIR)
 
+// tcpAccECN maps/programs need to load only on Android 26Q2+
+#undef NETBPFLOAD_MINAPI_VER
+#define NETBPFLOAD_MINAPI_VER NETBPFLOAD_26Q2_VER
+
+#include "tcpAccECN.h"
+
+// reset back to T+ minimum for the rest of the file
+#undef NETBPFLOAD_MINAPI_VER
+#define NETBPFLOAD_MINAPI_VER NETBPFLOAD_T_VER
+
 /*
  * Note: this blindly assumes an MTU of 1500, and that packets > MTU are always TCP,
  * and that TCP is using the Linux default settings with TCP timestamp option enabled
@@ -1339,7 +1349,5 @@ DEFINE_NETD_V_BPF_PROG_KVER_RANGE(setsockopt, prog, 5_4, 5_4, 5_10)
 (struct bpf_sockopt *ctx) {
     return inet_setsockopt(ctx, KVER_5_4);
 }
-
-#include "tcpAccECN.h"
 
 LICENSE("Apache 2.0");
