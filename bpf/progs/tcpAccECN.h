@@ -23,8 +23,6 @@
 #undef NETBPFLOAD_MINAPI_VER
 #define NETBPFLOAD_MINAPI_VER NETBPFLOAD_26Q2_VER
 
-#define TCP_OPTION_ACCECN1_SIZE 11
-
 DEFINE_BPF_MAP(l4s_conn_counter, ARRAY, uint32_t, uint32_t, 1)
 DEFINE_BPF_SK_STORAGE(sk_l4s_storage, L4SStorage)
 DEFINE_BPF_MAP_NO_NETD(l4s_accecn_enabled_map, ARRAY, uint32_t, bool, 1)
@@ -115,11 +113,11 @@ is_l4s_enabled() {
 static const struct {
     __u8 kind;
     __u8 length;
-    __u8 data[TCP_OPTION_ACCECN1_SIZE - 2];
-} __attribute__((packed)) tcp_option = {
+    __u8 data[9];
+} __attribute__((packed)) tcp_accecn_option = {
     .kind = 174,
-    .length = TCP_OPTION_ACCECN1_SIZE,
-    .data = {0},
+    .length = sizeof tcp_accecn_option,
+    .data = {},
 };
 
 DEFINE_BPF_PROG_KVER(sockops, accecn_option, , AID_SYSTEM, 6_1)
@@ -147,7 +145,7 @@ DEFINE_BPF_PROG_KVER(sockops, accecn_option, , AID_SYSTEM, 6_1)
             if (!st || !st->byte_inited) {
                 break;
             }
-            bpf_reserve_hdr_opt(skops, TCP_OPTION_ACCECN1_SIZE, 0);
+            bpf_reserve_hdr_opt(skops, sizeof tcp_accecn_option, 0);
             break;
         }
         case BPF_SOCK_OPS_WRITE_HDR_OPT_CB:
@@ -160,7 +158,7 @@ DEFINE_BPF_PROG_KVER(sockops, accecn_option, , AID_SYSTEM, 6_1)
             if (!st || !st->byte_inited) {
                 break;
             }
-            bpf_store_hdr_opt(skops, &tcp_option, TCP_OPTION_ACCECN1_SIZE, 0);
+            bpf_store_hdr_opt(skops, &tcp_accecn_option, sizeof tcp_accecn_option, 0);
             break;
         }
         default:
