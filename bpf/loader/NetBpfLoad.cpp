@@ -327,7 +327,7 @@ class ElfObject {
 
     int getSymOffsetByName(const char *name, int *off) const {
         vector<Elf64_Sym> symtab;
-        int ret = readSymTab(1 /* sort */, symtab);
+        int ret = readSymTab(0 /* sort */, symtab);
         if (ret) return ret;
         for (unsigned i = 0; i < symtab.size(); i++) {
             const char* s = getStr(symtab[i].st_name);
