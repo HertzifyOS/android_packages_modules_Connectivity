@@ -1777,8 +1777,19 @@ static int doLoad(char** argv, char * const envp[]) {
         }
         int y = -1, q = -1, a = -1, b = -1, c = -1;
         int v = fscanf(f, "# %d %d %d %d %d #", &y, &q, &a, &b, &c);
-        ALOGI("detected %d of 5: %dQ%d api:%d.%d.%d", v, y, q, a, b, c);
         fclose(f);
+        // y = year, q = quarter, a = major sdk, b = minor sdk
+        int abc = a * 100 + b * 10 + c * 2;
+        if ((api_level_full & ~1) == abc) {  // bottom bit means unreleased, ignore it
+            ALOGI("detected %d of 5: %dQ%d api:%d.%d.%d=%d", v, y, q, a, b, c, abc);
+        } else {
+            // it did not match, presumably we upgraded due to apex version
+            int yy = y;
+            int qq = q + 1;
+            if (qq == 5) { qq = 1; yy++; };
+            ALOGI("parsed %d of 5: %dQ%d -> %dQ%d api:%d.%d.%d=%d -> %d",
+                  v, y, q, yy, qq, a, b, c, abc, api_level_full & ~1);
+        }
         if (v != 5) return 16;
         if (y < 2025 || y > 2099) return 17;
         if (q < 1 || q > 4) return 18;
