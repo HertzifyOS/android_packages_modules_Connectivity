@@ -24,7 +24,6 @@
 #define NETBPFLOAD_MINAPI_VER NETBPFLOAD_26Q2_VER
 
 #define TCP_OPTION_ACCECN1_SIZE 11
-#define TCPHDR_SYN 0x02
 
 DEFINE_BPF_MAP(l4s_conn_counter, ARRAY, uint32_t, uint32_t, 1)
 DEFINE_BPF_SK_STORAGE(sk_l4s_storage, L4SStorage)
@@ -140,7 +139,7 @@ DEFINE_BPF_PROG_KVER(sockops, accecn_option, , AID_SYSTEM, 6_1)
             break;
         case BPF_SOCK_OPS_HDR_OPT_LEN_CB:
         {
-            if (skops->skb_tcp_flags & TCPHDR_SYN) {
+            if (skops->skb_tcp_flags & TCP_FLAG8_SYN) {
                 break;
             }
 
@@ -153,7 +152,7 @@ DEFINE_BPF_PROG_KVER(sockops, accecn_option, , AID_SYSTEM, 6_1)
         }
         case BPF_SOCK_OPS_WRITE_HDR_OPT_CB:
         {
-            if (skops->skb_tcp_flags & TCPHDR_SYN) {
+            if (skops->skb_tcp_flags & TCP_FLAG8_SYN) {
                 break;
             }
 
