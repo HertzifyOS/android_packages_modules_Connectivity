@@ -18,14 +18,17 @@ package com.android.server.connectivity.mdns.internal
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.SmallTest
 import com.android.net.module.util.SharedLog
+import com.android.testutils.DevSdkIgnoreRule
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mockito.Mockito.mock
 
 private const val TEST_UID = 12345
+private const val TEST_PACKAGE = "com.android.test.package"
 private const val SERVICE_NAME = "MyService"
 private const val SERVICE_TYPE = "_test._tcp"
 
@@ -41,51 +44,66 @@ class ServiceAccessRepositoryTest {
 
     @Test
     fun testAddAndQueryAllowedService() {
-        repository.addAllowedService(TEST_UID, SERVICE_NAME, SERVICE_TYPE)
+        repository.addAllowedService(TEST_UID, TEST_PACKAGE, SERVICE_NAME, SERVICE_TYPE)
 
-        assertTrue(repository.isServiceAllowed(TEST_UID, SERVICE_NAME, SERVICE_TYPE))
+        assertTrue(repository.isServiceAllowed(TEST_UID, TEST_PACKAGE, SERVICE_NAME, SERVICE_TYPE))
     }
 
     @Test
     fun testServiceNotAllowed_NoService_NotAllowedByDefault() {
-        assertFalse(repository.isServiceAllowed(TEST_UID, SERVICE_NAME, SERVICE_TYPE))
+        assertFalse(repository.isServiceAllowed(TEST_UID, TEST_PACKAGE, SERVICE_NAME, SERVICE_TYPE))
     }
 
     @Test
     fun testServiceNotAllowed_UidMismatch_NotAllowed() {
-        repository.addAllowedService(TEST_UID, SERVICE_NAME, SERVICE_TYPE)
+        repository.addAllowedService(TEST_UID, TEST_PACKAGE, SERVICE_NAME, SERVICE_TYPE)
 
-        assertFalse(repository.isServiceAllowed(TEST_UID + 1, SERVICE_NAME, SERVICE_TYPE))
+        assertFalse(
+            repository.isServiceAllowed(TEST_UID + 1, TEST_PACKAGE, SERVICE_NAME, SERVICE_TYPE)
+        )
+    }
+
+    @Test
+    fun testServiceNotAllowed_PackageMismatch_NotAllowed() {
+        repository.addAllowedService(TEST_UID, TEST_PACKAGE, SERVICE_NAME, SERVICE_TYPE)
+
+        assertFalse(
+            repository.isServiceAllowed(TEST_UID, "other.package", SERVICE_NAME, SERVICE_TYPE)
+        )
     }
 
     @Test
     fun testServiceNotAllowed_ServiceNameMismatch_NotAllowed() {
-        repository.addAllowedService(TEST_UID, SERVICE_NAME, SERVICE_TYPE)
+        repository.addAllowedService(TEST_UID, TEST_PACKAGE, SERVICE_NAME, SERVICE_TYPE)
 
-        assertFalse(repository.isServiceAllowed(TEST_UID, "Other service", SERVICE_TYPE))
+        assertFalse(
+            repository.isServiceAllowed(TEST_UID, TEST_PACKAGE, "Other service", SERVICE_TYPE)
+        )
     }
 
     @Test
     fun testServiceNotAllowed_ServiceTypeMismatch_NotAllowed() {
-        repository.addAllowedService(TEST_UID, SERVICE_NAME, SERVICE_TYPE)
+        repository.addAllowedService(TEST_UID, TEST_PACKAGE, SERVICE_NAME, SERVICE_TYPE)
 
-        assertFalse(repository.isServiceAllowed(TEST_UID, SERVICE_NAME, "_othertype._tcp"))
+        assertFalse(
+            repository.isServiceAllowed(TEST_UID, TEST_PACKAGE, SERVICE_NAME, "_othertype._tcp")
+        )
     }
 
     @Test
     fun testCaseInsensitivity() {
-        repository.addAllowedService(TEST_UID, "MyService", "_test._TCP")
+        repository.addAllowedService(TEST_UID, TEST_PACKAGE, "MyService", "_test._TCP")
 
-        assertTrue(repository.isServiceAllowed(TEST_UID, "myservice", "_TEST._tcp"))
+        assertTrue(repository.isServiceAllowed(TEST_UID, TEST_PACKAGE, "myservice", "_TEST._tcp"))
     }
 
     @Test
-    fun testUnloadUid() {
-        repository.addAllowedService(TEST_UID, SERVICE_NAME, SERVICE_TYPE)
-        assertTrue(repository.isServiceAllowed(TEST_UID, SERVICE_NAME, SERVICE_TYPE))
+    fun testUnloadPackage() {
+        repository.addAllowedService(TEST_UID, TEST_PACKAGE, SERVICE_NAME, SERVICE_TYPE)
+        assertTrue(repository.isServiceAllowed(TEST_UID, TEST_PACKAGE, SERVICE_NAME, SERVICE_TYPE))
 
-        repository.unloadUid(TEST_UID)
+        repository.unloadPackage(TEST_UID, TEST_PACKAGE)
 
-        assertFalse(repository.isServiceAllowed(TEST_UID, SERVICE_NAME, SERVICE_TYPE))
+        assertFalse(repository.isServiceAllowed(TEST_UID, TEST_PACKAGE, SERVICE_NAME, SERVICE_TYPE))
     }
 }

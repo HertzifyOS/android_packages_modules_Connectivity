@@ -29,6 +29,7 @@ import android.util.Log;
 
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.net.module.util.DeviceConfigUtils;
+import com.android.server.connectivity.mdns.internal.ServiceAccessRepository.PackageEntry;
 import com.android.server.connectivity.mdns.internal.ServiceAccessRepository.Service;
 
 import java.io.File;
@@ -326,20 +327,6 @@ public class ServiceAccessDb {
                     new String[] { packageName });
         } catch (SQLiteException e) {
             Log.e(TAG, "Error deleting entries for package " + packageName, e);
-        }
-    }
-
-    /**
-     * Return value for {@link #getLeastRefreshedPackages(int)}.
-     */
-    public static class PackageEntry {
-        public final int uid;
-        @NonNull
-        public final String packageName;
-
-        PackageEntry(int uid, @NonNull String packageName) {
-            this.uid = uid;
-            this.packageName = packageName;
         }
     }
 
