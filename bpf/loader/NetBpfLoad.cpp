@@ -1433,6 +1433,14 @@ const char *const uprobestatsBpfLoader =
     "/apex/com.android.uprobestats/bin/uprobestatsbpfload";
 
 static int logTetheringApexVersion(void) {
+    char src_apex[16] = {};
+    if (!isUser) {
+        // man readlink: Upon success, readlink() returns count of bytes placed in the buffer.
+        // Otherwise, it shall return a value of -1, leave buffer unchanged, and set errno.
+        int res = readlink("/system/etc/source_apex_version", src_apex, sizeof(src_apex) - 1);
+        src_apex[res >= 0 ? res : 0] = 0; // forcibly NUL terminate, safe since sizeof-1 above
+    }
+
     char * found_blockdev = NULL;
     FILE * f = NULL;
     char buf[4096];
@@ -1477,7 +1485,11 @@ static int logTetheringApexVersion(void) {
         char * at = strchr(mntpath, '@');
         if (!at) continue;
         char * ver = at + 1;
-        ALOGI("Tethering APEX version %s", ver);
+        if (isUser) {
+            ALOGI("Tethering APEX version %s", ver);
+        } else {
+            ALOGI("Tethering APEX version %s (system: %s)", ver, src_apex);
+        }
     }
     fclose(f);
     free(found_blockdev);
