@@ -228,7 +228,7 @@ class ElfObject {
                 auto s = getSectionByIdx(i);
                 if (s.empty() && sh[i].sh_size > 0) return -1;
 
-                if (s.size() % sizeof(T)) return -1;
+                if (s.size() % sizeof(T)) abort();
                 data.assign((const T*)s.data(), (const T*)(s.data() + s.size()));
 
                 return 0;
