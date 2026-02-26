@@ -508,7 +508,7 @@ static int setBtfVarOffset(const ElfObject &elfObj, struct btf *btf,
     for (i = 0, vsi = btf_var_secinfos(datasecBt); i < vars; i++, vsi++) {
         const struct btf_type *varBt = btf__type_by_id(btf, vsi->type);
         if (!varBt || !btf_is_var(varBt)) {
-            ALOGE("Found non VAR kind btf_type, section: %s id: %d", datasecName,
+            ALOGE("Found non VAR kind btf_type, section: %s id: %u", datasecName,
                   vsi->type);
             return -1;
         }
@@ -660,12 +660,12 @@ int getKeyValueTids(const struct btf *btf, const char *mapName,
 
     kvBt = btf__type_by_id(btf, kvId);
     if (!kvBt) {
-        ALOGE("Couldn't find BTF type, map: %s id: %u", mapName, kvId);
+        ALOGE("Couldn't find BTF type, map: %s id: %d", mapName, kvId);
         return -1;
     }
 
     if (!btf_is_struct(kvBt) || btf_vlen(kvBt) < 2) {
-        ALOGE("Non Struct kind or invalid vlen, map: %s id: %u", mapName, kvId);
+        ALOGE("Non Struct kind or invalid vlen, map: %s id: %d", mapName, kvId);
         return -1;
     }
 
@@ -685,10 +685,10 @@ int getKeyValueTids(const struct btf *btf, const char *mapName,
     }
 
     if (expectedKeySize != keySize || expectedValueSize != valueSize) {
-        ALOGE("Key value size mismatch, map: %s key size: %d expected key size: "
-              "%d value size: %d expected value size: %d",
-              mapName, (uint32_t)keySize, expectedKeySize, (uint32_t)valueSize,
-              expectedValueSize);
+        ALOGE("Key value size mismatch, map: %s"
+              " key size: %" PRId64 " expected key size: %u"
+              " value size: %" PRId64 " expected value size: %u",
+              mapName, keySize, expectedKeySize, valueSize, expectedValueSize);
         return -1;
     }
 
@@ -1006,7 +1006,7 @@ static int pinProg(const borrowed_fd& fd, const struct bpf_prog_def& progDef) {
     if (chown(progDef.pin_location, (uid_t)progDef.uid,
               (gid_t)progDef.gid)) {
         const int err = errno;
-        ALOGE("chown %s %d %d -> [%d:%s]", progDef.pin_location, progDef.uid,
+        ALOGE("chown %s %u %u -> [%d:%s]", progDef.pin_location, progDef.uid,
               progDef.gid, err, strerror(err));
         return -err;
     }
@@ -1060,11 +1060,11 @@ static int loadCodeSections(const ElfObject& elfObj, vector<codeSection>& cs, co
         int ret;
 
         if (!cs[i].prog_def.has_value()) {
-            ALOGE("[%d] missing program definition! bad bpf.o build?", i);
+            ALOGE("[%u] missing program definition! bad bpf.o build?", i);
             return -EINVAL;
         }
 
-        ALOGD("cs[%d].name:%s kver in [%x,%x) api level in [%d,%d)",
+        ALOGD("cs[%u].name:%s kver in [%x,%x) api level in [%d,%d)",
               i, cs[i].prog_def->name(),
               cs[i].prog_def->min_kver, cs[i].prog_def->max_kver,
               cs[i].prog_def->min_api_level_full, cs[i].prog_def->max_api_level_full);
@@ -1195,7 +1195,7 @@ static int prepareLoadMaps(const struct bpf_object* obj, const vector<struct bpf
 static int prepareLoadProgs(const struct bpf_object* obj, const vector<codeSection>& cs) {
     for (unsigned i = 0; i < cs.size(); i++) {
         if (!cs[i].prog_def.has_value()) {
-            ALOGE("[%d] missing program definition! bad bpf.o build?", i);
+            ALOGE("[%u] missing program definition! bad bpf.o build?", i);
             return -EINVAL;
         }
         string program_name = cs[i].program_name;
@@ -1354,7 +1354,7 @@ int loadProg(const char* const elfPath) {
     }
 
     for (unsigned i = 0; i < mapFds.size(); i++)
-        ALOGV("map_fd found at %d is %d in %s", i, mapFds[i].get(), elfPath);
+        ALOGV("map_fd found at %u is %d in %s", i, mapFds[i].get(), elfPath);
 
     ret = readCodeSections(elfObj, cs);
     if (ret == -ENOENT) return 0;
@@ -1406,7 +1406,7 @@ static bool createDir(const char* const dir) {
 
     if (mkdir(dir, S_ISVTX | S_IRWXU | S_IRWXG | S_IRWXO) && errno != EEXIST) {
         umask(prevUmask); // cannot fail
-        ALOGE("Failed to create directory: %s, ret: %s", dir, std::strerror(errno));
+        ALOGE("Failed to create directory: %s, err: %s", dir, std::strerror(errno));
         return false;
     }
 
@@ -1595,7 +1595,7 @@ static int doLoad(char** argv, char * const envp[]) {
     // first in U QPR2 beta~2
     const bool has_platform_netbpfload_rc = exists("/system/etc/init/netbpfload.rc");
 
-    ALOGI("NetBpfLoad (%s) api:%d/%d kver:%07x (%s:%uk) libbpf: v%u.%u uid:%d rc:%d%d user:%d%d%d",
+    ALOGI("NetBpfLoad (%s) api:%d/%d kver:%07x (%s:%uk) libbpf: v%u.%u uid:%u rc:%d%d user:%d%d%d",
           argv[0], android_get_device_api_level(), api_level_full,
           kernelVer, describeArch(), page_size >> 10,
           libbpf_major_version(), libbpf_minor_version(), getuid(), has_platform_bpfloader_rc,
@@ -1878,7 +1878,7 @@ static int doLoad(char** argv, char * const envp[]) {
             // We should fail here on Xiaomi S 4.14.180 due to kernel uapi bug,
             // which causes bpfGetNextMapId to behave as bpfGetNextProgId,
             // and thus it should return 0 with errno == ENOENT.
-            ALOGE("bpfGetNextMapId(final %d) returned %d errno %d", mapId, next, errno);
+            ALOGE("bpfGetNextMapId(final %u) returned %u errno %d", mapId, next, errno);
             if (next || errno != ENOENT) return 35;
             if (isAtLeastT || isAtLeastKernelVersion(4, 20)) return 36;
             // implies Android S with 4.14 or 4.19 kernel
