@@ -128,16 +128,18 @@ typedef struct {
     unique_fd prog_fd; // fd after loading
 } codeSection;
 
-struct ElfObject {
-    const char * path;
+class ElfObject {
     void* base;
     size_t size;
     const Elf64_Ehdr* eh;
-    std::span<const Elf64_Shdr> sh;
     std::span<const char> bytes;
     std::span<const char> strtab;
 
-    ElfObject(const char* elfPath) : path(elfPath), base(MAP_FAILED), size(0), eh(nullptr) {
+  public:
+    const char * const path;
+    std::span<const Elf64_Shdr> sh;  // TODO: this should be const to public
+
+    ElfObject(const char* elfPath) : base(MAP_FAILED), size(0), eh(nullptr), path(elfPath) {
         unique_fd fd(open(path, O_RDONLY | O_CLOEXEC));
         if (fd < 0) {
             ALOGE("open(%s) failed: %s", path, strerror(errno));
