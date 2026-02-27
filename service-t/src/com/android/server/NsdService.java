@@ -3263,8 +3263,8 @@ public class NsdService extends INsdManager.Stub {
             final int clientRequestId = getClientRequestIdOrLog(clientInfo, transactionId);
             if (clientRequestId < 0) return;
 
-            // onRegisterServiceSucceeded only has the service name and hostname in its info. This
-            // aligns with historical behavior.
+            // onRegisterServiceSucceeded only has the service name in its info. This aligns with
+            // historical behavior. The host name field was added in Android B.
             final NsdServiceInfo cbInfo = new NsdServiceInfo(registeredInfo.getServiceName(), null);
             cbInfo.setHostname(registeredInfo.getHostname());
             final ClientRequest request = clientInfo.mClientRequests.get(clientRequestId);
