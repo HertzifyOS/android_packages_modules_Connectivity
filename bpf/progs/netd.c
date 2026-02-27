@@ -31,14 +31,17 @@ static const int DROP_UNLESS_DNS = 2;  // internal to our program
 // offsetof(struct iphdr, ihl) -- but that's a bitfield
 #define IPPROTO_IHL_OFF 0
 
-// This is offsetof(struct tcphdr, "32 bit tcp flag field")
-// The tcp flags are after be16 source, dest & be32 seq, ack_seq, hence 12 bytes in.
-//
 // Note that TCP_FLAG_{ACK,PSH,RST,SYN,FIN} are htonl(0x00{10,08,04,02,01}0000)
-// see include/uapi/linux/tcp.h
-#define TCP_FLAG32_OFF 12
+// see include/uapi/linux/tcp.h.
+//
+// Since we only support little endian, that effectively
+// means they're 0x0000{10,08,04,02,01}00 which is the same as 0x{10,08,04,02,01}00,
+// which in turn is the same as htons(0x{10,08,04,02,01})
+//
+// This means they can *also* be used to match against __be16 flags16 field.
 
-#define TCP_FLAG8_OFF (TCP_FLAG32_OFF + 1)
+// This is the offset of the 2nd byte of tcp flags
+#define TCP_FLAG8_OFF (TCP_OFFSET(flags16) + 1)
 #define TCP_FLAG8_SYN 0x02
 
 #define EINVAL  22
@@ -184,6 +187,16 @@ DEFINE_BPF_MAP_RO_NETD(loopback_access_metrics_enabled_map, ARRAY, uint32_t, boo
     DEFINE_BPF_PROG_EXT(TYPE, NAME, VER, AID_ROOT, AID_NET_ADMIN, 4_9, INF, \
                         MINAPI, MAXAPI, MANDATORY, "net_shared", DEFAULT_BPF_PIN_SUBDIR)
 
+// tcpAccECN maps/programs need to load only on Android 26Q2+
+#undef NETBPFLOAD_MINAPI_VER
+#define NETBPFLOAD_MINAPI_VER NETBPFLOAD_26Q2_VER
+
+#include "tcpAccECN.h"
+
+// reset back to T+ minimum for the rest of the file
+#undef NETBPFLOAD_MINAPI_VER
+#define NETBPFLOAD_MINAPI_VER NETBPFLOAD_T_VER
+
 /*
  * Note: this blindly assumes an MTU of 1500, and that packets > MTU are always TCP,
  * and that TCP is using the Linux default settings with TCP timestamp option enabled
@@ -263,11 +276,11 @@ DEFINE_UPDATE_STATS(stats_map_A, StatsKey)
 DEFINE_UPDATE_STATS(stats_map_B, StatsKey)
 
 // both of these return 0 on success or -EFAULT on failure (and zero out the buffer)
-static __always_inline inline int bpf_skb_load_bytes_net(const struct __sk_buff* const skb,
-                                                         const int L3_off,
-                                                         void* const to,
-                                                         const int len,
-                                                         const struct kver_uint kver) {
+static __always_inline inline long bpf_skb_load_bytes_net(const struct __sk_buff* const skb,
+                                                          const int L3_off,
+                                                          void* const to,
+                                                          const int len,
+                                                          const struct kver_uint kver) {
     // 'kver' (here and throughout) is the compile time guaranteed minimum kernel version,
     // ie. we're building (a version of) the bpf program for kver (or newer!) kernels.
     //
@@ -680,7 +693,7 @@ static __always_inline inline void do_packet_tracing(
 static __always_inline inline bool skip_owner_match(struct __sk_buff* skb,
                                                     const struct egress_bool egress,
                                                     const struct kver_uint kver) {
-    uint32_t flag = 0;
+    __be16 flags16 = 0;
     if (skb->protocol == htons(ETH_P_IP)) {
         uint8_t proto;
         // no need to check for success, proto will be zeroed if bpf_skb_load_bytes_net() fails
@@ -695,8 +708,8 @@ static __always_inline inline bool skip_owner_match(struct __sk_buff* skb,
         // (we also don't check that ihl in [0x45,0x4F] nor that ipv4 header checksum is correct)
         (void)bpf_skb_load_bytes_net(skb, IPPROTO_IHL_OFF, &ihl, sizeof(ihl), kver);
         // if the read below fails, we'll just assume no TCP flags are set, which is fine.
-        (void)bpf_skb_load_bytes_net(skb, (ihl & 0xF) * 4 + TCP_FLAG32_OFF,
-                                     &flag, sizeof(flag), kver);
+        (void)bpf_skb_load_bytes_net(skb, (ihl & 0xF) * 4 + TCP_OFFSET(flags16),
+                                     &flags16, sizeof(flags16), kver);
     } else if (skb->protocol == htons(ETH_P_IPV6)) {
         uint8_t proto;
         // no need to check for success, proto will be zeroed if bpf_skb_load_bytes_net() fails
@@ -704,13 +717,13 @@ static __always_inline inline bool skip_owner_match(struct __sk_buff* skb,
         if (proto == IPPROTO_ESP) return true;
         if (proto != IPPROTO_TCP) return false;  // handles read failure above
         // if the read below fails, we'll just assume no TCP flags are set, which is fine.
-        (void)bpf_skb_load_bytes_net(skb, sizeof(struct ipv6hdr) + TCP_FLAG32_OFF,
-                                     &flag, sizeof(flag), kver);
+        (void)bpf_skb_load_bytes_net(skb, sizeof(struct ipv6hdr) + TCP_OFFSET(flags16),
+                                     &flags16, sizeof(flags16), kver);
     } else {
         return false;
     }
     // Always allow RST's, and additionally allow ingress FINs
-    return flag & (TCP_FLAG_RST | (egress.egress ? 0 : TCP_FLAG_FIN));  // false on read failure
+    return flags16 & (TCP_FLAG_RST | (egress.egress ? 0 : TCP_FLAG_FIN));  // false on read failure
 }
 
 static __always_inline inline BpfConfig getConfig(uint32_t configKey) {
@@ -968,8 +981,21 @@ DEFINE_NETD_BPF_PROG_KVER_RANGE(ingress, stats, 4_9, 4_9, 4_19)
 
 // ----- egress/stats -----
 
-// Android 25Q4+ (full featured)
-DEFINE_NETD_BPF_PROG_RANGES(egress, stats, 25q4, 5_10, INF, 25Q4, MAXAPI)
+// Android 26Q2+ 6.1+ (full featured + tcpAccECN)
+DEFINE_NETD_BPF_PROG_RANGES(egress, stats, 6_1_26q2, 6_1, INF, 26Q2, MAXAPI)
+(struct __sk_buff* skb) {
+    // place for tcpAccECN
+    return bpf_traffic_account(skb, EGRESS, KVER_6_1, SDK_LEVEL_26Q2);
+}
+
+// Android 26Q2+ 5.10/5.15 (full featured)
+DEFINE_NETD_BPF_PROG_RANGES(egress, stats, 5_10_26q2, 5_10, 6_1, 26Q2, MAXAPI)
+(struct __sk_buff* skb) {
+    return bpf_traffic_account(skb, EGRESS, KVER_5_10, SDK_LEVEL_26Q2);
+}
+
+// Android 25Q4/26Q1 (full featured)
+DEFINE_NETD_BPF_PROG_RANGES(egress, stats, 25q4, 5_10, INF, 25Q4, 26Q2)
 (struct __sk_buff* skb) {
     return bpf_traffic_account(skb, EGRESS, KVER_5_10, SDK_LEVEL_25Q4);
 }
@@ -1301,14 +1327,27 @@ DEFINE_NETD_V_BPF_PROG_KVER_RANGE(getsockopt, prog, 5_4, 5_4, 5_10)
 
 // --- SETSOCKOPT HOOK ---
 
-DEFINE_NETD_V_BPF_PROG_KVER(setsockopt, prog, , 5_4)
-(struct bpf_sockopt *ctx) {
+static inline __always_inline int inet_setsockopt(struct bpf_sockopt *ctx,
+                                                  __unused const struct kver_uint kver) {
     // Tell kernel to use/process original buffer provided by userspace.
     // This is important if it is larger than PAGE_SIZE (max size this bpf hook can handle).
     ctx->optlen = 0;
     return BPF_ALLOW;
 }
 
-#include "tcpAccECN.h"
+DEFINE_NETD_V_BPF_PROG_KVER(setsockopt, prog, 6_1, 6_1)
+(struct bpf_sockopt *ctx) {
+    return inet_setsockopt(ctx, KVER_6_1);
+}
+
+DEFINE_NETD_V_BPF_PROG_KVER_RANGE(setsockopt, prog, 5_10, 5_10, 6_1)
+(struct bpf_sockopt *ctx) {
+    return inet_setsockopt(ctx, KVER_5_10);
+}
+
+DEFINE_NETD_V_BPF_PROG_KVER_RANGE(setsockopt, prog, 5_4, 5_4, 5_10)
+(struct bpf_sockopt *ctx) {
+    return inet_setsockopt(ctx, KVER_5_4);
+}
 
 LICENSE("Apache 2.0");
