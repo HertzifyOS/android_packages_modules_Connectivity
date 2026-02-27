@@ -273,9 +273,9 @@ class ServiceAccessRepositoryTest {
         // Simulate an app restart after adding a service
         val receiver = captureReceiver()
         repository.addAllowedService(TEST_UID, TEST_PACKAGE, "service1", SERVICE_TYPE)
+        waitForIdle()
         repository.unloadPackage(TEST_UID, TEST_PACKAGE)
         repository.loadPackage(TEST_UID, TEST_PACKAGE)
-        waitForIdle()
 
         // Simulate the clear data broadcast being received after the app restarted, and a service
         // being added
