@@ -2088,9 +2088,16 @@ public class NsdService extends INsdManager.Stub {
             final ClientInfo clientInfo = new ClientInfo(cb, arg.uid, arg.pid, arg.packageName,
                     arg.useJavaBackend, mServiceLogs.forSubComponent(tag), metrics);
             mClients.put(arg.connector, clientInfo);
+            if (mDeps.isAconfigFlagEnabled(FLAG_NSD_SERVICE_PICKER)) {
+                // Load the access allowlist synchronously on the handler at client creation.
+                // This ensures that any request processed for that client will have the allowlist
+                // loaded. Loading the allowlist asynchronously (including posting it to the
+                // handler) would create ordering problems where a request could come in before
+                // the allowlist is loaded.
+                mAccessRepository.loadPackage(arg.uid, arg.packageName);
+            }
         } catch (RemoteException e) {
-            Log.w(TAG, "Client request id " + clientRequestId
-                    + " has already died");
+            Log.w(TAG, "Client request id " + clientRequestId + " has already died");
         }
     }
 
@@ -2857,7 +2864,11 @@ public class NsdService extends INsdManager.Stub {
         mPermissionManager = Objects.requireNonNull(
                 mContext.getSystemService(PermissionManager.class));
         mClock = deps.makeClock();
-        mAccessRepository = deps.makeAccessRepository(LOGGER.forSubComponent("MdnsAccess"));
+        mAccessRepository = deps.makeAccessRepository(ctx, looper,
+                LOGGER.forSubComponent("MdnsAccess"));
+        if (mEnablePicker) {
+            mAccessRepository.start();
+        }
     }
 
     /**
@@ -3047,8 +3058,9 @@ public class NsdService extends INsdManager.Stub {
         /**
          * @see ServiceAccessRepository
          */
-        public ServiceAccessRepository makeAccessRepository(@NonNull SharedLog sharedLog) {
-            return new ServiceAccessRepository(sharedLog);
+        public ServiceAccessRepository makeAccessRepository(@NonNull Context context,
+                @NonNull Looper looper, @NonNull SharedLog sharedLog) {
+            return new ServiceAccessRepository(context, looper, sharedLog);
         }
     }
 
@@ -3251,8 +3263,8 @@ public class NsdService extends INsdManager.Stub {
             final int clientRequestId = getClientRequestIdOrLog(clientInfo, transactionId);
             if (clientRequestId < 0) return;
 
-            // onRegisterServiceSucceeded only has the service name and hostname in its info. This
-            // aligns with historical behavior.
+            // onRegisterServiceSucceeded only has the service name in its info. This aligns with
+            // historical behavior. The host name field was added in Android B.
             final NsdServiceInfo cbInfo = new NsdServiceInfo(registeredInfo.getServiceName(), null);
             cbInfo.setHostname(registeredInfo.getHostname());
             final ClientRequest request = clientInfo.mClientRequests.get(clientRequestId);
