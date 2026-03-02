@@ -496,6 +496,45 @@ class HttpsEndpointAccumulatorTest {
   }
 
   @Test
+  fun testOnAnswer_whenAllRecordsWithCname_success() {
+    val networkCallback = callbackRule.registerDefaultNetworkCallback()
+    val answerCallback = createExpectAnswerCallback { response: HttpsEndpoint ->
+        assertContentEquals(TEST_CNAME_IP_ADDRESSES, response.ipAddresses)
+        assertTrue(response.httpsRecords.isEmpty())
+      }
+
+    val network = networkCallback.eventuallyExpect<Event.Available>(NETWORK_TIMEOUT_MS).network
+    val linkProperties = connectivityManager.getLinkProperties(network)
+
+    val accumulator = HttpsEndpointAccumulator(network, linkProperties, answerCallback,
+        /* queryCount= */ 3, QUERY_TIMEOUT_MS, /* hasIpv4= */ true, /* hasIpv6= */ true, handler,
+        /* userCancellationSignal= */ null, mockCancellationSignal)
+    accumulator.onAnswer(VALID_SINGLE_HTTPS_RECORD_RESPONSE_WITH_CNAME, /* rcode= */ 0)
+    accumulator.onAnswer(VALID_A_RECORD_RESPONSE_WITH_CNAME, /* rcode= */ 0)
+    accumulator.onAnswer(VALID_AAAA_RECORD_RESPONSE_WITH_CNAME, /* rcode= */ 0)
+  }
+
+  @Test
+  fun testOnAnswer_whenRecordsWithCnameNoAddressData_returnsEmptyIpAddressList() {
+    val networkCallback = callbackRule.registerDefaultNetworkCallback()
+    val answerCallback = createExpectAnswerCallback { response: HttpsEndpoint ->
+        assertTrue(response.ipAddresses.isEmpty())
+        assertTrue(response.httpsRecords.isEmpty())
+      }
+
+    val network = networkCallback.eventuallyExpect<Event.Available>(NETWORK_TIMEOUT_MS).network
+    val linkProperties = connectivityManager.getLinkProperties(network)
+
+    val accumulator = HttpsEndpointAccumulator(network, linkProperties, answerCallback,
+        /* queryCount= */ 2, DnsResolver.HTTPS_QUERY_WAIT_UNTIL_TIMEOUT, /* hasIpv4= */ false,
+        /* hasIpv6= */ true, handler, /* userCancellationSignal= */ null, mockCancellationSignal)
+    // Neither of these responses contain address data, so we expect the accumulator to return an
+    // empty list of IP addresses even if no timeout has been specified.
+    accumulator.onAnswer(VALID_SINGLE_HTTPS_RECORD_RESPONSE_WITH_CNAME, /* rcode= */ 0)
+    accumulator.onAnswer(AAAA_RESPONSE_WITH_CNAME_NO_ADDRESSES, /* rcode= */ 0)
+  }
+
+  @Test
   fun testOnAnswer_whenIpResponsesFirst_expectedResponseCount_onAnswerInvokedWithoutHttpsRecord() {
     val networkCallback = callbackRule.registerDefaultNetworkCallback()
 
@@ -829,11 +868,28 @@ class HttpsEndpointAccumulatorTest {
         InetAddresses.parseNumericAddress("2606:4700::6812:c76"),
         InetAddresses.parseNumericAddress("2606:4700::6812:d76")) + TEST_IP_HINTS_IPV6_ONLY
 
+    val TEST_CNAME_IP_ADDRESSES = listOf(
+        InetAddresses.parseNumericAddress("2.22.251.5"),
+        InetAddresses.parseNumericAddress("2.22.251.46"),
+        InetAddresses.parseNumericAddress("2a02:26f0:9100:11::6010:f914"),
+        InetAddresses.parseNumericAddress("2a02:26f0:9100:11::6010:f92b")
+    )
+
     // This is the exact A rawQuery response for cloudflare-ech.com.
     val VALID_A_RECORD_RESPONSE = HexDump.hexStringToByteArray(
       """
       |e5ed818000010002000000000e636c6f7564666c6172652d65636803636f6d000001
       |0001c00c000100010000012c000468120a76c00c000100010000012c000468120b76
+      """.trimMargin().replace("\n", ""))
+
+    // This is the exact A rawQuery response for www.akamai.com with a CNAME.
+    val VALID_A_RECORD_RESPONSE_WITH_CNAME = HexDump.hexStringToByteArray(
+      """
+      |c821818000010005000000000377777706616b616d616903636f6d0000010001c00c00050001000007c4001c0377
+      |777706616b616d616903636f6d07656467656b6579036e657400c02c000500010000008300300377777706616b61
+      |6d616903636f6d07656467656b6579036e65740b676c6f62616c726564697206616b61646e73c043c05400050001
+      |0000001e001a076532353932323204647363780a616b616d616965646765c043c090000100010000001400040216
+      |fb05c090000100010000001400040216fb2e
       """.trimMargin().replace("\n", ""))
 
     // This is the exact AAAA rawQuery response for cloudflare-ech.com.
@@ -853,6 +909,25 @@ class HttpsEndpointAccumulatorTest {
       |00010000012c001026064700000000000000000068120d76
       """.trimMargin().replace("\n", ""))
 
+    // This is the exact AAAA rawQuery response for www.akamai.com with a CNAME.
+    val VALID_AAAA_RECORD_RESPONSE_WITH_CNAME = HexDump.hexStringToByteArray(
+      """
+      |ae47818000010005000000000377777706616b616d616903636f6d00001c0001c00c000500010000078b001c0377
+      |777706616b616d616903636f6d07656467656b6579036e657400c02c000500010000004a00300377777706616b61
+      |6d616903636f6d07656467656b6579036e65740b676c6f62616c726564697206616b61646e73c043c05400050001
+      |0000001e001a076532353932323204647363780a616b616d616965646765c043c090001c00010000001400102a02
+      |26f091000011000000006010f914c090001c00010000001400102a0226f091000011000000006010f92b
+      """.trimMargin().replace("\n", ""))
+
+    // Modified AAAA response for www.akamai.com with a CNAME, but AAAA records removed.
+    val AAAA_RESPONSE_WITH_CNAME_NO_ADDRESSES = HexDump.hexStringToByteArray(
+      """
+      |ae47818000010003000000000377777706616b616d616903636f6d00001c0001c00c000500010000078b001c0377
+      |777706616b616d616903636f6d07656467656b6579036e657400c02c000500010000004a00300377777706616b61
+      |6d616903636f6d07656467656b6579036e65740b676c6f62616c726564697206616b61646e73c043c05400050001
+      |0000001e001a076532353932323204647363780a616b616d616965646765c043
+      """.trimMargin().replace("\n", ""))
+
     // This is the exact HTTPS rawQuery response for cloudflare-ech.com.
     val VALID_SINGLE_HTTPS_RECORD_RESPONSE = HexDump.hexStringToByteArray(
     """
@@ -862,6 +937,16 @@ class HttpsEndpointAccumulatorTest {
     |c72ba65d889ca06e8a4282a286710a0004000100010012636c6f7564666c6172652d65
     |63682e636f6d00000006002026064700000000000000000068120a7626064700000000
     |000000000068120b76
+    """.trimMargin().replace("\n", ""))
+
+    // This is the exact HTTPS rawQuery response for www.akamai.com with a CNAME.
+    val VALID_SINGLE_HTTPS_RECORD_RESPONSE_WITH_CNAME = HexDump.hexStringToByteArray(
+    """
+    |9a31818000010003000100000377777706616b616d616903636f6d0000410001c00c0005000100000a2b001c037777
+    |7706616b616d616903636f6d07656467656b6579036e657400c02c00050001000000cf00300377777706616b616d61
+    |6903636f6d07656467656b6579036e65740b676c6f62616c726564697206616b61646e73c043c05400050001000000
+    |1e001a076532353932323204647363780a616b616d616965646765c043c098000600010000020b002a066e30647363
+    |78c09d0a686f73746d6173746572c010698f4f4a000003e8000003e8000003e800000708
     """.trimMargin().replace("\n", ""))
 
     // This is a modified rawQuery cloudflare-ech.com response to have three HTTPS records of
