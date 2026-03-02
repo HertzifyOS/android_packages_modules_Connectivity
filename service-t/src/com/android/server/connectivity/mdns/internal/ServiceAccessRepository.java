@@ -21,13 +21,17 @@ import static android.content.Intent.ACTION_PACKAGE_REMOVED;
 import static android.content.Intent.EXTRA_DATA_REMOVED;
 
 import android.annotation.NonNull;
+import android.annotation.RequiresApi;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.os.UserHandle;
 import android.util.ArrayMap;
 import android.util.ArraySet;
@@ -37,6 +41,7 @@ import com.android.net.module.util.DnsUtils;
 import com.android.net.module.util.SharedLog;
 
 import java.io.PrintWriter;
+import java.util.ArrayList;
 import java.util.Objects;
 
 /**
@@ -45,6 +50,7 @@ import java.util.Objects;
  * <p>This class is not thread-safe, and all methods are expected to be called on the NsdService
  * handler thread.
  */
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
 public class ServiceAccessRepository {
 
     /**
@@ -56,11 +62,28 @@ public class ServiceAccessRepository {
     private static final int MAX_PERSIST_SERVICES_COUNT = 200;
     private static final String SCHEME_PACKAGE = "package";
 
+    /**
+     * How many packages to check for existence when performing database maintenance.
+     *
+     * <p>Entries are deleted when a package is uninstalled, but this may be missed if the device
+     * is shut down just after an uninstall. To make sure they get cleaned up, database maintenance
+     * will check a few "unchecked for the longest time" packages to make sure they still exist.
+     * This value is chosen arbitrarily as what feels right to minimize the cost of the maintenance,
+     * while making sure entries get eventually cleaned up in a small number of maintenance cycles.
+     */
+    @VisibleForTesting
+    static final int LEAST_REFRESHED_PACKAGES_CHECK_COUNT = 3;
+
+    private static final long MIN_MAINTENANCE_INTERVAL_MS = 60_000L;
+
     private final ArrayMap<PackageEntry, ArraySet<Service>> mAllowedServices = new ArrayMap<>();
     private final Context mContext;
     private final Handler mHandler;
     private final SharedLog mSharedLog;
     private final ServiceAccessDb mDb;
+
+    // Time of the last maintenance scheduled, as per SystemClock.elapsedRealtime()
+    private long mLastMaintenanceScheduledMs;
 
     private final BroadcastReceiver mPackageClearReceiver = new BroadcastReceiver() {
         @Override
@@ -217,6 +240,43 @@ public class ServiceAccessRepository {
     private void closeDbIfNoActivePackage() {
         if (mAllowedServices.isEmpty()) {
             mDb.close();
+        }
+    }
+
+    /**
+     * Schedule database maintenance for the next handler loop, if not rate-limited.
+     */
+    public void maybeScheduleDatabaseMaintenance() {
+        final long now = SystemClock.elapsedRealtime();
+        if (mLastMaintenanceScheduledMs != 0L
+                && now - mLastMaintenanceScheduledMs < MIN_MAINTENANCE_INTERVAL_MS) {
+            return;
+        }
+        mLastMaintenanceScheduledMs = now;
+        // This is expected to run on the handler already, but run the maintenance in the next
+        // handler loop to avoid blocking the caller
+        mHandler.post(this::runDatabaseMaintenance);
+    }
+
+    private void runDatabaseMaintenance() {
+        final ArrayList<PackageEntry> packages =
+                mDb.getLeastRefreshedPackages(LEAST_REFRESHED_PACKAGES_CHECK_COUNT);
+
+        for (PackageEntry pkg : packages) {
+            try {
+                final PackageManager userPm = mContext.createContextAsUser(
+                        UserHandle.getUserHandleForUid(pkg.uid), 0).getPackageManager();
+                final int uid = userPm.getPackageUid(pkg.packageName, /* flags= */0);
+                if (uid == pkg.uid) {
+                    mDb.refreshPackage(pkg.uid, pkg.packageName);
+                    continue;
+                }
+                mSharedLog.w("Package was reinstalled with new UID, clearing list: " + pkg);
+            } catch (PackageManager.NameNotFoundException e) {
+                // Fall through
+                mSharedLog.w("Package was removed, clearing list: " + pkg);
+            }
+            mDb.deleteAllEntriesForPackage(pkg.uid, pkg.packageName);
         }
     }
 
