@@ -30,6 +30,7 @@ import android.os.ConfigUpdate;
 import android.os.SystemClock;
 import android.util.Log;
 
+import java.io.File;
 import java.util.Collection;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -120,7 +121,11 @@ public class CertificateTransparencyJob extends BroadcastReceiver {
             Log.w(TAG, "Received unexpected broadcast with action " + intent);
             return;
         }
-        Future<?> unused = mExecutorService.submit(this::startJob);
+        Future<?> unused =
+                mExecutorService.submit(
+                        intent.getBooleanExtra("delete", false)
+                                ? this::deleteLogListDirectory
+                                : this::startJob);
     }
 
     private void startJob() {
@@ -137,6 +142,11 @@ public class CertificateTransparencyJob extends BroadcastReceiver {
         } else if (Config.DEBUG) {
             Log.d(TAG, "Public key download started successfully.");
         }
+    }
+
+    private void deleteLogListDirectory() {
+        Log.i(TAG, "Deleting log list directory.");
+        DirectoryUtils.removeDir(new File(Config.CT_ROOT_DIRECTORY_PATH));
     }
 
     private void startDependencies() {
