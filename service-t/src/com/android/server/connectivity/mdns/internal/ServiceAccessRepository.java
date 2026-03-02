@@ -158,7 +158,8 @@ public class ServiceAccessRepository {
         Objects.requireNonNull(serviceName);
         Objects.requireNonNull(serviceType);
         final PackageEntry pkg = new PackageEntry(uid, packageName);
-        final Service service = new Service(serviceName, serviceType);
+        final Service service = new Service(serviceName, serviceType,
+                /* needsSeenTimeRefresh= */false);
         ArraySet<Service> services = mAllowedServices.get(pkg);
         if (services == null) {
             services = new ArraySet<>();
@@ -190,7 +191,14 @@ public class ServiceAccessRepository {
         if (services == null) {
             return false;
         }
-        return services.contains(new Service(serviceName, serviceType));
+        final Service service = new Service(serviceName, serviceType,
+                /* needsSeenTimeRefresh= */true);
+        if (services.remove(service)) {
+            // Ensure "needsSeenTimeRefresh" is set to true
+            services.add(service);
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -213,7 +221,16 @@ public class ServiceAccessRepository {
      * <p>Allowed services can be reloaded from disk using {@link #loadPackage(int, String)}.
      */
     public void unloadPackage(int uid, @NonNull String packageName) {
-        mAllowedServices.remove(new PackageEntry(uid, packageName));
+        final ArraySet<Service> services = mAllowedServices.remove(
+                new PackageEntry(uid, packageName));
+        if (services == null) {
+            return;
+        }
+        // This records services as seen now, which is not exactly the right time, and some updates
+        // may be missed if the device shuts down without unloading the package. But the last seen
+        // time is only used to order which entries should be cleaned up in priority, so this is
+        // fine.
+        mDb.recordServicesSeen(uid, packageName, services);
         closeDbIfNoActivePackage();
     }
 
@@ -332,10 +349,18 @@ public class ServiceAccessRepository {
         @NonNull
         final String mType;
 
+        /**
+         * Whether the service was seen by the app since the app allowlist was loaded.
+         *
+         * <p>Note this is not used for lookups, so not in equals/hashCode
+         */
+        final boolean mNeedsSeenTimeRefresh;
+
         @VisibleForTesting(visibility = VisibleForTesting.Visibility.PACKAGE)
-        public Service(@NonNull String name, @NonNull String type) {
+        public Service(@NonNull String name, @NonNull String type, boolean needsSeenTimeRefresh) {
             this.mName = DnsUtils.toDnsUpperCase(name);
             this.mType = DnsUtils.toDnsUpperCase(type);
+            this.mNeedsSeenTimeRefresh = needsSeenTimeRefresh;
         }
 
         @Override
