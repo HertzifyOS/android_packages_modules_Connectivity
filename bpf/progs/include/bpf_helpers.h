@@ -570,13 +570,9 @@ static long (*bpf_trace_printk)(const char* fmt, int fmt_size, ...) = (void*) BP
     DEFINE_BPF_PROG_KVER_RANGE_OPT(TYPE, NAME, opt##min_kv, prog_gid, min_kv, max_kv, OPTIONAL)
 
 // programs requiring a kernel version >= min_kv
-#define DEFINE_BPF_PROG_KVER(TYPE, NAME, VER, prog_gid, min_kv)                 \
+#define DEFINE_BPF_PROG_KVER(TYPE, NAME, VER, prog_gid, min_kv) \
     DEFINE_BPF_PROG_KVER_RANGE_OPT(TYPE, NAME, VER, prog_gid, min_kv, INF, MANDATORY)
-#define DEFINE_OPTIONAL_BPF_PROG_KVER(TYPE, NAME, VER, prog_gid, min_kv)        \
-    DEFINE_BPF_PROG_KVER_RANGE_OPT(TYPE, NAME, VER, prog_gid, min_kv, INF, OPTIONAL)
 
 // programs with no kernel version requirements
 #define DEFINE_BPF_PROG(TYPE, NAME, VER, prog_gid) \
     DEFINE_BPF_PROG_KVER_RANGE_OPT(TYPE, NAME, VER, prog_gid, 4_9, INF, MANDATORY)
-#define DEFINE_OPTIONAL_BPF_PROG(TYPE, NAME, VER, prog_gid) \
-    DEFINE_BPF_PROG_KVER_RANGE_OPT(TYPE, NAME, VER, prog_gid, 4_9, INF, OPTIONAL)
