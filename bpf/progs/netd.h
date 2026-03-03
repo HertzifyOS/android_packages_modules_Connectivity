@@ -384,3 +384,7 @@ static inline bool is_system_uid(uint32_t uid) {
     // MAX_SYSTEM_UID is AID_NOBODY == 9999, while AID_APP_START == 10000
     return ((uid % AID_USER_OFFSET) < AID_APP_START);
 }
+
+static inline bool is_system_or_root(uint32_t uid) {
+    return (uid == AID_SYSTEM) || (uid == AID_ROOT);
+}

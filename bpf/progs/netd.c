@@ -389,12 +389,12 @@ static __always_inline inline bool is_local_network_access_blocked(const uint32_
     bool *permissionPropagationEnabled =
         bpf_permission_propagation_enabled_map_lookup_elem(&mapKey);
     if (permissionPropagationEnabled && *permissionPropagationEnabled) {
-        // TODO: stop exempting system uids once the test failure is fixed
-        if (is_system_uid(uid)) return false;
+        if (is_system_or_root(uid)) return false;
         if (get_chunk_permissions(uid) & PERMISSION_BIT_ACCESS_LOCAL_NETWORK)
             return false;
     } else {
-        // System uid has access to restricted local network
+        // Continue exempting system UIDs for the old map. This branch will be
+        // deprecated soon.
         if (is_system_uid(uid)) return false;
 
         // Uid that is not in the blocked uid map has access to restricted local network
