@@ -527,8 +527,8 @@ static long (*bpf_trace_printk)(const char* fmt, int fmt_size, ...) = (void*) BP
 #define BPF_PROG_ATTACH_TYPE_sysctl            BPF_CGROUP_SYSCTL
 #define BPF_PROG_ATTACH_TYPE_xdp               BPF_PROG_ATTACH_TYPE_DEFAULT
 
-#define DEFINE_BPF_PROG_EXT(TYPE, NAME, VER, prog_uid, prog_gid, min_kv, max_kv,              \
-                            min_api, max_api, opt, selinux, pindir)                           \
+#define DEFINE_BPF_PROG_EXT_(TYPE, NAME, VER, prog_uid, prog_gid, min_kv, max_kv,             \
+                             min_api, max_api, opt, selinux, pindir)                          \
     VALIDATE_SELINUX_CONTEXT(min_api, selinux);                                               \
     VALIDATE_PIN_DIR(min_api, pindir);                                                        \
     const struct bpf_prog_def SECTION(".android_progs") TYPE##_##NAME##_##VER##_def = {       \
@@ -548,9 +548,20 @@ static long (*bpf_trace_printk)(const char* fmt, int fmt_size, ...) = (void*) BP
     SECTION(#TYPE "/" #NAME "$" #VER)                                                         \
     long TYPE##_##NAME##_##VER
 
-#define DEFINE_BPF_PROG_KVER_RANGE_OPT(TYPE, NAME, VER, prog_gid, min_kv, max_kv, opt) \
-    DEFINE_BPF_PROG_EXT(TYPE, NAME, VER, AID_ROOT, prog_gid, min_kv, max_kv, MINAPI, MAXAPI, \
-                        opt, DEFAULT_BPF_MAP_SELINUX_CONTEXT, DEFAULT_BPF_PIN_SUBDIR)
+// Same as above but expands any macros present in all arguments first
+#define DEFINE_BPF_PROG_EXT(TYPE, NAME, VER, uid, gid, minKV, maxKV, minApi, maxApi, opt, selinux, pindir) \
+       DEFINE_BPF_PROG_EXT_(TYPE, NAME, VER, uid, gid, minKV, maxKV, minApi, maxApi, opt, selinux, pindir)
+
+// Converts MANDATORY/OPTIONAL into a token used for disambiguation, visible in section name after the $
+#define BPF_OPT_MANDATORY
+#define BPF_OPT_OPTIONAL opt
+
+#define CONCAT2_(v, w) v ## w
+#define CONCAT2(v, w) CONCAT2_(v, w)
+
+#define DEFINE_BPF_PROG_KVER_RANGE_OPT(TYPE, NAME, prog_gid, minKV, maxKV, opt) \
+  DEFINE_BPF_PROG_EXT(TYPE, NAME, CONCAT2(BPF_OPT_##opt, minKV), AID_ROOT, prog_gid, minKV, maxKV, \
+                      MINAPI, MAXAPI, opt, DEFAULT_BPF_MAP_SELINUX_CONTEXT, DEFAULT_BPF_PIN_SUBDIR)
 
 // Programs (here used in the sense of functions/sections) marked optional are allowed to fail
 // to load (for example due to missing kernel patches).
@@ -565,9 +576,9 @@ static long (*bpf_trace_printk)(const char* fmt, int fmt_size, ...) = (void*) BP
 
 // programs requiring a kernel version >= min_kv && < max_kv
 #define DEFINE_BPF_PROG_KVER_RANGE(TYPE, NAME, prog_gid, min_kv, max_kv) \
-    DEFINE_BPF_PROG_KVER_RANGE_OPT(TYPE, NAME, min_kv, prog_gid, min_kv, max_kv, MANDATORY)
+    DEFINE_BPF_PROG_KVER_RANGE_OPT(TYPE, NAME, prog_gid, min_kv, max_kv, MANDATORY)
 #define DEFINE_OPTIONAL_BPF_PROG_KVER_RANGE(TYPE, NAME, prog_gid, min_kv, max_kv)  \
-    DEFINE_BPF_PROG_KVER_RANGE_OPT(TYPE, NAME, opt##min_kv, prog_gid, min_kv, max_kv, OPTIONAL)
+    DEFINE_BPF_PROG_KVER_RANGE_OPT(TYPE, NAME, prog_gid, min_kv, max_kv, OPTIONAL)
 
 // programs requiring a kernel version >= min_kv
 #define DEFINE_BPF_PROG_KVER(TYPE, NAME, prog_gid, min_kv) \
