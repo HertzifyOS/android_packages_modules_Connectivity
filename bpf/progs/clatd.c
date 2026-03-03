@@ -252,7 +252,7 @@ DEFINE_BPF_PROG_KVER(schedcls, ingress6_clat_ether, AID_SYSTEM, 4_14)
     return nat64(skb, ETHER, KVER_4_14);
 }
 
-DEFINE_BPF_PROG_KVER_RANGE(schedcls, ingress6_clat_ether, 4_9, AID_SYSTEM, 4_9, 4_14)
+DEFINE_BPF_PROG_KVER_RANGE(schedcls, ingress6_clat_ether, AID_SYSTEM, 4_9, 4_14)
 (struct __sk_buff* skb) {
     return nat64(skb, ETHER, KVER_4_9);
 }
@@ -262,7 +262,7 @@ DEFINE_BPF_PROG_KVER(schedcls, ingress6_clat_rawip, AID_SYSTEM, 4_14)
     return nat64(skb, RAWIP, KVER_4_14);
 }
 
-DEFINE_BPF_PROG_KVER_RANGE(schedcls, ingress6_clat_rawip, 4_9, AID_SYSTEM, 4_9, 4_14)
+DEFINE_BPF_PROG_KVER_RANGE(schedcls, ingress6_clat_rawip, AID_SYSTEM, 4_9, 4_14)
 (struct __sk_buff* skb) {
     return nat64(skb, RAWIP, KVER_4_9);
 }
