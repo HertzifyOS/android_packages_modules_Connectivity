@@ -172,9 +172,6 @@ DEFINE_BPF_MAP_RO_NETD(loopback_access_metrics_enabled_map, ARRAY, uint32_t, boo
 #define DEFINE_NETD_BPF_PROG_KVER(TYPE, NAME, VER, min_kv) \
     DEFINE_NETD_BPF_PROG_KVER_RANGE(TYPE, NAME, VER, min_kv, INF)
 
-#define DEFINE_NETD_BPF_PROG(TYPE, NAME, VER) \
-    DEFINE_NETD_BPF_PROG_KVER(TYPE, NAME, VER, 4_9)
-
 #define DEFINE_NETD_V_BPF_PROG_KVER_RANGE(TYPE, NAME, minKV, maxKV) \
     DEFINE_BPF_PROG_EXT(TYPE, NAME, minKV, AID_ROOT, AID_ROOT, minKV, maxKV, \
                         V, MAXAPI, MANDATORY, "netd_readonly", DEFAULT_BPF_PIN_SUBDIR)
