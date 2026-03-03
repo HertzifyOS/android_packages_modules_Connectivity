@@ -860,11 +860,14 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb,
     // TODO(b/467964186): use the parsed skb
     int match = bpf_owner_match(skb, sock_uid, egress, kver, lvl);
 
+    bool dns = false;
+
 // Workaround for secureVPN with VpnIsolation enabled, refer to b/159994981 for details.
 // Keep TAG_SYSTEM_DNS in sync with DnsResolver/include/netd_resolv/resolv.h
 // and TrafficStatsConstants.java
 #define TAG_SYSTEM_DNS 0xFFFFFF82
     if (tag == TAG_SYSTEM_DNS && statsUid == AID_DNS) {
+        dns = true;
         statsUid = sock_uid;
         if (match == DROP_UNLESS_DNS) match = PASS;
     } else {
@@ -879,7 +882,7 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb,
         }
     }
 
-    if (SDK_LEVEL_IS_AT_LEAST(lvl, 25Q2) && (match != DROP)) {
+    if (SDK_LEVEL_IS_AT_LEAST(lvl, 25Q2) && (match != DROP) && !dns) {
         // TODO(b/467964186): use the parsed skb
         if (should_block_local_network_packets(skb, sock_uid, egress, kver)) {
             if (KVER_IS_AT_LEAST(kver, 5, 10, 0) && skb->sk && egress.egress) {
