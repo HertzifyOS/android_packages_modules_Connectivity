@@ -155,8 +155,8 @@ DEFINE_BPF_MAP_RO_NETD(loopback_access_metrics_enabled_map, ARRAY, uint32_t, boo
 // program (see XT_BPF_MODE_PATH_PINNED) and then the iptables binary (or rather
 // the kernel acting on behalf of it) must be able to retrieve the pinned program
 // for the reload to succeed
-#define DEFINE_XTBPF_PROG(TYPE, NAME, VER) \
-    DEFINE_BPF_PROG(TYPE, NAME, VER, AID_NET_ADMIN)
+#define DEFINE_XTBPF_PROG(TYPE, NAME) \
+    DEFINE_BPF_PROG(TYPE, NAME, , AID_NET_ADMIN)
 
 // programs that need to be usable by netd, but not by netutils_wrappers
 // (this is because these are currently attached by the mainline provided libnetd_updatable .so
@@ -1039,7 +1039,7 @@ DEFINE_NETD_BPF_PROG_KVER_RANGE(egress, stats, 4_9, 4_9, 4_19)
 // -----
 
 // WARNING: Android T's non-updatable netd depends on the name of this program.
-DEFINE_XTBPF_PROG(skfilter, egress_xtbpf, )
+DEFINE_XTBPF_PROG(skfilter, egress_xtbpf)
 (struct __sk_buff* skb) {
     // Clat daemon does not generate new traffic, all its traffic is accounted for already
     // on the v4-* interfaces (except for the 20 (or 28) extra bytes of IPv6 vs IPv4 overhead,
@@ -1058,7 +1058,7 @@ DEFINE_XTBPF_PROG(skfilter, egress_xtbpf, )
 }
 
 // WARNING: Android T's non-updatable netd depends on the name of this program.
-DEFINE_XTBPF_PROG(skfilter, ingress_xtbpf, )
+DEFINE_XTBPF_PROG(skfilter, ingress_xtbpf)
 (struct __sk_buff* skb) {
     // Clat daemon traffic is not accounted by virtue of iptables raw prerouting drop rule
     // (in clat_raw_PREROUTING chain), which triggers before this (in bw_raw_PREROUTING chain).
@@ -1081,7 +1081,7 @@ DEFINE_SYS_BPF_PROG(schedact, ingress_account)
 }
 
 // WARNING: Android T's non-updatable netd depends on the name of this program.
-DEFINE_XTBPF_PROG(skfilter, allowlist_xtbpf, )
+DEFINE_XTBPF_PROG(skfilter, allowlist_xtbpf)
 (struct __sk_buff* skb) {
     uint32_t sock_uid = bpf_get_socket_uid(skb);
     if (is_system_uid(sock_uid)) return XTBPF_MATCH;
@@ -1100,7 +1100,7 @@ DEFINE_XTBPF_PROG(skfilter, allowlist_xtbpf, )
 }
 
 // WARNING: Android T's non-updatable netd depends on the name of this program.
-DEFINE_XTBPF_PROG(skfilter, denylist_xtbpf, )
+DEFINE_XTBPF_PROG(skfilter, denylist_xtbpf)
 (struct __sk_buff* skb) {
     uint32_t sock_uid = bpf_get_socket_uid(skb);
     UidOwnerValue* denylistMatch = bpf_uid_owner_map_lookup_elem(&sock_uid);
