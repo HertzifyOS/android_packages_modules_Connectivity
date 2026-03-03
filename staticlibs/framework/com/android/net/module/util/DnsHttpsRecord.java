@@ -185,9 +185,13 @@ public class DnsHttpsRecord extends DnsRecord {
      *
      * <p>See RFC 9460 8 for more details.
      */
-    public @NonNull List<String> getMandatory() {
-        // TODO(b/454544870): implement this after fixing the return type of SvcParamMandatory
-        return Collections.emptyList();
+    public @NonNull short[] getMandatory() {
+        final SvcParam svcParamMandatory = mSvcParams.get(KEY_MANDATORY);
+        if (svcParamMandatory == null || !(svcParamMandatory instanceof SvcParamMandatory)) {
+            return new short[0];
+        }
+
+        return ((SvcParamMandatory) svcParamMandatory).getValue();
     }
 
     /**
