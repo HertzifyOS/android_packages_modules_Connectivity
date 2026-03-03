@@ -320,6 +320,9 @@ public abstract class SvcParam<T> {
         }
     }
 
+    /**
+     * Returns the human-readable name of the SvcParamKey.
+     */
     static String toKeyName(int key) {
         return switch (key) {
             case KEY_MANDATORY -> "mandatory";

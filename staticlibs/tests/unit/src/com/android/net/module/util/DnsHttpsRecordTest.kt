@@ -129,6 +129,16 @@ class DnsHttpsRecordTest {
     }
 
     @Test
+    fun verifyMandatoryKeys_whenFalse_throwsParseException() {
+        val recordBytes = DnsSvcbTestUtils.toByteBuffer(
+            FakeDnsRecord(svcParams = listOf(DnsSvcbTestUtils.TEST_SVC_PARAM_MANDATORY_ALPN)))
+
+        assertFailsWith<ParseException>("Invalid DnsHttpsRecord: mandatory key alpn is missing") {
+            DnsHttpsRecord(DnsPacket.ANSECTION, recordBytes).verifyMandatoryKeys()
+        }
+    }
+
+    @Test
     fun getPriority_returnsCorrectValue() {
         val record = DnsHttpsRecord(
             DnsPacket.ANSECTION,

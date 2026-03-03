@@ -837,6 +837,51 @@ class HttpsEndpointAccumulatorTest {
     verify(mockCancellationSignal, never()).cancel()
   }
 
+  @Test
+  fun testOnAnswer_whenOnlyHttpsRecordMissingMandatoryKey_returnsNoHttpsRecords() {
+    val networkCallback = callbackRule.registerDefaultNetworkCallback()
+
+    val network = networkCallback.eventuallyExpect<Event.Available>(NETWORK_TIMEOUT_MS).network
+    val linkProperties = connectivityManager.getLinkProperties(network)
+    val accumulator = HttpsEndpointAccumulator(network, linkProperties, mockUserCallback,
+        /* queryCount= */ 3, DnsResolver.HTTPS_QUERY_WAIT_AUTO, /* hasIpv4= */ true,
+        /* hasIpv6= */ true, handler, /* userCancellationSignal= */ null, mockCancellationSignal)
+    accumulator.onAnswer(VALID_A_RECORD_RESPONSE, /* rcode= */ 0)
+    accumulator.onAnswer(VALID_AAAA_RECORD_RESPONSE, /* rcode= */ 0)
+    accumulator.onAnswer(INVALID_MANDATORY_KEY_RESPONSE, /* rcode= */ 0)
+
+    verify(mockUserCallback, never()).onError(any())
+    verify(mockUserCallback, times(1)).onAnswer(endpointCaptor.capture(), anyInt())
+    with(endpointCaptor.value) {
+      assertContentEquals(TEST_IP_HINTS, ipAddresses)
+      // Verify that we haven't recorded the HTTPS record since it should have been filtered out
+      // due to the missing mandatory key.
+      assertTrue(httpsRecords.isEmpty())
+    }
+    // We don't expect any messages since we should've never started a timeout.
+    assertFalse(testLooperManager.hasMessages(handler, /* object= */ null, /* what= */ 0))
+    verify(mockCancellationSignal, times(1)).cancel()
+  }
+
+  @Test
+  fun testOnAnswer_whenOneRecordMissingMandatoryKey_onlyValidRecordReturned() {
+    val networkCallback = callbackRule.registerDefaultNetworkCallback()
+    val answerCallback = createExpectAnswerCallback { response: HttpsEndpoint ->
+        // Expect only 1 record, since the first one has a missing mandatory key and should be
+        // ignored.
+        assertEquals(1, response.httpsRecords.size)
+        with(response.httpsRecords.first()) {
+          assertEquals(2, priority)
+          assertEquals("", targetName)
+        }
+    }
+
+    val network = networkCallback.eventuallyExpect<Event.Available>(NETWORK_TIMEOUT_MS).network
+
+    val accumulator = createOnAnswerAccumulator(network, answerCallback)
+    accumulator.onAnswer(INVALID_MANDATORY_KEY_WITH_VALID_RECORD_RESPONSE, /* rcode= */ 0)
+  }
+
   private fun createErrorAccumulator(network: Network, callback: Callback<HttpsEndpoint>) =
       HttpsEndpointAccumulator(network, connectivityManager.getLinkProperties(network), callback,
           /* queryCount= */ 1, QUERY_TIMEOUT_MS, /* hasIpv4= */ false, /* hasIpv6= */ false,
@@ -1013,6 +1058,35 @@ class HttpsEndpointAccumulatorTest {
     |0045fe0d0041860020002058a2172489f01dcd0ff39adf7a40f2e791
     |c72ba65d889ca06e8a4282a286710a0004000100010012636c6f7564666c6172652d65
     |63682e636f6d0000
+    """.trimMargin().replace("\n", ""))
+
+    // This is a modified rawQuery cloudflare-ech.com response to have one HTTPS record, with a
+    // mandatory value corresponding to a non-existent SvcParamKey.
+    val INVALID_MANDATORY_KEY_RESPONSE = HexDump.hexStringToByteArray(
+    """
+    |da68818000010001000000000e636c6f7564666c6172652d65636803636f6d0000410001
+    |c00c004100010000012c008E00010000000002014d000100060268330268320004000868120a7668
+    |120b76000500470045fe0d0041860020002058a2172489f01dcd0ff39adf7a40f2e791
+    |c72ba65d889ca06e8a4282a286710a0004000100010012636c6f7564666c6172652d65
+    |63682e636f6d00000006002026064700000000000000000068120a7626064700000000
+    |000000000068120b76
+    """.trimMargin().replace("\n", ""))
+
+    // This is a modified rawQuery cloudflare-ech.com response to have two HTTPS records, where the
+    // first one contains a mandatory key that is missing from the params.
+    val INVALID_MANDATORY_KEY_WITH_VALID_RECORD_RESPONSE = HexDump.hexStringToByteArray(
+    """
+    |da68818000010002000000000e636c6f7564666c6172652d65636803636f6d0000410001
+    |c00c004100010000012c008E00010000000002014d000100060268330268320004000868120a7668
+    |120b76000500470045fe0d0041860020002058a2172489f01dcd0ff39adf7a40f2e791
+    |c72ba65d889ca06e8a4282a286710a0004000100010012636c6f7564666c6172652d65
+    |63682e636f6d00000006002026064700000000000000000068120a7626064700000000
+    |000000000068120b76
+    |c00c004100010000012c0088000200000100060268330268320004000868120a7668
+    |120b76000500470045fe0d0041860020002058a2172489f01dcd0ff39adf7a40f2e791
+    |c72ba65d889ca06e8a4282a286710a0004000100010012636c6f7564666c6172652d65
+    |63682e636f6d00000006002026064700000000000000000068120a7626064700000000
+    |000000000068120b76
     """.trimMargin().replace("\n", ""))
 
     private fun createExpectErrorCallback(assertError: (input: DnsException) -> Unit)

@@ -170,8 +170,16 @@ public class HttpsEndpointAccumulator implements DnsResolver.Callback<byte[]> {
                         addresses.add(InetAddress.getByAddress(record.getRR()));
                     }
                     case TYPE_HTTPS -> {
+                        DnsHttpsRecord dnsHttpsRecord = (DnsHttpsRecord) record;
+                        try {
+                            dnsHttpsRecord.verifyMandatoryKeys();
+                        } catch (DnsPacket.ParseException e) {
+                            // Ignore the HTTPS record as it is missing mandatory keys.
+                            continue;
+                        }
+
                         HttpsRecord httpsRecord =
-                                new HttpsRecord(mNetwork, mLinkProperties, (DnsHttpsRecord) record);
+                                new HttpsRecord(mNetwork, mLinkProperties, dnsHttpsRecord);
                         httpsRecords.add(httpsRecord);
 
                         // Add only the relevant IP hints to the list of IP addresses.
@@ -221,7 +229,8 @@ public class HttpsEndpointAccumulator implements DnsResolver.Callback<byte[]> {
                     // If we have received all but the HTTPS records, decide whether to return
                     // immediately or wait the given amount of time before returning incomplete
                     // results.
-                    if (mHttpsTimeoutMillis == DnsResolver.HTTPS_QUERY_WAIT_NONE) {
+                    if (mHttpsTimeoutMillis == DnsResolver.HTTPS_QUERY_WAIT_NONE
+                            || mResult.mReceivedAnswersToQueryTypes.contains(TYPE_HTTPS)) {
                         endpoint = createHttpsEndpoint(rcode);
                     } else if (mHttpsTimeoutMillis > 0) {
                         shouldStartHttpsTimeout = true;
