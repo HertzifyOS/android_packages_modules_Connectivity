@@ -71,6 +71,7 @@ import androidx.test.uiautomator.Until
 import com.android.compatibility.common.util.PollingCheck
 import com.android.compatibility.common.util.PropertyUtil
 import com.android.compatibility.common.util.SystemUtil
+import com.android.compatibility.common.util.UiAutomatorUtils2
 import com.android.modules.utils.build.SdkLevel.isAtLeastU
 import com.android.net.module.util.DnsPacket
 import com.android.net.module.util.DnsPacket.ANSECTION
@@ -727,9 +728,9 @@ class NsdManagerTest {
             packetReader.sendResponse(buildMdnsPacket(payload2))
 
             // Wait for the picker to appear and click on the second service
-            val serviceText = uiDevice.wait(Until.findObject(By.text(serviceName2)), UI_TIMEOUT_MS)
-            assertNotNull(serviceText, "Picker did not show service $serviceName2")
-            serviceText.click()
+            UiAutomatorUtils2.waitFindObject(
+                By.text(serviceName2), UI_TIMEOUT_MS
+            ).click()
 
             // Expect the next callback to be the 2nd service being found, even though the response
             // for the 1st service was sent first
