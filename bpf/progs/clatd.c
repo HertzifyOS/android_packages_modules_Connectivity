@@ -269,7 +269,7 @@ DEFINE_BPF_PROG_KVER_RANGE(schedcls, ingress6_clat_rawip, AID_SYSTEM, 4_9, 4_14)
 
 DEFINE_BPF_MAP_GRW(clat_egress4_map, HASH, ClatEgress4Key, ClatEgress4Value, 16, AID_SYSTEM)
 
-DEFINE_BPF_PROG(schedcls, egress4_clat_rawip, , AID_SYSTEM)
+DEFINE_BPF_PROG(schedcls, egress4_clat_rawip, AID_SYSTEM)
 (struct __sk_buff* skb) {
     // Must be meta-ethernet IPv4 frame
     if (skb->protocol != htons(ETH_P_IP)) return TC_ACT_PIPE;

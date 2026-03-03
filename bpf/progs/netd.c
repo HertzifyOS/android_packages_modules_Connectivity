@@ -156,7 +156,7 @@ DEFINE_BPF_MAP_RO_NETD(loopback_access_metrics_enabled_map, ARRAY, uint32_t, boo
 // the kernel acting on behalf of it) must be able to retrieve the pinned program
 // for the reload to succeed
 #define DEFINE_XTBPF_PROG(TYPE, NAME) \
-    DEFINE_BPF_PROG(TYPE, NAME, , AID_NET_ADMIN)
+    DEFINE_BPF_PROG(TYPE, NAME, AID_NET_ADMIN)
 
 // programs that need to be usable by netd, but not by netutils_wrappers
 // (this is because these are currently attached by the mainline provided libnetd_updatable .so

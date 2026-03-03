@@ -574,5 +574,5 @@ static long (*bpf_trace_printk)(const char* fmt, int fmt_size, ...) = (void*) BP
     DEFINE_BPF_PROG_KVER_RANGE(TYPE, NAME, prog_gid, min_kv, INF)
 
 // programs with no kernel version requirements
-#define DEFINE_BPF_PROG(TYPE, NAME, VER, prog_gid) \
-    DEFINE_BPF_PROG_KVER_RANGE_OPT(TYPE, NAME, VER, prog_gid, 4_9, INF, MANDATORY)
+#define DEFINE_BPF_PROG(TYPE, NAME, prog_gid) \
+    DEFINE_BPF_PROG_KVER(TYPE, NAME, prog_gid, 4_9)
