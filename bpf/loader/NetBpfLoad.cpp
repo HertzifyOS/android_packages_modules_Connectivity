@@ -137,6 +137,7 @@ class ElfObject {
     span<const Elf64_Shdr> sh;
     span<const char> strtab;
     span<const Elf64_Sym> symtab;
+    vector<Elf64_Sym> sortedSymtab;
 
   public:
     const char * const path;
@@ -195,6 +196,8 @@ class ElfObject {
             ALOGE("file %s symtab not found", path);
             abort();
         }
+        sortedSymtab.assign(symtab.begin(), symtab.end());
+        std::sort(sortedSymtab.begin(), sortedSymtab.end(), symCompare);
     }
 
     ~ElfObject() {
@@ -259,20 +262,8 @@ class ElfObject {
         return (a.st_value < b.st_value);
     }
 
-    int readSortedSymTab(vector<Elf64_Sym>& data) const {
-        data.assign(symtab.begin(), symtab.end());
-
-        std::sort(data.begin(), data.end(), symCompare);
-        return 0;
-    }
-
     int getSectionSymNames(const string& sectionName, vector<string>& names,
                            optional<unsigned> symbolType = std::nullopt) const {
-        vector<Elf64_Sym> sortedSymtab;
-
-        int ret = readSortedSymTab(sortedSymtab);
-        if (ret) return ret;
-
         // Get index of section
         int sec_idx = -1;
         for (unsigned i = 0; i < sh.size(); i++) {
