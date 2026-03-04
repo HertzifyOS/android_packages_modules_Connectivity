@@ -204,10 +204,14 @@ class ElfObject {
     const Elf64_Shdr & SH(unsigned idx) const { return sh[idx]; }
 
     // Get a span pointing to a section by its index
-    span<const char> getSectionByIdx(unsigned id) const {
+    template <typename T = char>
+    span<const T> getSectionByIdx(unsigned id) const {
         if (id >= sh.size()) return {};
-        if (sh[id].sh_offset > size || sh[id].sh_size > size - sh[id].sh_offset) return {};
-        return bytes.subspan(sh[id].sh_offset, sh[id].sh_size);
+        const auto& s = sh[id];
+        if (s.sh_offset > size || s.sh_size > size - s.sh_offset) return {};
+        if (s.sh_size % sizeof(T)) abort();
+        return {reinterpret_cast<const T*>(bytes.data() + s.sh_offset),
+                static_cast<size_t>(s.sh_size / sizeof(T))};
     }
 
     // Get string from offset in strtab.
@@ -226,11 +230,10 @@ class ElfObject {
             if (!secname) continue;
 
             if (!strcmp(secname, name)) {
-                auto s = getSectionByIdx(i);
+                auto s = getSectionByIdx<T>(i);
                 if (s.empty() && sh[i].sh_size > 0) return -1;
 
-                if (s.size() % sizeof(T)) abort();
-                data.assign((const T*)s.data(), (const T*)(s.data() + s.size()));
+                data.assign(s.begin(), s.end());
 
                 return 0;
             }
