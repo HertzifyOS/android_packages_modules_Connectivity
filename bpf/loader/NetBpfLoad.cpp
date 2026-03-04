@@ -252,11 +252,7 @@ class ElfObject {
         return -2;
     }
 
-    static bool symCompare(Elf64_Sym a, Elf64_Sym b) {
-        return (a.st_value < b.st_value);
-    }
-
-    int readSymTab(int sort, vector<Elf64_Sym>& data) const {
+    int readSymTab(vector<Elf64_Sym>& data) const {
         int ret;
         span<const char> secData;
 
@@ -266,7 +262,24 @@ class ElfObject {
         auto numElems = (secData.size() / sizeof(Elf64_Sym));
         data.assign((const Elf64_Sym*)secData.data(), (const Elf64_Sym*)secData.data() + numElems);
 
-        if (sort) std::sort(data.begin(), data.end(), symCompare);
+        return 0;
+    }
+
+    static bool symCompare(Elf64_Sym a, Elf64_Sym b) {
+        return (a.st_value < b.st_value);
+    }
+
+    int readSortedSymTab(vector<Elf64_Sym>& data) const {
+        int ret;
+        span<const char> secData;
+
+        ret = readSectionByType(SHT_SYMTAB, secData);
+        if (ret) return ret;
+
+        auto numElems = (secData.size() / sizeof(Elf64_Sym));
+        data.assign((const Elf64_Sym*)secData.data(), (const Elf64_Sym*)secData.data() + numElems);
+
+        std::sort(data.begin(), data.end(), symCompare);
         return 0;
     }
 
@@ -275,7 +288,7 @@ class ElfObject {
         int ret;
         vector<Elf64_Sym> symtab;
 
-        ret = readSymTab(1 /* sort */, symtab);
+        ret = readSortedSymTab(symtab);
         if (ret) return ret;
 
         // Get index of section
@@ -313,7 +326,7 @@ class ElfObject {
         vector<Elf64_Sym> symtab;
         int ret = 0;
 
-        ret = readSymTab(0 /* !sort */, symtab);
+        ret = readSymTab(symtab);
         if (ret) return ret;
 
         if (index >= symtab.size()) return -1;
@@ -326,7 +339,7 @@ class ElfObject {
 
     int getSymOffsetByName(const char *name, int *off) const {
         vector<Elf64_Sym> symtab;
-        int ret = readSymTab(0 /* sort */, symtab);
+        int ret = readSymTab(symtab);
         if (ret) return ret;
         for (unsigned i = 0; i < symtab.size(); i++) {
             const char* s = getStr(symtab[i].st_name);
