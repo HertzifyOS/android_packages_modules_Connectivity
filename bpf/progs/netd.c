@@ -175,12 +175,12 @@ DEFINE_BPF_MAP_RO_NETD(loopback_access_metrics_enabled_map, ARRAY, uint32_t, boo
 #define DEFINE_NETD_BPF_PROG(TYPE, NAME, VER) \
     DEFINE_NETD_BPF_PROG_KVER(TYPE, NAME, VER, 4_9)
 
-#define DEFINE_NETD_V_BPF_PROG_KVER_RANGE(TYPE, NAME, VER, minKV, maxKV) \
-    DEFINE_BPF_PROG_EXT(TYPE, NAME, VER, AID_ROOT, AID_ROOT, minKV, maxKV, \
+#define DEFINE_NETD_V_BPF_PROG_KVER_RANGE(TYPE, NAME, minKV, maxKV) \
+    DEFINE_BPF_PROG_EXT(TYPE, NAME, minKV, AID_ROOT, AID_ROOT, minKV, maxKV, \
                         V, MAXAPI, MANDATORY, "netd_readonly", DEFAULT_BPF_PIN_SUBDIR)
 
-#define DEFINE_NETD_V_BPF_PROG_KVER(TYPE, NAME, VER, minKV) \
-    DEFINE_NETD_V_BPF_PROG_KVER_RANGE(TYPE, NAME, VER, minKV, INF)
+#define DEFINE_NETD_V_BPF_PROG_KVER(TYPE, NAME, minKV) \
+    DEFINE_NETD_V_BPF_PROG_KVER_RANGE(TYPE, NAME, minKV, INF)
 
 // programs that only need to be usable by the system server
 #define DEFINE_SYS_BPF_PROG(TYPE, NAME) \
@@ -1244,36 +1244,36 @@ DEFINE_NETD_BPF_PROG_KVER_RANGE(bind6, inet6_bind, 4_19, 4_19, 5_15)
 
 // --- CONNECT CGROUP HOOKS ---
 
-DEFINE_NETD_V_BPF_PROG_KVER(connect4, inet4_connect, , 4_19)
+DEFINE_NETD_V_BPF_PROG_KVER(connect4, inet4_connect, 4_19)
 (__unused struct bpf_sock_addr *ctx) {
     return BPF_ALLOW;
 }
 
-DEFINE_NETD_V_BPF_PROG_KVER(connect6, inet6_connect, , 4_19)
+DEFINE_NETD_V_BPF_PROG_KVER(connect6, inet6_connect, 4_19)
 (__unused struct bpf_sock_addr *ctx) {
     return BPF_ALLOW;
 }
 
 // --- UDP RECVMSG HOOKS ---
 
-DEFINE_NETD_V_BPF_PROG_KVER(recvmsg4, udp4_recvmsg, , 4_19)
+DEFINE_NETD_V_BPF_PROG_KVER(recvmsg4, udp4_recvmsg, 4_19)
 (__unused struct bpf_sock_addr *ctx) {
     return BPF_ALLOW;
 }
 
-DEFINE_NETD_V_BPF_PROG_KVER(recvmsg6, udp6_recvmsg, , 4_19)
+DEFINE_NETD_V_BPF_PROG_KVER(recvmsg6, udp6_recvmsg, 4_19)
 (__unused struct bpf_sock_addr *ctx) {
     return BPF_ALLOW;
 }
 
 // --- UDP SENDMSG HOOKS ---
 
-DEFINE_NETD_V_BPF_PROG_KVER(sendmsg4, udp4_sendmsg, , 4_19)
+DEFINE_NETD_V_BPF_PROG_KVER(sendmsg4, udp4_sendmsg, 4_19)
 (__unused struct bpf_sock_addr *ctx) {
     return BPF_ALLOW;
 }
 
-DEFINE_NETD_V_BPF_PROG_KVER(sendmsg6, udp6_sendmsg, , 4_19)
+DEFINE_NETD_V_BPF_PROG_KVER(sendmsg6, udp6_sendmsg, 4_19)
 (__unused struct bpf_sock_addr *ctx) {
     return BPF_ALLOW;
 }
@@ -1310,17 +1310,17 @@ static inline __always_inline int inet_getsockopt(struct bpf_sockopt *ctx,
     return BPF_ALLOW;
 }
 
-DEFINE_NETD_V_BPF_PROG_KVER(getsockopt, prog, 6_1, 6_1)
+DEFINE_NETD_V_BPF_PROG_KVER(getsockopt, prog, 6_1)
 (struct bpf_sockopt *ctx) {
     return inet_getsockopt(ctx, KVER_6_1);
 }
 
-DEFINE_NETD_V_BPF_PROG_KVER_RANGE(getsockopt, prog, 5_10, 5_10, 6_1)
+DEFINE_NETD_V_BPF_PROG_KVER_RANGE(getsockopt, prog, 5_10, 6_1)
 (struct bpf_sockopt *ctx) {
     return inet_getsockopt(ctx, KVER_5_10);
 }
 
-DEFINE_NETD_V_BPF_PROG_KVER_RANGE(getsockopt, prog, 5_4, 5_4, 5_10)
+DEFINE_NETD_V_BPF_PROG_KVER_RANGE(getsockopt, prog, 5_4, 5_10)
 (struct bpf_sockopt *ctx) {
     return inet_getsockopt(ctx, KVER_5_4);
 }
@@ -1335,17 +1335,17 @@ static inline __always_inline int inet_setsockopt(struct bpf_sockopt *ctx,
     return BPF_ALLOW;
 }
 
-DEFINE_NETD_V_BPF_PROG_KVER(setsockopt, prog, 6_1, 6_1)
+DEFINE_NETD_V_BPF_PROG_KVER(setsockopt, prog, 6_1)
 (struct bpf_sockopt *ctx) {
     return inet_setsockopt(ctx, KVER_6_1);
 }
 
-DEFINE_NETD_V_BPF_PROG_KVER_RANGE(setsockopt, prog, 5_10, 5_10, 6_1)
+DEFINE_NETD_V_BPF_PROG_KVER_RANGE(setsockopt, prog, 5_10, 6_1)
 (struct bpf_sockopt *ctx) {
     return inet_setsockopt(ctx, KVER_5_10);
 }
 
-DEFINE_NETD_V_BPF_PROG_KVER_RANGE(setsockopt, prog, 5_4, 5_4, 5_10)
+DEFINE_NETD_V_BPF_PROG_KVER_RANGE(setsockopt, prog, 5_4, 5_10)
 (struct bpf_sockopt *ctx) {
     return inet_setsockopt(ctx, KVER_5_4);
 }
