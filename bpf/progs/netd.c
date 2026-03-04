@@ -161,19 +161,19 @@ DEFINE_BPF_MAP_RO_NETD(loopback_access_metrics_enabled_map, ARRAY, uint32_t, boo
 // programs that need to be usable by netd, but not by netutils_wrappers
 // (this is because these are currently attached by the mainline provided libnetd_updatable .so
 // which is loaded into netd and thus runs as netd uid/gid/selinux context)
-#define DEFINE_NETD_BPF_PROG_RANGES(TYPE, NAME, VER, minKV, maxKV, min_api, max_api) \
-    DEFINE_BPF_PROG_EXT(TYPE, NAME, VER, AID_ROOT, AID_ROOT,                         \
-                        minKV, maxKV, min_api, max_api, MANDATORY,                   \
+#define DEFINE_NETD_BPF_PROG_RANGES(TYPE, NAME, minKV, maxKV, min_api, max_api) \
+    DEFINE_BPF_PROG_EXT(TYPE, NAME, minKV ## _ ## min_api, AID_ROOT, AID_ROOT,  \
+                        minKV, maxKV, min_api, max_api, MANDATORY,              \
                         "netd_readonly", DEFAULT_BPF_PIN_SUBDIR)
 
 #define DEFINE_NETD_BPF_PROG_KVER_RANGE(TYPE, NAME, minKV, maxKV) \
-    DEFINE_NETD_BPF_PROG_RANGES(TYPE, NAME, minKV, minKV, maxKV, MINAPI, MAXAPI)
+    DEFINE_NETD_BPF_PROG_RANGES(TYPE, NAME, minKV, maxKV, MINAPI, MAXAPI)
 
 #define DEFINE_NETD_BPF_PROG_KVER(TYPE, NAME, minKV) \
     DEFINE_NETD_BPF_PROG_KVER_RANGE(TYPE, NAME, minKV, INF)
 
 #define DEFINE_NETD_V_BPF_PROG_KVER_RANGE(TYPE, NAME, minKV, maxKV) \
-    DEFINE_NETD_BPF_PROG_RANGES(TYPE, NAME, minKV, minKV, maxKV, V, MAXAPI)
+    DEFINE_NETD_BPF_PROG_RANGES(TYPE, NAME, minKV, maxKV, V, MAXAPI)
 
 #define DEFINE_NETD_V_BPF_PROG_KVER(TYPE, NAME, minKV) \
     DEFINE_NETD_V_BPF_PROG_KVER_RANGE(TYPE, NAME, minKV, INF)
@@ -934,25 +934,25 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb,
 // ----- ingress/stats -----
 
 // Android 25Q4+ (full featured)
-DEFINE_NETD_BPF_PROG_RANGES(ingress, stats, 25q4, 5_10, INF, 25Q4, MAXAPI)
+DEFINE_NETD_BPF_PROG_RANGES(ingress, stats, 5_10, INF, 25Q4, MAXAPI)
 (struct __sk_buff* skb) {
     return bpf_traffic_account(skb, INGRESS, KVER_5_10, SDK_LEVEL_25Q4);
 }
 
 // Android 25Q2/25Q3 5.10+ (localnet protection + tracing)
-DEFINE_NETD_BPF_PROG_RANGES(ingress, stats, 5_10_25q2, 5_10, INF, 25Q2, 25Q4)
+DEFINE_NETD_BPF_PROG_RANGES(ingress, stats, 5_10, INF, 25Q2, 25Q4)
 (struct __sk_buff* skb) {
     return bpf_traffic_account(skb, INGRESS, KVER_5_10, SDK_LEVEL_25Q2);
 }
 
 // Android 25Q2/25Q3 5.4 (localnet protection)
-DEFINE_NETD_BPF_PROG_RANGES(ingress, stats, 5_4_25q2, 5_4, 5_10, 25Q2, 25Q4)
+DEFINE_NETD_BPF_PROG_RANGES(ingress, stats, 5_4, 5_10, 25Q2, 25Q4)
 (struct __sk_buff* skb) {
     return bpf_traffic_account(skb, INGRESS, KVER_5_4, SDK_LEVEL_25Q2);
 }
 
 // Android U/V 5.10+ (tracing)
-DEFINE_NETD_BPF_PROG_RANGES(ingress, stats, 5_10_u, 5_10, INF, U, 25Q2)
+DEFINE_NETD_BPF_PROG_RANGES(ingress, stats, 5_10, INF, U, 25Q2)
 (struct __sk_buff* skb) {
     return bpf_traffic_account(skb, INGRESS, KVER_5_10, SDK_LEVEL_U);
 }
@@ -978,38 +978,38 @@ DEFINE_NETD_BPF_PROG_KVER_RANGE(ingress, stats, 4_9, 4_19)
 // ----- egress/stats -----
 
 // Android 26Q2+ 6.1+ (full featured + tcpAccECN)
-DEFINE_NETD_BPF_PROG_RANGES(egress, stats, 6_1_26q2, 6_1, INF, 26Q2, MAXAPI)
+DEFINE_NETD_BPF_PROG_RANGES(egress, stats, 6_1, INF, 26Q2, MAXAPI)
 (struct __sk_buff* skb) {
     // place for tcpAccECN
     return bpf_traffic_account(skb, EGRESS, KVER_6_1, SDK_LEVEL_26Q2);
 }
 
 // Android 26Q2+ 5.10/5.15 (full featured)
-DEFINE_NETD_BPF_PROG_RANGES(egress, stats, 5_10_26q2, 5_10, 6_1, 26Q2, MAXAPI)
+DEFINE_NETD_BPF_PROG_RANGES(egress, stats, 5_10, 6_1, 26Q2, MAXAPI)
 (struct __sk_buff* skb) {
     return bpf_traffic_account(skb, EGRESS, KVER_5_10, SDK_LEVEL_26Q2);
 }
 
 // Android 25Q4/26Q1 (full featured)
-DEFINE_NETD_BPF_PROG_RANGES(egress, stats, 25q4, 5_10, INF, 25Q4, 26Q2)
+DEFINE_NETD_BPF_PROG_RANGES(egress, stats, 5_10, INF, 25Q4, 26Q2)
 (struct __sk_buff* skb) {
     return bpf_traffic_account(skb, EGRESS, KVER_5_10, SDK_LEVEL_25Q4);
 }
 
 // Android 25Q2/25Q3 5.10+ (localnet protection + tracing)
-DEFINE_NETD_BPF_PROG_RANGES(egress, stats, 5_10_25q2, 5_10, INF, 25Q2, 25Q4)
+DEFINE_NETD_BPF_PROG_RANGES(egress, stats, 5_10, INF, 25Q2, 25Q4)
 (struct __sk_buff* skb) {
     return bpf_traffic_account(skb, EGRESS, KVER_5_10, SDK_LEVEL_25Q2);
 }
 
 // Android 25Q2/25Q3 5.4 (localnet protection)
-DEFINE_NETD_BPF_PROG_RANGES(egress, stats, 5_4_25q2, 5_4, 5_10, 25Q2, 25Q4)
+DEFINE_NETD_BPF_PROG_RANGES(egress, stats, 5_4, 5_10, 25Q2, 25Q4)
 (struct __sk_buff* skb) {
     return bpf_traffic_account(skb, EGRESS, KVER_5_4, SDK_LEVEL_25Q2);
 }
 
 // Android U/V 5.10+ (tracing)
-DEFINE_NETD_BPF_PROG_RANGES(egress, stats, 5_10_u, 5_10, INF, U, 25Q2)
+DEFINE_NETD_BPF_PROG_RANGES(egress, stats, 5_10, INF, U, 25Q2)
 (struct __sk_buff* skb) {
     return bpf_traffic_account(skb, EGRESS, KVER_5_10, SDK_LEVEL_U);
 }
