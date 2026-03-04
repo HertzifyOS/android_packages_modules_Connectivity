@@ -257,12 +257,12 @@ static inline __always_inline int do_forward6(struct __sk_buff* skb,
 }
 
 // implementation for 5.4+ (can use skb->gso_{segs,size})
-DEFINE_BPF_PROG_KVER(schedcls, tether_downstream6_ether, 5_4, AID_NETWORK_STACK, 5_4)
+DEFINE_BPF_PROG_KVER(schedcls, tether_downstream6_ether, AID_NETWORK_STACK, 5_4)
 (struct __sk_buff* skb) {
     return do_forward6(skb, ETHER, DOWNSTREAM, KVER_5_4);
 }
 
-DEFINE_BPF_PROG_KVER(schedcls, tether_upstream6_ether, 5_4, AID_NETWORK_STACK, 5_4)
+DEFINE_BPF_PROG_KVER(schedcls, tether_upstream6_ether, AID_NETWORK_STACK, 5_4)
 (struct __sk_buff* skb) {
     return do_forward6(skb, ETHER, UPSTREAM, KVER_5_4);
 }
@@ -292,12 +292,12 @@ DEFINE_BPF_PROG_KVER_RANGE(schedcls, tether_upstream6_ether, , AID_NETWORK_STACK
 // and in system/netd/tests/binder_test.cpp NetdBinderTest TetherOffloadForwarding.
 //
 // Hence, these mandatory (must load successfully) implementations for 5.4+ kernels:
-DEFINE_BPF_PROG_KVER(schedcls, tether_downstream6_rawip, 5_4, AID_NETWORK_STACK, 5_4)
+DEFINE_BPF_PROG_KVER(schedcls, tether_downstream6_rawip, AID_NETWORK_STACK, 5_4)
 (struct __sk_buff* skb) {
     return do_forward6(skb, RAWIP, DOWNSTREAM, KVER_5_4);
 }
 
-DEFINE_BPF_PROG_KVER(schedcls, tether_upstream6_rawip, 5_4, AID_NETWORK_STACK, 5_4)
+DEFINE_BPF_PROG_KVER(schedcls, tether_upstream6_rawip, AID_NETWORK_STACK, 5_4)
 (struct __sk_buff* skb) {
     return do_forward6(skb, RAWIP, UPSTREAM, KVER_5_4);
 }
@@ -634,22 +634,22 @@ static inline __always_inline int do_forward4(struct __sk_buff* skb,
 
 // Full featured (required) implementations for 5.10+ kernels (these are S+ by definition)
 
-DEFINE_BPF_PROG_KVER(schedcls, tether_downstream4_rawip, 5_10, AID_NETWORK_STACK, 5_10)
+DEFINE_BPF_PROG_KVER(schedcls, tether_downstream4_rawip, AID_NETWORK_STACK, 5_10)
 (struct __sk_buff* skb) {
     return do_forward4(skb, RAWIP, DOWNSTREAM, UPDATETIME, KVER_5_10);
 }
 
-DEFINE_BPF_PROG_KVER(schedcls, tether_upstream4_rawip, 5_10, AID_NETWORK_STACK, 5_10)
+DEFINE_BPF_PROG_KVER(schedcls, tether_upstream4_rawip, AID_NETWORK_STACK, 5_10)
 (struct __sk_buff* skb) {
     return do_forward4(skb, RAWIP, UPSTREAM, UPDATETIME, KVER_5_10);
 }
 
-DEFINE_BPF_PROG_KVER(schedcls, tether_downstream4_ether, 5_10, AID_NETWORK_STACK, 5_10)
+DEFINE_BPF_PROG_KVER(schedcls, tether_downstream4_ether, AID_NETWORK_STACK, 5_10)
 (struct __sk_buff* skb) {
     return do_forward4(skb, ETHER, DOWNSTREAM, UPDATETIME, KVER_5_10);
 }
 
-DEFINE_BPF_PROG_KVER(schedcls, tether_upstream4_ether, 5_10, AID_NETWORK_STACK, 5_10)
+DEFINE_BPF_PROG_KVER(schedcls, tether_upstream4_ether, AID_NETWORK_STACK, 5_10)
 (struct __sk_buff* skb) {
     return do_forward4(skb, ETHER, UPSTREAM, UPDATETIME, KVER_5_10);
 }
