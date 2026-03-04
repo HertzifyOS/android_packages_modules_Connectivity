@@ -183,8 +183,8 @@ DEFINE_BPF_MAP_RO_NETD(loopback_access_metrics_enabled_map, ARRAY, uint32_t, boo
     DEFINE_NETD_V_BPF_PROG_KVER_RANGE(TYPE, NAME, VER, minKV, INF)
 
 // programs that only need to be usable by the system server
-#define DEFINE_SYS_BPF_PROG(TYPE, NAME, VER) \
-    DEFINE_BPF_PROG_EXT(TYPE, NAME, VER, AID_ROOT, AID_NET_ADMIN, 4_9, INF, \
+#define DEFINE_SYS_BPF_PROG(TYPE, NAME) \
+    DEFINE_BPF_PROG_EXT(TYPE, NAME, 4_9, AID_ROOT, AID_NET_ADMIN, 4_9, INF, \
                         MINAPI, MAXAPI, MANDATORY, "net_shared", DEFAULT_BPF_PIN_SUBDIR)
 
 // tcpAccECN maps/programs need to load only on Android 26Q2+
@@ -1070,7 +1070,7 @@ DEFINE_XTBPF_PROG(skfilter, ingress_xtbpf, )
     return XTBPF_MATCH;
 }
 
-DEFINE_SYS_BPF_PROG(schedact, ingress_account, )
+DEFINE_SYS_BPF_PROG(schedact, ingress_account)
 (struct __sk_buff* skb) {
     if (is_received_skb(skb)) {
         // Account for ingress traffic before tc drops it.
