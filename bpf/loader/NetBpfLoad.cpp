@@ -78,6 +78,7 @@ using android::base::StartsWith;
 using android::base::Tokenize;
 using android::base::unique_fd;
 using std::optional;
+using std::span;
 using std::string;
 using std::vector;
 using std::chrono::duration_cast;
@@ -132,9 +133,9 @@ class ElfObject {
     void* base;
     size_t size;
     const Elf64_Ehdr* eh;
-    std::span<const char> bytes;
-    std::span<const Elf64_Shdr> sh;
-    std::span<const char> strtab;
+    span<const char> bytes;
+    span<const Elf64_Shdr> sh;
+    span<const char> strtab;
 
   public:
     const char * const path;
@@ -203,7 +204,7 @@ class ElfObject {
     const Elf64_Shdr & SH(unsigned idx) const { return sh[idx]; }
 
     // Get a span pointing to a section by its index
-    std::span<const char> getSectionByIdx(unsigned id) const {
+    span<const char> getSectionByIdx(unsigned id) const {
         if (id >= sh.size()) return {};
         if (sh[id].sh_offset > size || sh[id].sh_size > size - sh[id].sh_offset) return {};
         return bytes.subspan(sh[id].sh_offset, sh[id].sh_size);
