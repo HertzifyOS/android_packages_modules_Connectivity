@@ -238,30 +238,20 @@ class ElfObject {
         return -2;
     }
 
-    int readSectionByType(unsigned type, span<const char>& data) const {
+    template <typename T>
+    int readSectionByType(unsigned type, span<const T>& data) const {
         for (unsigned i = 0; i < sh.size(); i++) {
             if (sh[i].sh_type != type) continue;
 
-            auto s = getSectionByIdx(i);
-            if (s.empty() && sh[i].sh_size > 0) return -1;
-
-            data = s;
-
+            data = getSectionByIdx<T>(i);
+            if (data.empty() && sh[i].sh_size > 0) return -1;
             return 0;
         }
         return -2;
     }
 
     int getSymTab(span<const Elf64_Sym>& data) const {
-        span<const char> secData;
-
-        int ret = readSectionByType(SHT_SYMTAB, secData);
-        if (ret) return ret;
-
-        data = {reinterpret_cast<const Elf64_Sym*>(secData.data()),
-                secData.size() / sizeof(Elf64_Sym)};
-
-        return 0;
+        return readSectionByType(SHT_SYMTAB, data);
     }
 
     static bool symCompare(Elf64_Sym a, Elf64_Sym b) {
