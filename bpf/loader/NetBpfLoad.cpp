@@ -224,31 +224,28 @@ class ElfObject {
 
     // Reads a full section by name - example to get the GPL license
     template <typename T>
-    int readSectionByName(const char* name, vector<T>& data) const {
+    int readSectionByName(const char* name, span<const T>& data) const {
         for (unsigned i = 0; i < sh.size(); i++) {
             const char* secname = getStr(sh[i].sh_name);
             if (!secname) continue;
 
             if (!strcmp(secname, name)) {
-                auto s = getSectionByIdx<T>(i);
-                if (s.empty() && sh[i].sh_size > 0) return -1;
-
-                data.assign(s.begin(), s.end());
-
+                data = getSectionByIdx<T>(i);
+                if (data.empty() && sh[i].sh_size > 0) return -1;
                 return 0;
             }
         }
         return -2;
     }
 
-    int readSectionByType(unsigned type, vector<char>& data) const {
+    int readSectionByType(unsigned type, span<const char>& data) const {
         for (unsigned i = 0; i < sh.size(); i++) {
             if (sh[i].sh_type != type) continue;
 
             auto s = getSectionByIdx(i);
             if (s.empty() && sh[i].sh_size > 0) return -1;
 
-            data.assign(s.begin(), s.end());
+            data = s;
 
             return 0;
         }
@@ -260,16 +257,14 @@ class ElfObject {
     }
 
     int readSymTab(int sort, vector<Elf64_Sym>& data) const {
-        int ret, numElems;
-        Elf64_Sym* buf;
-        vector<char> secData;
+        int ret;
+        span<const char> secData;
 
         ret = readSectionByType(SHT_SYMTAB, secData);
         if (ret) return ret;
 
-        buf = (Elf64_Sym*)secData.data();
-        numElems = (secData.size() / sizeof(Elf64_Sym));
-        data.assign(buf, buf + numElems);
+        auto numElems = (secData.size() / sizeof(Elf64_Sym));
+        data.assign((const Elf64_Sym*)secData.data(), (const Elf64_Sym*)secData.data() + numElems);
 
         if (sort) std::sort(data.begin(), data.end(), symCompare);
         return 0;
@@ -350,7 +345,7 @@ int readCodeSections(const ElfObject& elfObj, vector<codeSection>& cs) {
     int entries = elfObj.SHsize();
     int ret = 0;
 
-    vector<struct bpf_prog_def> pd;
+    span<const struct bpf_prog_def> pd;
     ret = elfObj.readSectionByName(".android_progs", pd);
     if (ret) return ret;
     vector<string> progDefNames;
@@ -489,7 +484,7 @@ static int setBtfDatasecSize(const ElfObject &elfObj, struct btf *btf,
         return -errno;
     }
 
-    vector<char> data;
+    span<const char> data;
     int ret = elfObj.readSectionByName(name, data);
     if (ret) {
         ALOGE("Couldn't read section %s, ret: %d", name, ret);
@@ -805,9 +800,10 @@ static enum bpf_map_type sanitizeMapType(enum bpf_map_type type) {
     return type;
 }
 
-static int createMaps(const ElfObject& elfObj, vector<struct bpf_map_def>& md, vector<unique_fd>& mapFds) {
+static int createMaps(const ElfObject& elfObj, const span<const struct bpf_map_def> md,
+                      vector<unique_fd>& mapFds) {
     int ret = 0;
-    vector<char> btfData;
+    span<const char> btfData;
     struct btf *btf = NULL;
     auto btfGuard = base::make_scope_guard([&btf] { if (btf) btf__free(btf); });
     if (isAtLeastKernelVersion(4, 19)) {
@@ -953,7 +949,7 @@ static void applyRelo(void* insnsPtr, Elf64_Addr offset, int fd) {
     insn->src_reg = BPF_PSEUDO_MAP_FD;
 }
 
-static void applyMapRelo(const ElfObject& elfObj, const vector<struct bpf_map_def>& md,
+static void applyMapRelo(const ElfObject& elfObj, const span<const struct bpf_map_def> md,
                          vector<unique_fd> &mapFds, vector<codeSection>& cs) {
     for (unsigned k = 0; k < cs.size(); k++) {
         Elf64_Rel* rel = (Elf64_Rel*)(cs[k].rel_data.data());
@@ -1160,7 +1156,7 @@ static int loadCodeSections(const ElfObject& elfObj, vector<codeSection>& cs, co
     return 0;
 }
 
-static int prepareLoadMaps(const struct bpf_object* obj, const vector<struct bpf_map_def>& md) {
+static int prepareLoadMaps(const struct bpf_object* obj, const span<const struct bpf_map_def> md) {
     for (unsigned i = 0; i < md.size(); i++) {
         struct bpf_map* m = bpf_object__find_map_by_name(obj, md[i].name());
         if (!m) {
@@ -1239,7 +1235,7 @@ static int prepareLoadProgs(const struct bpf_object* obj, const vector<codeSecti
     return 0;
 }
 
-static int pinMaps(const struct bpf_object* obj, const vector<struct bpf_map_def>& md) {
+static int pinMaps(const struct bpf_object* obj, const span<const struct bpf_map_def> md) {
     for (unsigned i = 0; i < md.size(); i++) {
         struct bpf_map* m = bpf_object__find_map_by_name(obj, md[i].name());
         if (!m) {
@@ -1291,7 +1287,7 @@ static int pinProgs(const struct bpf_object * obj,
 
 static int loadProgByLibbpf(const char* const elfPath) {
     ElfObject elfObj(elfPath);
-    vector<struct bpf_map_def> md;
+    span<const struct bpf_map_def> md;
     vector<codeSection> cs;
     int ret;
 
@@ -1330,9 +1326,9 @@ static int loadProgByLibbpf(const char* const elfPath) {
 
 int loadProg(const char* const elfPath) {
     ElfObject elfObj(elfPath);
-    vector<char> license;
+    span<const char> license;
     vector<codeSection> cs;
-    vector<struct bpf_map_def> md;
+    span<const struct bpf_map_def> md;
     vector<unique_fd> mapFds;
     int ret;
 
@@ -1369,7 +1365,7 @@ int loadProg(const char* const elfPath) {
 
     applyMapRelo(elfObj, md, mapFds, cs);
 
-    ret = loadCodeSections(elfObj, cs, string(license.data()));
+    ret = loadCodeSections(elfObj, cs, string(license.data(), license.size()));
     if (ret) ALOGE("Failed to load programs, loadCodeSections ret=%d", ret);
 
     return ret;
