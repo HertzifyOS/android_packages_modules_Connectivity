@@ -313,16 +313,14 @@ class ElfObject {
         return 0;
     }
 
-    int getSymOffsetByName(const char *name, int *off) const {
+    // sym.st_value is an Elf64_Addr (u64), however we don't need to support huge ELF objects
+    int getSymOffsetByName(const char *name) const {
         for (const auto& sym : symtab) {
             const char* s = getStr(sym.st_name);
             if (!s) continue;
-            if (!strcmp(s, name)) {
-                *off = sym.st_value;
-                return 0;
-            }
+            if (!strcmp(s, name)) return sym.st_value;
         }
-        return -1;
+        return -1;  // not found
     }
 };
 
@@ -507,14 +505,12 @@ static int setBtfVarOffset(const ElfObject &elfObj, struct btf *btf,
             return -1;
         }
 
-        int off;
-        int ret = elfObj.getSymOffsetByName(varName, &off);
-        if (ret) {
-            ALOGE("No offset found in symbol table, section: %s, var: %s, ret: %d",
-                  datasecName, varName, ret);
-            return ret;
+        vsi->offset = elfObj.getSymOffsetByName(varName);
+        if (!~vsi->offset) {
+            ALOGE("No offset found in symbol table, section: %s, var: %s",
+                  datasecName, varName);
+            return -1;
         }
-        vsi->offset = off;
     }
     return 0;
 }
