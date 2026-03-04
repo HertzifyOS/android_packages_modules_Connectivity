@@ -136,6 +136,7 @@ class ElfObject {
     span<const char> bytes;
     span<const Elf64_Shdr> sh;
     span<const char> strtab;
+    span<const Elf64_Sym> symtab;
 
   public:
     const char * const path;
@@ -190,6 +191,10 @@ class ElfObject {
         }
         sh = {(const Elf64_Shdr*)((char*)base + eh->e_shoff), eh->e_shnum};
         strtab = getSectionByIdx(eh->e_shstrndx);
+        if (readSectionByType(SHT_SYMTAB, symtab)) {
+            ALOGE("file %s symtab not found", path);
+            abort();
+        }
     }
 
     ~ElfObject() {
@@ -250,20 +255,11 @@ class ElfObject {
         return -2;
     }
 
-    int getSymTab(span<const Elf64_Sym>& data) const {
-        return readSectionByType(SHT_SYMTAB, data);
-    }
-
     static bool symCompare(Elf64_Sym a, Elf64_Sym b) {
         return (a.st_value < b.st_value);
     }
 
     int readSortedSymTab(vector<Elf64_Sym>& data) const {
-        span<const Elf64_Sym> symtab;
-
-        int ret = getSymTab(symtab);
-        if (ret) return ret;
-
         data.assign(symtab.begin(), symtab.end());
 
         std::sort(data.begin(), data.end(), symCompare);
@@ -272,10 +268,9 @@ class ElfObject {
 
     int getSectionSymNames(const string& sectionName, vector<string>& names,
                            optional<unsigned> symbolType = std::nullopt) const {
-        int ret;
-        vector<Elf64_Sym> symtab;
+        vector<Elf64_Sym> sortedSymtab;
 
-        ret = readSortedSymTab(symtab);
+        int ret = readSortedSymTab(sortedSymtab);
         if (ret) return ret;
 
         // Get index of section
@@ -296,11 +291,11 @@ class ElfObject {
             return -1;
         }
 
-        for (unsigned i = 0; i < symtab.size(); i++) {
-            if (symbolType.has_value() && ELF_ST_TYPE(symtab[i].st_info) != symbolType) continue;
+        for (unsigned i = 0; i < sortedSymtab.size(); i++) {
+            if (symbolType.has_value() && ELF_ST_TYPE(sortedSymtab[i].st_info) != symbolType) continue;
 
-            if (symtab[i].st_shndx == sec_idx) {
-                const char* s = getStr(symtab[i].st_name);
+            if (sortedSymtab[i].st_shndx == sec_idx) {
+                const char* s = getStr(sortedSymtab[i].st_name);
                 if (!s) return -1;
                 names.push_back(s);
             }
@@ -310,12 +305,6 @@ class ElfObject {
     }
 
     int getSymNameByIdx(unsigned index, string& name) const {
-        span<const Elf64_Sym> symtab;
-        int ret = 0;
-
-        ret = getSymTab(symtab);
-        if (ret) return ret;
-
         if (index >= symtab.size()) return -1;
 
         const char* s = getStr(symtab[index].st_name);
@@ -325,9 +314,6 @@ class ElfObject {
     }
 
     int getSymOffsetByName(const char *name, int *off) const {
-        span<const Elf64_Sym> symtab;
-        int ret = getSymTab(symtab);
-        if (ret) return ret;
         for (const auto& sym : symtab) {
             const char* s = getStr(sym.st_name);
             if (!s) continue;
