@@ -506,6 +506,12 @@ public class NsdService extends INsdManager.Stub {
             public void notifyServiceSelected(@NonNull NsdServiceInfo service) {
                 mHandler.post(() -> handleServiceSelected(service));
             }
+
+            @RequiresNoPermission
+            @Override
+            public void notifySelectionCancelled() {
+                mHandler.post(() -> handleSelectionCancelled());
+            }
         };
 
         private PickerListener(int clientRequestId, int transactionId, String listenedServiceType,
@@ -725,6 +731,17 @@ public class NsdService extends INsdManager.Stub {
                 mClientInfo.tryNotifyServiceFound(mClientRequestId, service);
             }
 
+            stopDiscoveryManagerRequest(request, mClientRequestId, mTransactionId, mClientInfo);
+            mClientInfo.onStopDiscoverySucceeded(mClientRequestId, request);
+        }
+
+        private void handleSelectionCancelled() {
+            final ClientRequest request = getRequest();
+            if (request == null) {
+                Log.d(TAG, "Client request unregistered, ignoring selection cancellation");
+                return;
+            }
+            mClientInfo.log("Service selection cancelled for request " + mClientRequestId);
             stopDiscoveryManagerRequest(request, mClientRequestId, mTransactionId, mClientInfo);
             mClientInfo.onStopDiscoverySucceeded(mClientRequestId, request);
         }
