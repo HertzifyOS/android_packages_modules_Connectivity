@@ -64,29 +64,9 @@ struct kver_uint { unsigned int kver; };
 // as it's probably a bad idea to actually use them.
 
 struct sdk_level_uint { unsigned int sdk_level; };
-#define SDK_LEVEL_(v) ((struct sdk_level_uint){ .sdk_level = (v) })
-//      SDK_LEVEL_NONE   SDK_LEVEL_(0)    // mainline implies S+
-#define SDK_LEVEL_S      SDK_LEVEL_(3100) // Android 12     [31]
-//      SDK_LEVEL_Sv2    SDK_LEVEL_(3200) // Android 12L    [32]
-#define SDK_LEVEL_T      SDK_LEVEL_(3300) // Android 13     [33]
-#define SDK_LEVEL_U      SDK_LEVEL_(3400) // Android 14/U   [34]
-//      SDK_LEVEL_U_QPR1 SDK_LEVEL_(3402) // Android 14/U QPR1
-//      SDK_LEVEL_24Q1   SDK_LEVEL_(3404) // Android 14/U QPR2
-//      SDK_LEVEL_24Q2   SDK_LEVEL_(3406) // Android 14/U QPR3
-#define SDK_LEVEL_24Q3   SDK_LEVEL_(3500) // Android 15/V   [35]
-//      SDK_LEVEL_24Q4   SDK_LEVEL_(3502) // Android 15/V QPR1
-//      SDK_LEVEL_25Q1   SDK_LEVEL_(3504) // Android 15/V QPR2
-#define SDK_LEVEL_25Q2   SDK_LEVEL_(3600) // Android 16 (B) [36.0]
-//      SDK_LEVEL_25Q3   SDK_LEVEL_(3602) // Android 16 QPR
-#define SDK_LEVEL_25Q4   SDK_LEVEL_(3610) // Android 16.1   [36.1]
-//      SDK_LEVEL_26Q1   SDK_LEVEL_(3612) // Android 16.1 QPR
-#define SDK_LEVEL_26Q2   SDK_LEVEL_(3700) // Android 17 (C) [37.0]
-//      SDK_LEVEL_26Q3   SDK_LEVEL_(3702) // Android 17 QPR
-#define SDK_LEVEL_26Q4   SDK_LEVEL_(3710) // Android 17.1   [37.1]
-//      SDK_LEVEL_27Q1   SDK_LEVEL_(3712) // Android 17.1 QPR
-#define SDK_LEVEL_27Q2   SDK_LEVEL_(3800) // Android 18     [38.0]
+#define API(v) ((struct sdk_level_uint){ .sdk_level = NETBPFLOAD_##v##_VER })
 
-#define SDK_LEVEL_IS_AT_LEAST(lvl, v) ((lvl).sdk_level >= (SDK_LEVEL_##v).sdk_level)
+#define API_IS_AT_LEAST(lvl, v) ((lvl).sdk_level >= NETBPFLOAD_##v##_VER)
 
 /*
  * BPFFS (ie. /sys/fs/bpf) labelling is as follows:
