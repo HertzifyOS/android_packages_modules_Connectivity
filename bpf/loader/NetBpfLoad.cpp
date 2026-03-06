@@ -123,7 +123,7 @@ static unsigned int page_size = static_cast<unsigned int>(getpagesize());
 typedef struct {
     string program_name;
     vector<char> data;
-    vector<char> rel_data;
+    span<const Elf64_Rel> rel_data;
     optional<struct bpf_prog_def> prog_def;
 
     unique_fd prog_fd; // fd after loading
@@ -375,9 +375,8 @@ int readCodeSections(const ElfObject& elfObj, vector<codeSection>& cs) {
             if (!next_name) return -1;
 
             if (!strcmp(next_name, (".rel" + oldName).c_str())) {
-                auto rel_s = elfObj.getSectionByIdx(i + 1);
-                if (rel_s.empty() && elfObj.SH(i + 1).sh_size > 0) return -1;
-                cs_temp.rel_data.assign(rel_s.begin(), rel_s.end());
+                cs_temp.rel_data = elfObj.getSectionByIdx<Elf64_Rel>(i + 1);
+                if (cs_temp.rel_data.empty() && elfObj.SH(i + 1).sh_size > 0) return -1;
                 ALOGV("Loaded relo section %d (%s)", i, next_name);
             }
         }
@@ -926,11 +925,8 @@ static void applyRelo(void* insnsPtr, Elf64_Addr offset, int fd) {
 static void applyMapRelo(const ElfObject& elfObj, const span<const struct bpf_map_def> md,
                          vector<unique_fd> &mapFds, vector<codeSection>& cs) {
     for (unsigned k = 0; k < cs.size(); k++) {
-        Elf64_Rel* rel = (Elf64_Rel*)(cs[k].rel_data.data());
-        int n_rel = cs[k].rel_data.size() / sizeof(*rel);
-
-        for (int i = 0; i < n_rel; i++) {
-            int symIndex = ELF64_R_SYM(rel[i].r_info);
+        for (const auto& rel : cs[k].rel_data) {
+            int symIndex = ELF64_R_SYM(rel.r_info);
             string symName;
 
             int ret = elfObj.getSymNameByIdx(symIndex, symName);
@@ -939,7 +935,7 @@ static void applyMapRelo(const ElfObject& elfObj, const span<const struct bpf_ma
             // Find the map fd and apply relo
             for (unsigned j = 0; j < md.size(); j++) {
                 if (!symName.compare(md[j].name())) {
-                    applyRelo(cs[k].data.data(), rel[i].r_offset, mapFds[j]);
+                    applyRelo(cs[k].data.data(), rel.r_offset, mapFds[j]);
                     break;
                 }
             }
