@@ -163,8 +163,7 @@ DEFINE_BPF_MAP_RO_NETD(loopback_checks_enabled_map, ARRAY, uint32_t, bool, 1)
 // (this is because these are currently attached by the mainline provided libnetd_updatable .so
 // which is loaded into netd and thus runs as netd uid/gid/selinux context)
 #define DEFINE_NETD_BPF_PROG_RANGES(TYPE, NAME, minKV, maxKV, min_api, max_api) \
-    DEFINE_BPF_PROG_EXT(TYPE, NAME, minKV ## _ ## min_api, AID_ROOT, AID_ROOT,  \
-                        minKV, maxKV, min_api, max_api, MANDATORY,              \
+    DEFINE_BPF_PROG_EXT(TYPE, NAME, AID_ROOT, AID_ROOT, minKV, maxKV, min_api, max_api, MANDATORY, \
                         "netd_readonly", DEFAULT_BPF_PIN_SUBDIR)
 
 #define DEFINE_NETD_T_BPF_PROG_KVER_RANGE(TYPE, NAME, minKV, maxKV) \
@@ -181,8 +180,8 @@ DEFINE_BPF_MAP_RO_NETD(loopback_checks_enabled_map, ARRAY, uint32_t, bool, 1)
 
 // programs that only need to be usable by the system server
 #define DEFINE_SYS_BPF_PROG(TYPE, NAME) \
-    DEFINE_BPF_PROG_EXT(TYPE, NAME, 4_9, AID_ROOT, AID_NET_ADMIN, 4_9, INF, \
-                        MINAPI, MAXAPI, MANDATORY, "net_shared", DEFAULT_BPF_PIN_SUBDIR)
+    DEFINE_BPF_PROG_EXT(TYPE, NAME, AID_ROOT, AID_NET_ADMIN, 4_9, INF, MINAPI, MAXAPI, MANDATORY, \
+                        "net_shared", DEFAULT_BPF_PIN_SUBDIR)
 
 // tcpAccECN maps/programs need to load only on Android 26Q2+
 #undef NETBPFLOAD_MINAPI_VER

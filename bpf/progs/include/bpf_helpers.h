@@ -527,7 +527,7 @@ static long (*bpf_trace_printk)(const char* fmt, int fmt_size, ...) = (void*) BP
 #define BPF_PROG_ATTACH_TYPE_sysctl            BPF_CGROUP_SYSCTL
 #define BPF_PROG_ATTACH_TYPE_xdp               BPF_PROG_ATTACH_TYPE_DEFAULT
 
-#define DEFINE_BPF_PROG_EXT_(TYPE, NAME, VER, prog_uid, prog_gid, min_kv, max_kv,             \
+#define DEFINE_BPF_PROG_EXT__(TYPE, NAME, VER, prog_uid, prog_gid, min_kv, max_kv,            \
                              min_api, max_api, opt, selinux, pindir)                          \
     VALIDATE_SELINUX_CONTEXT(min_api, selinux);                                               \
     VALIDATE_PIN_DIR(min_api, pindir);                                                        \
@@ -549,19 +549,40 @@ static long (*bpf_trace_printk)(const char* fmt, int fmt_size, ...) = (void*) BP
     long TYPE##_##NAME##_##VER
 
 // Same as above but expands any macros present in all arguments first
-#define DEFINE_BPF_PROG_EXT(TYPE, NAME, VER, uid, gid, minKV, maxKV, minApi, maxApi, opt, selinux, pindir) \
-       DEFINE_BPF_PROG_EXT_(TYPE, NAME, VER, uid, gid, minKV, maxKV, minApi, maxApi, opt, selinux, pindir)
+#define DEFINE_BPF_PROG_EXT_(TYPE, NAME, VER, uid, gid, minKV, maxKV, minApi, maxApi, opt, selinux, pindir) \
+       DEFINE_BPF_PROG_EXT__(TYPE, NAME, VER, uid, gid, minKV, maxKV, minApi, maxApi, opt, selinux, pindir)
 
 // Converts MANDATORY/OPTIONAL into a token used for disambiguation, visible in section name after the $
 #define BPF_OPT_MANDATORY
 #define BPF_OPT_OPTIONAL opt
 
-#define CONCAT2_(v, w) v ## w
-#define CONCAT2(v, w) CONCAT2_(v, w)
+// Converts MINAPI/S/T/U/V/... into a token used for disambigation, visible in section name after the $
+// Note: it's not a real problem if we miss something here, we'll just get needlessly long names
+#define BPF_API_MINAPI
+#define BPF_API_S
+#define BPF_API_T _t
+#define BPF_API_U _u
+#define BPF_API_V _v
+#define BPF_API_25Q2 _25q2
+#define BPF_API_25Q4 _25q4
+#define BPF_API_26Q2 _26q2
+#define BPF_API_26Q3 _26q3
+#define BPF_API_26Q4 _26q4
+#define BPF_API_27Q1 _27q1
+#define BPF_API_27Q2 _27q2
+
+#define CONCAT3_(a, b, c) a ## b ## c
+#define CONCAT3(a, b, c) CONCAT3_(a, b, c)
+#define BPF_GEN_VER(opt, kv, api) CONCAT3(BPF_OPT_ ## opt, kv, BPF_API_ ## api)
+
+// This version autogenerates the 'VER' (section) suffix
+#define DEFINE_BPF_PROG_EXT(TYPE, NAME, uid, gid, minKV, maxKV, minApi, maxApi, opt, selinux, pindir) \
+       DEFINE_BPF_PROG_EXT_(TYPE, NAME, BPF_GEN_VER(opt, minKV, minApi), uid, gid, \
+                            minKV, maxKV, minApi, maxApi, opt, selinux, pindir)
 
 #define DEFINE_BPF_PROG_KVER_RANGE_OPT(TYPE, NAME, prog_gid, minKV, maxKV, opt) \
-  DEFINE_BPF_PROG_EXT(TYPE, NAME, CONCAT2(BPF_OPT_##opt, minKV), AID_ROOT, prog_gid, minKV, maxKV, \
-                      MINAPI, MAXAPI, opt, DEFAULT_BPF_MAP_SELINUX_CONTEXT, DEFAULT_BPF_PIN_SUBDIR)
+  DEFINE_BPF_PROG_EXT(TYPE, NAME, AID_ROOT, prog_gid, minKV, maxKV, MINAPI, MAXAPI, opt, \
+                      DEFAULT_BPF_MAP_SELINUX_CONTEXT, DEFAULT_BPF_PIN_SUBDIR)
 
 // Programs (here used in the sense of functions/sections) marked optional are allowed to fail
 // to load (for example due to missing kernel patches).

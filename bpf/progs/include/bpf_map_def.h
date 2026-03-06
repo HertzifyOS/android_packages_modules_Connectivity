@@ -218,6 +218,7 @@ _Static_assert(_Alignof(struct bpf_prog_def) == 4, "_Alignof struct bpf_prog_def
 #define NETBPFLOAD_26Q4_VER   3710 // Android 26Q4 (37.1)
 #define NETBPFLOAD_27Q1_VER   3712 // Android 27Q1 (37.1+)
 #define NETBPFLOAD_27Q2_VER   3800 // Android 27Q2 (38.0)
+// if you extend this also extend BPF_API_* & SDK_LEVEL_* in bpf_helpers.h
 
 #ifdef __cplusplus
 // map_test_kernel_stats_map key definition.
