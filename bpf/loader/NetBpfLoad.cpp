@@ -121,7 +121,7 @@ static_assert(!minSupportedKernelVer, "NetBpfLoad must not assume min kver");
 static unsigned int page_size = static_cast<unsigned int>(getpagesize());
 
 typedef struct {
-    string program_name;
+    const char* program_name;
     vector<char> data;
     span<const Elf64_Rel> rel_data;
     optional<struct bpf_prog_def> prog_def;
@@ -262,7 +262,7 @@ class ElfObject {
         return (a.st_value < b.st_value);
     }
 
-    int getSectionSymNames(const string& sectionName, vector<const char*>& names,
+    int getSectionSymNames(const char* const sectionName, vector<const char*>& names,
                            optional<unsigned> symbolType = std::nullopt) const {
         // Get index of section
         int sec_idx = -1;
@@ -270,7 +270,7 @@ class ElfObject {
             const char* name = getStr(sh[i].sh_name);
             if (!name) return -1;
 
-            if (!sectionName.compare(name)) {
+            if (!strcmp(sectionName, name)) {
                 sec_idx = i;
                 break;
             }
@@ -278,7 +278,7 @@ class ElfObject {
 
         // No section found with matching name
         if (sec_idx == -1) {
-            ALOGW("No %s section could be found in elf object", sectionName.c_str());
+            ALOGW("No %s section could be found in elf object", sectionName);
             return -1;
         }
 
@@ -295,13 +295,9 @@ class ElfObject {
         return 0;
     }
 
-    int getSymNameByIdx(unsigned index, string& name) const {
-        if (index >= symtab.size()) return -1;
-
-        const char* s = getStr(symtab[index].st_name);
-        if (!s) return -1;
-        name = s;
-        return 0;
+    const char* getSymNameByIdx(unsigned index) const {
+        if (index >= symtab.size()) return nullptr;
+        return getStr(symtab[index].st_name);
     }
 
     // sym.st_value is an Elf64_Addr (u64), however we don't need to support huge ELF objects
@@ -328,7 +324,7 @@ int readCodeSections(const ElfObject& elfObj, vector<codeSection>& cs) {
     if (!pd.empty() && ret) return ret;
 
     for (int i = 0; i < entries; i++) {
-        const char* name = elfObj.getStr(elfObj.SH(i).sh_name);
+        const char* const name = elfObj.getStr(elfObj.SH(i).sh_name);
         if (!name) return -1;
 
         // all we want to process is sections FOO/BAR, but:
@@ -343,7 +339,6 @@ int readCodeSections(const ElfObject& elfObj, vector<codeSection>& cs) {
         // Ignore sections without a /  (basically 'license' section)
         if (!first_slash) continue;
 
-        string oldName = name;
         string sanitizedName = name;
         sanitizedName[first_slash - name] = '_';
 
@@ -356,10 +351,10 @@ int readCodeSections(const ElfObject& elfObj, vector<codeSection>& cs) {
         ALOGV("Loaded code section %d (%s)", i, sanitizedName.c_str());
 
         vector<const char*> csSymNames;
-        ret = elfObj.getSectionSymNames(oldName, csSymNames, STT_FUNC);
+        ret = elfObj.getSectionSymNames(name, csSymNames, STT_FUNC);
         if (ret || !csSymNames.size()) return ret;
         cs_temp.program_name = csSymNames[0];
-        string prog_def_name = cs_temp.program_name + "_def";
+        string prog_def_name = string(cs_temp.program_name) + "_def";
         for (size_t j = 0; j < progDefNames.size(); ++j) {
             if (prog_def_name == progDefNames[j]) {
                 cs_temp.prog_def = pd[j];
@@ -369,12 +364,14 @@ int readCodeSections(const ElfObject& elfObj, vector<codeSection>& cs) {
 
         if (!cs_temp.prog_def) abort();
 
+        string relname = string(".rel") + name;
+
         // Check for rel section
         if (cs_temp.data.size() > 0 && i + 1 < entries) {
             const char* next_name = elfObj.getStr(elfObj.SH(i + 1).sh_name);
             if (!next_name) return -1;
 
-            if (!strcmp(next_name, (".rel" + oldName).c_str())) {
+            if (!strcmp(next_name, relname.c_str())) {
                 cs_temp.rel_data = elfObj.getSectionByIdx<Elf64_Rel>(i + 1);
                 if (cs_temp.rel_data.empty() && elfObj.SH(i + 1).sh_size > 0) return -1;
                 ALOGV("Loaded relo section %d (%s)", i, next_name);
@@ -927,14 +924,13 @@ static void applyMapRelo(const ElfObject& elfObj, const span<const struct bpf_ma
     for (unsigned k = 0; k < cs.size(); k++) {
         for (const auto& rel : cs[k].rel_data) {
             int symIndex = ELF64_R_SYM(rel.r_info);
-            string symName;
 
-            int ret = elfObj.getSymNameByIdx(symIndex, symName);
-            if (ret) return;
+            const char* symName = elfObj.getSymNameByIdx(symIndex);
+            if (!symName) return;
 
             // Find the map fd and apply relo
             for (unsigned j = 0; j < md.size(); j++) {
-                if (!symName.compare(md[j].name())) {
+                if (!strcmp(symName, md[j].name())) {
                     applyRelo(cs[k].data.data(), rel.r_offset, mapFds[j]);
                     break;
                 }
@@ -1168,10 +1164,9 @@ static int prepareLoadProgs(const struct bpf_object* obj, const vector<codeSecti
             ALOGE("[%u] missing program definition! bad bpf.o build?", i);
             return -EINVAL;
         }
-        string program_name = cs[i].program_name;
-        struct bpf_program* prog = bpf_object__find_program_by_name(obj, program_name.c_str());
+        struct bpf_program* prog = bpf_object__find_program_by_name(obj, cs[i].program_name);
         if (!prog) {
-            ALOGE("bpf_object does not contain program: %s", cs[i].program_name.c_str());
+            ALOGE("bpf_object does not contain program: %s", cs[i].program_name);
             return -1;
         }
 
@@ -1231,10 +1226,9 @@ static int pinProgs(const struct bpf_object * obj,
     int ret;
 
     for (unsigned i = 0; i < cs.size(); i++) {
-        string program_name = cs[i].program_name;
-        struct bpf_program* prog = bpf_object__find_program_by_name(obj, program_name.c_str());
+        struct bpf_program* prog = bpf_object__find_program_by_name(obj, cs[i].program_name);
         if (!prog) {
-            ALOGE("bpf_object does not contain program: %s", program_name.c_str());
+            ALOGE("bpf_object does not contain program: %s", cs[i].program_name);
             return -1;
         }
         // This program was skipped
