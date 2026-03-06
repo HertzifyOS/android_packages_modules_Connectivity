@@ -1020,7 +1020,8 @@ static enum bpf_attach_type fixup_attach(enum bpf_prog_type prog_type, enum bpf_
     return expected_attach_type;
 }
 
-static int loadCodeSections(const ElfObject& elfObj, vector<codeSection>& cs, const string& license) {
+static int loadCodeSections(const ElfObject& elfObj, vector<codeSection>& cs,
+                            const char* const license) {
     for (unsigned i = 0; i < cs.size(); i++) {
         unique_fd& fd = cs[i].prog_fd;
         int ret;
@@ -1054,7 +1055,7 @@ static int loadCodeSections(const ElfObject& elfObj, vector<codeSection>& cs, co
               .prog_type = cs[i].prog_def->type,
               .insn_cnt = static_cast<__u32>(cs[i].data.size() / sizeof(struct bpf_insn)),
               .insns = ptr_to_u64(cs[i].data.data()),
-              .license = ptr_to_u64(license.c_str()),
+              .license = ptr_to_u64(license),
               .expected_attach_type = fixup_attach(cs[i].prog_def->type, cs[i].prog_def->attach_type),
             };
             if (isAtLeastKernelVersion(4, 15))
@@ -1294,20 +1295,15 @@ int loadProg(const char* const elfPath) {
     vector<codeSection> cs;
     span<const struct bpf_map_def> md;
     vector<unique_fd> mapFds;
-    int ret;
 
-    ret = elfObj.readSectionByName("license", license);
-    if (ret) {
-        ALOGE("Couldn't find license in %s", elfPath);
-        return ret;
-    } else {
-        ALOGD("Loading ELF object %s with license %s",
-              elfPath, (char*)license.data());
-    }
+    // Read license section - must exist and be NUL terminated.
+    if (elfObj.readSectionByName("license", license)) abort();
+    if (license.empty()) abort();
+    if (license.data()[license.size() - 1]) abort();
 
-    ALOGD("Processing ELF object %s", elfPath);
+    ALOGD("Processing ELF object %s (license %s)", elfPath, license.data());
 
-    ret = elfObj.readSectionByName(".android_maps", md);
+    int ret = elfObj.readSectionByName(".android_maps", md);
     if (ret == -2) ret = 0; // -2 means there were no maps to read
     if (ret) return ret;
 
@@ -1329,7 +1325,7 @@ int loadProg(const char* const elfPath) {
 
     applyMapRelo(elfObj, md, mapFds, cs);
 
-    ret = loadCodeSections(elfObj, cs, string(license.data(), license.size()));
+    ret = loadCodeSections(elfObj, cs, license.data());
     if (ret) ALOGE("Failed to load programs, loadCodeSections ret=%d", ret);
 
     return ret;
