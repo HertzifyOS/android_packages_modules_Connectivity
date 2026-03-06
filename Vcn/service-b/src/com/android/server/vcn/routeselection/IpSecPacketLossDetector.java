@@ -207,6 +207,7 @@ public class IpSecPacketLossDetector extends NetworkMetricMonitor {
 
     @Nullable private IpSecTransformWrapper mInboundTransform;
     @Nullable private IpSecTransformState mLastIpSecTransformState;
+    @Nullable private PacketLossCalculationResult mLastCalculateResult;
 
     @VisibleForTesting(visibility = Visibility.PRIVATE)
     public IpSecPacketLossDetector(
@@ -434,6 +435,7 @@ public class IpSecPacketLossDetector extends NetworkMetricMonitor {
     private void clearTransformStateAndPollingEvents() {
         mHandler.removeCallbacksAndEqualMessages(mCancellationToken);
         mLastIpSecTransformState = null;
+        mLastCalculateResult = null;
 
         if (Flags.improvePacketLossDetector()) {
             mConsecutiveReportNotLossyCount = 0;
@@ -558,17 +560,22 @@ public class IpSecPacketLossDetector extends NetworkMetricMonitor {
                             getLogPrefix());
         }
 
+        if (!Objects.equals(mLastCalculateResult, calculateResult)) {
+            logInfo(
+                    "calculateResult changed to: "
+                            + calculateResult
+                            + " in the past "
+                            + (state.getTimestampMillis()
+                                    - mLastIpSecTransformState.getTimestampMillis())
+                            + "ms. Expected packet count: "
+                            + (state.getRxHighestSequenceNumber()
+                                    - mLastIpSecTransformState.getRxHighestSequenceNumber()));
+        }
+        mLastCalculateResult = calculateResult;
+
         final int packetLossResultType = calculateResult.getResultType();
         final int packetLossPercent = calculateResult.getPacketLossRatePercent();
         final boolean isLossy = packetLossPercent >= mPacketLossRatePercentThreshold;
-
-        final String logMsg =
-                "calculateResult: "
-                        + calculateResult
-                        + "% in the past "
-                        + (state.getTimestampMillis()
-                                - mLastIpSecTransformState.getTimestampMillis())
-                        + "ms";
 
         if (shouldUpdateLastTransformState(packetLossResultType)) {
             mLastIpSecTransformState = state;
@@ -577,12 +584,6 @@ public class IpSecPacketLossDetector extends NetworkMetricMonitor {
         logPacketLossDetectorReport(packetLossResultType, packetLossPercent);
 
         if (shouldReportValidationResult(isLossy, packetLossResultType)) {
-            if (isLossy) {
-                logInfo(logMsg);
-            } else {
-                logV(logMsg);
-            }
-
             handleValidationResultReceivedInternal(isLossy);
         }
 
@@ -940,7 +941,8 @@ public class IpSecPacketLossDetector extends NetworkMetricMonitor {
             return "mResultType: "
                     + mResultType
                     + " | mPacketLossRatePercent: "
-                    + mPacketLossRatePercent;
+                    + mPacketLossRatePercent
+                    + "%";
         }
     }
 }
