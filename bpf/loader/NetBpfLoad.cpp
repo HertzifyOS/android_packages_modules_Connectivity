@@ -262,7 +262,7 @@ class ElfObject {
         return (a.st_value < b.st_value);
     }
 
-    int getSectionSymNames(const string& sectionName, vector<string>& names,
+    int getSectionSymNames(const string& sectionName, vector<const char*>& names,
                            optional<unsigned> symbolType = std::nullopt) const {
         // Get index of section
         int sec_idx = -1;
@@ -323,7 +323,7 @@ int readCodeSections(const ElfObject& elfObj, vector<codeSection>& cs) {
     span<const struct bpf_prog_def> pd;
     ret = elfObj.readSectionByName(".android_progs", pd);
     if (ret) return ret;
-    vector<string> progDefNames;
+    vector<const char*> progDefNames;
     ret = elfObj.getSectionSymNames(".android_progs", progDefNames);
     if (!pd.empty() && ret) return ret;
 
@@ -355,12 +355,13 @@ int readCodeSections(const ElfObject& elfObj, vector<codeSection>& cs) {
         cs_temp.data.assign(s.begin(), s.end());
         ALOGV("Loaded code section %d (%s)", i, sanitizedName.c_str());
 
-        vector<string> csSymNames;
+        vector<const char*> csSymNames;
         ret = elfObj.getSectionSymNames(oldName, csSymNames, STT_FUNC);
         if (ret || !csSymNames.size()) return ret;
         cs_temp.program_name = csSymNames[0];
+        string prog_def_name = cs_temp.program_name + "_def";
         for (size_t j = 0; j < progDefNames.size(); ++j) {
-            if (!progDefNames[j].compare(csSymNames[0] + "_def")) {
+            if (prog_def_name == progDefNames[j]) {
                 cs_temp.prog_def = pd[j];
                 break;
             }
