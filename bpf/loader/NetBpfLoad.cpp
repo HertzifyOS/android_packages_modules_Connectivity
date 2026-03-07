@@ -136,6 +136,8 @@ class ElfObject {
     span<const char> bytes;
     span<const Elf64_Shdr> sh;
     span<const char> strtab;
+    span<const Elf64_Sym> symtab;
+    vector<Elf64_Sym> sortedSymtab;
 
   public:
     const char * const path;
@@ -190,6 +192,12 @@ class ElfObject {
         }
         sh = {(const Elf64_Shdr*)((char*)base + eh->e_shoff), eh->e_shnum};
         strtab = getSectionByIdx(eh->e_shstrndx);
+        if (readSectionByType(SHT_SYMTAB, symtab)) {
+            ALOGE("file %s symtab not found", path);
+            abort();
+        }
+        sortedSymtab.assign(symtab.begin(), symtab.end());
+        std::sort(sortedSymtab.begin(), sortedSymtab.end(), symCompare);
     }
 
     ~ElfObject() {
@@ -250,34 +258,12 @@ class ElfObject {
         return -2;
     }
 
-    int getSymTab(span<const Elf64_Sym>& data) const {
-        return readSectionByType(SHT_SYMTAB, data);
-    }
-
     static bool symCompare(Elf64_Sym a, Elf64_Sym b) {
         return (a.st_value < b.st_value);
     }
 
-    int readSortedSymTab(vector<Elf64_Sym>& data) const {
-        span<const Elf64_Sym> symtab;
-
-        int ret = getSymTab(symtab);
-        if (ret) return ret;
-
-        data.assign(symtab.begin(), symtab.end());
-
-        std::sort(data.begin(), data.end(), symCompare);
-        return 0;
-    }
-
     int getSectionSymNames(const string& sectionName, vector<string>& names,
                            optional<unsigned> symbolType = std::nullopt) const {
-        int ret;
-        vector<Elf64_Sym> symtab;
-
-        ret = readSortedSymTab(symtab);
-        if (ret) return ret;
-
         // Get index of section
         int sec_idx = -1;
         for (unsigned i = 0; i < sh.size(); i++) {
@@ -296,11 +282,11 @@ class ElfObject {
             return -1;
         }
 
-        for (unsigned i = 0; i < symtab.size(); i++) {
-            if (symbolType.has_value() && ELF_ST_TYPE(symtab[i].st_info) != symbolType) continue;
+        for (unsigned i = 0; i < sortedSymtab.size(); i++) {
+            if (symbolType.has_value() && ELF_ST_TYPE(sortedSymtab[i].st_info) != symbolType) continue;
 
-            if (symtab[i].st_shndx == sec_idx) {
-                const char* s = getStr(symtab[i].st_name);
+            if (sortedSymtab[i].st_shndx == sec_idx) {
+                const char* s = getStr(sortedSymtab[i].st_name);
                 if (!s) return -1;
                 names.push_back(s);
             }
@@ -310,12 +296,6 @@ class ElfObject {
     }
 
     int getSymNameByIdx(unsigned index, string& name) const {
-        span<const Elf64_Sym> symtab;
-        int ret = 0;
-
-        ret = getSymTab(symtab);
-        if (ret) return ret;
-
         if (index >= symtab.size()) return -1;
 
         const char* s = getStr(symtab[index].st_name);
@@ -324,19 +304,14 @@ class ElfObject {
         return 0;
     }
 
-    int getSymOffsetByName(const char *name, int *off) const {
-        span<const Elf64_Sym> symtab;
-        int ret = getSymTab(symtab);
-        if (ret) return ret;
+    // sym.st_value is an Elf64_Addr (u64), however we don't need to support huge ELF objects
+    int getSymOffsetByName(const char *name) const {
         for (const auto& sym : symtab) {
             const char* s = getStr(sym.st_name);
             if (!s) continue;
-            if (!strcmp(s, name)) {
-                *off = sym.st_value;
-                return 0;
-            }
+            if (!strcmp(s, name)) return sym.st_value;
         }
-        return -1;
+        return -1;  // not found
     }
 };
 
@@ -521,14 +496,12 @@ static int setBtfVarOffset(const ElfObject &elfObj, struct btf *btf,
             return -1;
         }
 
-        int off;
-        int ret = elfObj.getSymOffsetByName(varName, &off);
-        if (ret) {
-            ALOGE("No offset found in symbol table, section: %s, var: %s, ret: %d",
-                  datasecName, varName, ret);
-            return ret;
+        vsi->offset = elfObj.getSymOffsetByName(varName);
+        if (!~vsi->offset) {
+            ALOGE("No offset found in symbol table, section: %s, var: %s",
+                  datasecName, varName);
+            return -1;
         }
-        vsi->offset = off;
     }
     return 0;
 }
@@ -1777,8 +1750,19 @@ static int doLoad(char** argv, char * const envp[]) {
         }
         int y = -1, q = -1, a = -1, b = -1, c = -1;
         int v = fscanf(f, "# %d %d %d %d %d #", &y, &q, &a, &b, &c);
-        ALOGI("detected %d of 5: %dQ%d api:%d.%d.%d", v, y, q, a, b, c);
         fclose(f);
+        // y = year, q = quarter, a = major sdk, b = minor sdk
+        int abc = a * 100 + b * 10 + c * 2;
+        if ((api_level_full & ~1) == abc) {  // bottom bit means unreleased, ignore it
+            ALOGI("detected %d of 5: %dQ%d api:%d.%d.%d=%d", v, y, q, a, b, c, abc);
+        } else {
+            // it did not match, presumably we upgraded due to apex version
+            int yy = y;
+            int qq = q + 1;
+            if (qq == 5) { qq = 1; yy++; };
+            ALOGI("parsed %d of 5: %dQ%d -> %dQ%d api:%d.%d.%d=%d -> %d",
+                  v, y, q, yy, qq, a, b, c, abc, api_level_full & ~1);
+        }
         if (v != 5) return 16;
         if (y < 2025 || y > 2099) return 17;
         if (q < 1 || q > 4) return 18;
