@@ -519,8 +519,14 @@ public class UnderlyingNetworkController {
             if (!allNetworkPriorities.isEmpty()) {
                 allNetworkPriorities += ", ";
             }
+
+            final String penalizedState = recordEvaluator.isPenalized() ? "|penalized" : "";
             allNetworkPriorities +=
-                    recordEvaluator.getNetwork() + ": " + recordEvaluator.getPriorityClass();
+                    recordEvaluator.getNetwork()
+                            + ": ("
+                            + recordEvaluator.getPriorityClass()
+                            + penalizedState
+                            + ")";
         }
 
         if (!UnderlyingNetworkRecord.isSameNetwork(mCurrentRecord, candidate)) {
