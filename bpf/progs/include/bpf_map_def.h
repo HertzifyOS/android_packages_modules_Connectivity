@@ -219,7 +219,22 @@ _Static_assert(_Alignof(struct bpf_prog_def) == 4, "_Alignof struct bpf_prog_def
 #define NETBPFLOAD_26Q4_VER   3710 // Android 17.1     / C1 / 26Q4 (37.1)
 #define NETBPFLOAD_27Q1_VER   3712 // Android 17.1 QPR /      27Q1 (37.1+)
 #define NETBPFLOAD_27Q2_VER   3800 // Android 18       / D  / 27Q2 (38.0)
-// if you extend this also extend BPF_API_* 'pretty strings' in bpf_helpers.h
+// (if you extend this also extend this list below)
+
+// Converts MINAPI/S/T/U/V/... into a token used for disambigation, visible in section name after the $
+// Note: it's not a real problem if we miss something here, we'll just get needlessly long names
+#define BPF_API_MINAPI
+#define BPF_API_S
+#define BPF_API_T _t
+#define BPF_API_U _u
+#define BPF_API_V _v
+#define BPF_API_25Q2 _25q2
+#define BPF_API_25Q4 _25q4
+#define BPF_API_26Q2 _26q2
+#define BPF_API_26Q3 _26q3
+#define BPF_API_26Q4 _26q4
+#define BPF_API_27Q1 _27q1
+#define BPF_API_27Q2 _27q2
 
 #ifdef __cplusplus
 // map_test_kernel_stats_map key definition.

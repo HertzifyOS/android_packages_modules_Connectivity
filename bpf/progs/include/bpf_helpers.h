@@ -536,20 +536,7 @@ static long (*bpf_trace_printk)(const char* fmt, int fmt_size, ...) = (void*) BP
 #define BPF_OPT_MANDATORY
 #define BPF_OPT_OPTIONAL opt
 
-// Converts MINAPI/S/T/U/V/... into a token used for disambigation, visible in section name after the $
-// Note: it's not a real problem if we miss something here, we'll just get needlessly long names
-#define BPF_API_MINAPI
-#define BPF_API_S
-#define BPF_API_T _t
-#define BPF_API_U _u
-#define BPF_API_V _v
-#define BPF_API_25Q2 _25q2
-#define BPF_API_25Q4 _25q4
-#define BPF_API_26Q2 _26q2
-#define BPF_API_26Q3 _26q3
-#define BPF_API_26Q4 _26q4
-#define BPF_API_27Q1 _27q1
-#define BPF_API_27Q2 _27q2
+// note: BPF_API_* constants are declared in bpf_map_def.h
 
 #define CONCAT3_(a, b, c) a ## b ## c
 #define CONCAT3(a, b, c) CONCAT3_(a, b, c)
