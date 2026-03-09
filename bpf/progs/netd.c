@@ -939,7 +939,7 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb,
 // Android 26Q2+ 6.1+ (full featured + tcpAccECN)
 DEFINE_NETD_BPF_PROG_RANGES(ingress, stats, 6_1, INF, 26Q2, MAXAPI)
 (struct __sk_buff* skb) {
-    // place for tcpAccECN
+    update_accecn_counter(skb);
     return bpf_traffic_account(skb, INGRESS, KVER_6_1, API(26Q2));
 }
 
