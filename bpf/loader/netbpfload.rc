@@ -42,16 +42,19 @@ on load-bpf-programs
     # NOTE: Still requires CAP_SYSLOG and sepolicy allow rules to read /proc/kallsyms
     write /proc/sys/kernel/kptr_restrict 1
 
-    # on success bpfloader will set 'bpf.progs_loaded' property to '1'
-    start bpfloader
+    # 'exec_start' is synchronous, a successful bpfloader invocation will
+    # result in 'bpf.progs_loaded' property being set to '1'.
+    exec_start bpfloader
 
-# Wait for bpf programs to be loaded before proceeding.
-# (this won't ever trigger if bpfloader fails)
-on property:bpf.progs_loaded=1
+    # Wait for bpf programs to be loaded before proceeding.
+    # (this will hang if bpfloader fails)
+    wait_for_prop bpf.progs_loaded 1
+
     # Restore kallsyms protection after bpf programs have been loaded.
     # This has to happen after bpfloader has already terminated.
     write /proc/sys/kernel/kptr_restrict 2
 
+    # At this point 'bpf.progs_loaded' is guaranteed to be '1'
     exec_start netd1shot
     start netd
 
