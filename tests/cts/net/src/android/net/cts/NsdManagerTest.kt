@@ -644,7 +644,7 @@ class NsdManagerTest {
     @Test
     @CtsNetTestCasesLocalNetNoPermissions
     @RequiresFlagsDisabled(FLAG_NSD_SERVICE_PICKER)
-    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.BAKLAVA)
     fun testDiscoverServices_missingLocalNetPermission_failsPermissionDenied() {
         assumeTrue(android.permission.flags.Flags.accessLocalNetworkPermissionEnabled())
         val perm = context.checkSelfPermission(ACCESS_LOCAL_NETWORK)
@@ -664,7 +664,7 @@ class NsdManagerTest {
 
     @Test
     @CtsNetTestCasesLocalNetNoPermissions
-    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.BAKLAVA)
     @RequiresFlagsEnabled(Flags.FLAG_LNP_DEVELOPER_OPT_IN)
     fun testLocalNetworkDevOptIn_permissionCheckFails_returnsInternalError() {
         assumeFalse(android.permission.flags.Flags.accessLocalNetworkPermissionEnabled())
@@ -926,7 +926,7 @@ class NsdManagerTest {
 
     @Test
     @CtsNetTestCasesLocalNetNoPermissions
-    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.BAKLAVA)
     fun testRegisterService_missingLocalNetworkPermission_throwsSecurityException() {
         assumeTrue(android.permission.flags.Flags.accessLocalNetworkPermissionEnabled())
         val perm = context.checkSelfPermission(ACCESS_LOCAL_NETWORK)
@@ -1694,7 +1694,7 @@ class NsdManagerTest {
 
     @Test
     @CtsNetTestCasesLocalNetNoPermissions
-    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.BAKLAVA)
     fun testResolveService_missingLocalNetworkPermission_failsPermissionDenied() {
         assumeTrue(android.permission.flags.Flags.accessLocalNetworkPermissionEnabled())
         val perm = context.checkSelfPermission(ACCESS_LOCAL_NETWORK)
@@ -1757,7 +1757,7 @@ class NsdManagerTest {
 
     @Test
     @CtsNetTestCasesLocalNetNoPermissions
-    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.BAKLAVA)
     fun testRegisterServiceInfoCallback_missingLocalNetworkPermission_failsPermissionDenied() {
         assumeTrue(android.permission.flags.Flags.accessLocalNetworkPermissionEnabled())
         val perm = context.checkSelfPermission(ACCESS_LOCAL_NETWORK)
@@ -3847,7 +3847,7 @@ class NsdManagerTest {
     @Test
     @RequiresFlagsEnabled(FLAG_NSD_SERVICE_PICKER)
     @CtsNetTestCasesLocalNetNoPermissions
-    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.BAKLAVA)
     fun testRegisterServiceInfoCallback_missingPermissions_registrationError() {
         assumeTrue(android.permission.flags.Flags.accessLocalNetworkPermissionEnabled())
 
