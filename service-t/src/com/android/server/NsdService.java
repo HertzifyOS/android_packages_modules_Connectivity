@@ -2850,18 +2850,18 @@ public class NsdService extends INsdManager.Stub {
                 .setIsSelectiveMdnsResponseOffloadEnabled(mDeps.isAconfigFlagEnabled(
                         com.android.tethering.mainline.beta
                                 .Flags.FLAG_NSD_SELECTIVE_MDNS_RESPONSE_OFFLOAD))
+                // Note that on V+, isChangeEnabled returns false for
+                // ENABLE_MATCH_NON_THREAD_LOCAL_NETWORKS even if the system UID is targeting
+                // higher SDK due to b/401088586.
+                // Thus, check compat change against the system UID is needed.
+                // If this check is not performed, MdnsSocketProvider may fail to learn
+                // local network agent events via network callbacks.
                 .setUseNetworkCallbackForLocalNetworksEnabled(
-                        // Note that on V+, isChangeEnabled returns false for
-                        // ENABLE_MATCH_NON_THREAD_LOCAL_NETWORKS even if the app is targeting
-                        // higher SDK due to b/401088586.
-                        // Thus, check compat change against the current process's uid is needed.
-                        // If this check is not performed, MdnsSocketProvider may fail to learn
-                        // local network agent events via network callbacks.
                         mDeps.isSupportTetheringAndP2pGoLocalAgent(mContext)
                                 && mDeps.isAconfigFlagEnabled(
                                         Flags.FLAG_NSD_USE_NETWORK_CALLBACK_FOR_LOCAL_NETWORKS)
-                                && CompatChanges.isChangeEnabled(
-                                        ENABLE_MATCH_NON_THREAD_LOCAL_NETWORKS, Process.myUid()))
+                                && mDeps.isCompatChangeEnabledForSystem(
+                                        ENABLE_MATCH_NON_THREAD_LOCAL_NETWORKS))
                 .setIsMdnsScanOffloadEnabled(mDeps.isAconfigFlagEnabled(
                         com.android.tethering.flags.Flags.FLAG_NSD_MDNS_SCAN_OFFLOAD))
                 .setOverrideProvider(new MdnsFeatureFlags.FlagOverrideProvider() {
@@ -2972,7 +2972,13 @@ public class NsdService extends INsdManager.Stub {
             return DeviceConfigUtils.isTetheringFeatureNotChickenedOut(context, feature);
         }
 
-        /** Get whether a feature config is enabled. */
+        /**
+         * @see CompatChanges#isChangeEnabled(long, int)
+         */
+        public boolean isCompatChangeEnabledForSystem(long changeId) {
+            return CompatChanges.isChangeEnabled(changeId, Process.SYSTEM_UID);
+        }
+
         /** Get whether tethering and P2P GO local agent is enabled. */
         public boolean isSupportTetheringAndP2pGoLocalAgent(Context context) {
             // Determines support for the Tethering/P2P GO local network agent. This feature is
