@@ -3504,14 +3504,17 @@ class NsdManagerTest {
             replaceServiceNameAndTypeWithTestSuffix(payload2, serviceName2)
             packetReader.sendResponse(buildMdnsPacket(payload2))
 
-            val service1Text = uiDevice.wait(Until.findObject(By.text("Display Name 1")),
-                UI_TIMEOUT_MS)
+            val service1Text = UiAutomatorUtils2.waitFindObject(
+                By.text("Display Name 1"), UI_TIMEOUT_MS
+            )
             assertNotNull(
                 service1Text,
                 "Picker did not show service 1 with display attribute value"
             )
 
-            val service2Text = uiDevice.wait(Until.findObject(By.text(serviceName2)), UI_TIMEOUT_MS)
+            val service2Text = UiAutomatorUtils2.waitFindObject(
+                By.text(serviceName2), UI_TIMEOUT_MS
+            )
             assertNotNull(service2Text, "Picker did not show service 2 with its service name")
         } cleanup {
             packetReader.handler.post { packetReader.stop() }
