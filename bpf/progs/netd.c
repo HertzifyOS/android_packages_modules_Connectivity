@@ -328,47 +328,6 @@ is_local_net_access_allowed(const uint32_t uid, const uint32_t if_index,
     return v && *v;
 }
 
-static __always_inline inline bool
-is_restricted_local_network(struct __sk_buff *skb, const uint32_t uid,
-                            const struct egress_bool egress,
-                            const struct kver_uint kver) {
-    struct in6_addr remote_ip6;
-    uint8_t ip_proto;
-    uint8_t L4_off;
-    if (skb->protocol == htons(ETH_P_IP)) {
-        int remote_ip_ofs = egress.egress ? IP4_OFFSET(daddr) : IP4_OFFSET(saddr);
-        remote_ip6.s6_addr32[0] = 0;
-        remote_ip6.s6_addr32[1] = 0;
-        remote_ip6.s6_addr32[2] = htonl(0xFFFF);
-        (void)bpf_skb_load_bytes_net(skb, remote_ip_ofs, &remote_ip6.s6_addr32[3], 4, kver);
-        (void)bpf_skb_load_bytes_net(skb, IP4_OFFSET(protocol), &ip_proto, sizeof(ip_proto), kver);
-        uint8_t ihl;
-        (void)bpf_skb_load_bytes_net(skb, IPPROTO_IHL_OFF, &ihl, sizeof(ihl), kver);
-        L4_off = (ihl & 0x0F) * 4;  // IHL calculation.
-    } else if (skb->protocol == htons(ETH_P_IPV6)) {
-        int remote_ip_ofs = egress.egress ? IP6_OFFSET(daddr) : IP6_OFFSET(saddr);
-        (void)bpf_skb_load_bytes_net(skb, remote_ip_ofs, &remote_ip6, sizeof(remote_ip6), kver);
-        (void)bpf_skb_load_bytes_net(skb, IP6_OFFSET(nexthdr), &ip_proto, sizeof(ip_proto), kver);
-        L4_off = sizeof(struct ipv6hdr);
-    } else {
-        return false;
-    }
-
-    __be16 remote_port = 0;
-    switch (ip_proto) {
-      case IPPROTO_TCP:
-      case IPPROTO_DCCP:
-      case IPPROTO_UDP:
-      case IPPROTO_UDPLITE:
-      case IPPROTO_SCTP:
-        (void)bpf_skb_load_bytes_net(skb, L4_off + (egress.egress ? 2 : 0), &remote_port, sizeof(remote_port), kver);
-        break;
-    }
-
-    return !is_local_net_access_allowed(uid, skb->ifindex, &remote_ip6,
-                                        ip_proto, remote_port);
-}
-
 static __always_inline inline uint8_t
 get_chunk_permissions(const uint32_t uid) {
     // All chunks has the same size CHUNK_INT64_COUNT
@@ -405,8 +364,10 @@ static __always_inline inline bool is_local_network_access_blocked(const uint32_
     return true;
 }
 
-static __always_inline inline bool should_block_local_network_packets(struct __sk_buff *skb,
-                                   const uint32_t uid, const struct egress_bool egress,
+static __always_inline inline bool
+should_block_local_network_packets(const SkbIpPacketData *const packet,
+                                   const uint32_t uid, const uint32_t if_index,
+                                   const struct egress_bool egress,
                                    const struct kver_uint kver) {
     bool reportLocalAccess = false;
     if (KVER_IS_AT_LEAST(kver, 5, 10, 0)) {
@@ -414,13 +375,17 @@ static __always_inline inline bool should_block_local_network_packets(struct __s
         bool *noteOpEnabled = bpf_local_net_note_op_enabled_map_lookup_elem(&key);
         reportLocalAccess = noteOpEnabled && *noteOpEnabled;
     }
-    bool isRestricted;
+    bool isAllowed;
+    const struct in6_addr *remote_ip6 =
+        egress.egress ? &packet->daddr : &packet->saddr;
+    const __be16 remote_port = egress.egress ? packet->dport : packet->sport;
     if (reportLocalAccess) {
-        isRestricted = is_restricted_local_network(skb, uid, egress, kver);
+        isAllowed = is_local_net_access_allowed(uid, if_index, remote_ip6,
+                                                packet->ip_proto, remote_port);
         // Currently, generate events for all local network access, regardless of the UID's
         // permission status.
         // This is to identify all UIDs that are accessing the local network.
-        if (isRestricted) {
+        if (!isAllowed) {
             // Cache to report only once per minute per UID.
             uint32_t* lastReportMinutes = bpf_local_net_note_op_cache_map_lookup_elem(&uid);
             uint32_t bootMinutes = (uint32_t) (bpf_ktime_get_boot_ns() / NS_PER_MINUTE);
@@ -440,9 +405,10 @@ static __always_inline inline bool should_block_local_network_packets(struct __s
     }
 
     if (!reportLocalAccess) {
-        isRestricted = is_restricted_local_network(skb, uid, egress, kver);
+        isAllowed = is_local_net_access_allowed(uid, if_index, remote_ip6,
+                                                packet->ip_proto, remote_port);
     }
-    return isRestricted;
+    return !isAllowed;
 }
 
 static __always_inline inline void
@@ -595,46 +561,43 @@ static __always_inline inline bool parse_skb(SkbIpPacketData *const packet,
 }
 
 static __always_inline inline bool
-should_block_loopback_access(struct __sk_buff *const skb,
-                             const uint32_t sender_uid,
-                             const struct kver_uint kver) {
+should_block_loopback_access(const SkbIpPacketData *const packet_data,
+                             struct __sk_buff *const skb,
+                             const uint32_t sender_uid) {
     bool checks_enabled = loopback_checks_enabled();
     bool metrics_enabled = loopback_metrics_enabled();
     if (!checks_enabled && !metrics_enabled) return false;
 
-    SkbIpPacketData packet_data = {};
-    if (!parse_skb(&packet_data, skb, kver)) return false;
-
     struct bpf_sock_tuple sock_tuple = {};
     uint32_t tuple_size;
 
-    if (packet_data.ip_version == 4) {
+    if (packet_data->ip_version == 4) {
         // IPv4-mapped-v6
-        sock_tuple.ipv4.saddr = packet_data.saddr.s6_addr32[3];
-        sock_tuple.ipv4.daddr = packet_data.daddr.s6_addr32[3];
-        sock_tuple.ipv4.sport = packet_data.sport;
-        sock_tuple.ipv4.dport = packet_data.dport;
+        sock_tuple.ipv4.saddr = packet_data->saddr.s6_addr32[3];
+        sock_tuple.ipv4.daddr = packet_data->daddr.s6_addr32[3];
+        sock_tuple.ipv4.sport = packet_data->sport;
+        sock_tuple.ipv4.dport = packet_data->dport;
         tuple_size = sizeof(sock_tuple.ipv4);
-    } else if (packet_data.ip_version == 6) {
-        __builtin_memcpy(&sock_tuple.ipv6.saddr, &packet_data.saddr,
+    } else if (packet_data->ip_version == 6) {
+        __builtin_memcpy(&sock_tuple.ipv6.saddr, &packet_data->saddr,
                          sizeof(sock_tuple.ipv6.saddr));
-        __builtin_memcpy(&sock_tuple.ipv6.daddr, &packet_data.daddr,
+        __builtin_memcpy(&sock_tuple.ipv6.daddr, &packet_data->daddr,
                          sizeof(sock_tuple.ipv6.daddr));
-        sock_tuple.ipv6.sport = packet_data.sport;
-        sock_tuple.ipv6.dport = packet_data.dport;
+        sock_tuple.ipv6.sport = packet_data->sport;
+        sock_tuple.ipv6.dport = packet_data->dport;
         tuple_size = sizeof(sock_tuple.ipv6);
     } else {
         return false;
     }
 
     struct bpf_sock *local_sk;
-    if (packet_data.ip_proto == IPPROTO_TCP) {
+    if (packet_data->ip_proto == IPPROTO_TCP) {
         // Only trigger on SYN to avoid redundant lookups for established
         // connections
-        if (!(packet_data.tcp_flags & TCP_FLAG8_SYN)) return false;
+        if (!(packet_data->tcp_flags & TCP_FLAG8_SYN)) return false;
         local_sk = bpf_sk_lookup_tcp(skb, &sock_tuple, tuple_size,
                                      BPF_F_CURRENT_NETNS, 0);
-    } else if (packet_data.ip_proto == IPPROTO_UDP) {
+    } else if (packet_data->ip_proto == IPPROTO_UDP) {
         local_sk = bpf_sk_lookup_udp(skb, &sock_tuple, tuple_size,
                                      BPF_F_CURRENT_NETNS, 0);
     } else {
@@ -925,16 +888,19 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb,
         if (match == DROP_UNLESS_DNS) match = DROP;
     }
 
-    if (API_IS_AT_LEAST(lvl, 25Q4) && (match != DROP) && egress.egress &&
-        skb->ifindex == 1) {
-        if (should_block_loopback_access(skb, sock_uid, kver)) {
+    SkbIpPacketData packet_data = {};
+    bool parsed = parse_skb(&packet_data, skb, kver);
+
+    if (parsed && API_IS_AT_LEAST(lvl, 25Q4) && (match != DROP) && egress.egress
+        && skb->ifindex == 1) {
+        if (should_block_loopback_access(&packet_data, skb, sock_uid)) {
             match = DROP;
         }
     }
 
-    if (API_IS_AT_LEAST(lvl, 25Q2) && (match != DROP) && !dns) {
-        // TODO(b/467964186): use the parsed skb
-        if (should_block_local_network_packets(skb, sock_uid, egress, kver)) {
+    if (parsed && API_IS_AT_LEAST(lvl, 25Q2) && (match != DROP) && !dns) {
+        if (should_block_local_network_packets(&packet_data, sock_uid,
+                                               skb->ifindex, egress, kver)) {
             if (KVER_IS_AT_LEAST(kver, 5, 10, 0) && skb->sk && egress.egress) {
                 SkStorageValue *v = bpf_sk_storage_get(skb->sk, 0, 0);
                 if (v) v->dropReasons |= DROP_REASON_LNP;
