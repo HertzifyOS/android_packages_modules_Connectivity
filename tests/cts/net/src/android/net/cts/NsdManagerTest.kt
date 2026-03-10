@@ -1199,12 +1199,8 @@ class NsdManagerTest {
         val record2 = NsdRegistrationRecord()
         val offloadEngine = TestNsdOffloadEngine()
         val offloadType = runAsShell(READ_DEVICE_CONFIG) {
-            if (Flags.nsdSelectiveMdnsResponseOffload()) {
-                (OffloadEngine.OFFLOAD_TYPE_REPLY
+            (OffloadEngine.OFFLOAD_TYPE_REPLY
                     or OffloadEngine.OFFLOAD_TYPE_FILTER_REPLIES).toLong()
-            } else {
-                OffloadEngine.OFFLOAD_TYPE_REPLY.toLong()
-            }
         }
 
         tryTest {
@@ -1267,8 +1263,6 @@ class NsdManagerTest {
 
     @Test
     fun testNsdManager_registerServiceAfterOffloadEngine_verifyOffloadInfoUpdates() {
-        assumeTrue(runAsShell(READ_DEVICE_CONFIG) { Flags.nsdSelectiveMdnsResponseOffload() })
-
         val si = NsdServiceInfo()
         si.serviceType = "$serviceType,_subtype"
         si.serviceName = serviceName
@@ -1342,11 +1336,6 @@ class NsdManagerTest {
 
     @Test
     fun testNsdManager_registerOffloadEngine_discoveryAndResolution() {
-        val isSelectiveMdnsResponseOffloadEnabled = runAsShell(READ_DEVICE_CONFIG) {
-            Flags.nsdSelectiveMdnsResponseOffload()
-        }
-        assumeTrue(isSelectiveMdnsResponseOffloadEnabled)
-
         val discoveryRecord = NsdDiscoveryRecord()
         val resolveRecord = NsdResolveRecord()
         val offloadEngine = TestNsdOffloadEngine()
@@ -1458,11 +1447,6 @@ class NsdManagerTest {
 
     @Test
     fun testNsdManager_registerOffloadEngine_discoveryAndResolution_SocketDestroyed() {
-        val isSelectiveMdnsResponseOffloadEnabled = runAsShell(READ_DEVICE_CONFIG) {
-            Flags.nsdSelectiveMdnsResponseOffload()
-        }
-        assumeTrue(isSelectiveMdnsResponseOffloadEnabled)
-
         val discoveryRecord = NsdDiscoveryRecord()
         val resolveRecord = NsdResolveRecord()
         val offloadEngine = TestNsdOffloadEngine()
