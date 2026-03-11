@@ -42,15 +42,15 @@ import static android.net.nsd.NsdManager.OFFLOAD_ENGINE_SERVICE_INFO_UPDATE;
 import static android.net.nsd.NsdManager.RESOLVE_SERVICE_SUCCEEDED;
 import static android.net.nsd.NsdManager.SUBTYPE_LABEL_REGEX;
 import static android.net.nsd.NsdManager.TYPE_REGEX;
+import static android.os.Process.SYSTEM_UID;
+import static android.permission.PermissionManager.PERMISSION_GRANTED;
+import static android.permission.flags.Flags.accessLocalNetworkPermissionEnabled;
+import static android.provider.DeviceConfig.NAMESPACE_TETHERING;
 import static android.net.nsd.OffloadEngine.OFFLOAD_CAPABILITY_BYPASS_MULTICAST_LOCK;
 import static android.net.nsd.OffloadEngine.OFFLOAD_TYPE_FILTER_QUERIES;
 import static android.net.nsd.OffloadEngine.OFFLOAD_TYPE_FILTER_REPLIES;
 import static android.net.nsd.OffloadEngine.OFFLOAD_TYPE_QUERY;
 import static android.net.nsd.OffloadEngine.OFFLOAD_TYPE_REPLY;
-import static android.os.Process.SYSTEM_UID;
-import static android.permission.PermissionManager.PERMISSION_GRANTED;
-import static android.permission.flags.Flags.accessLocalNetworkPermissionEnabled;
-import static android.provider.DeviceConfig.NAMESPACE_TETHERING;
 
 import static com.android.modules.utils.build.SdkLevel.isAtLeastB;
 import static com.android.modules.utils.build.SdkLevel.isAtLeastU;
@@ -1402,50 +1402,6 @@ public class NsdService extends INsdManager.Stub {
         }
     }
 
-    private static class DiscoveryPermissionResult {
-        public final boolean usePicker;
-        public final boolean usingLocalNetPermission;
-
-        DiscoveryPermissionResult(boolean usePicker, boolean usingLocalNetPermission) {
-            this.usePicker = usePicker;
-            this.usingLocalNetPermission = usingLocalNetPermission;
-        }
-    }
-
-    @Nullable
-    private DiscoveryPermissionResult checkDiscoveryPermissionsAndPicker(
-            ClientInfo clientInfo, DiscoveryRequest request, boolean useJavaBackend) {
-        final long flags = request.getFlags();
-        final boolean pickerRequested = (flags & FLAG_SHOW_PICKER) != 0;
-        final boolean approvedOnly = (flags & FLAG_USER_APPROVED_ONLY) != 0;
-        final boolean noPicker = (flags & FLAG_NO_PICKER) != 0;
-
-        final boolean pickerSupported = useJavaBackend && mEnablePicker;
-        if (pickerRequested && !pickerSupported) return null;
-
-        final boolean permissionsRequired = !pickerSupported || (!pickerRequested && !approvedOnly);
-        final boolean hasPermission = !permissionsRequired
-                || checkDataDeliveryPermissions(
-                        clientInfo.mUid, clientInfo.mPid) == PERMISSION_GRANTED;
-        final boolean usePicker;
-        if (pickerRequested) {
-            usePicker = true;
-        } else if (!hasPermission) {
-            // App lacks permission. Show automatic picker if supported, and allowed by flags.
-            // Otherwise fail the request.
-            if (pickerSupported && !noPicker) {
-                usePicker = true;
-            } else {
-                return null;
-            }
-        } else {
-            usePicker = false;
-        }
-
-        final boolean usingLocalNetPermission = permissionsRequired && hasPermission;
-        return new DiscoveryPermissionResult(usePicker, usingLocalNetPermission);
-    }
-
     private void handleDiscoverServices(int clientRequestId, DiscoveryArgs discoveryArgs,
             boolean isServiceInfoCallback) {
         if (DBG) Log.d(TAG, "Discover services");
@@ -1464,15 +1420,42 @@ public class NsdService extends INsdManager.Stub {
         final String serviceType = typeAndSubtype == null ? null : typeAndSubtype.first;
         final boolean useJavaBackend = useDiscoveryManager(clientInfo, serviceType);
 
-        final DiscoveryPermissionResult permResult = checkDiscoveryPermissionsAndPicker(
-                clientInfo, discoveryRequest, useJavaBackend);
-        if (permResult == null) {
+        final boolean pickerRequested;
+        final boolean permissionsRequired;
+        if (useJavaBackend && mEnablePicker) {
+            pickerRequested = (discoveryRequest.getFlags() & FLAG_SHOW_PICKER) != 0;
+            // Ignore APPROVED_ONLY if SHOW_PICKER is set
+            final boolean approvedOnlyRequested = !pickerRequested
+                    && ((discoveryRequest.getFlags() & FLAG_USER_APPROVED_ONLY) != 0);
+            permissionsRequired = !(approvedOnlyRequested || pickerRequested);
+        } else {
+            pickerRequested = false;
+            // The legacy backend will only be used when running on T (and with target SDK T-),
+            // while checkDataDeliveryPermissions always returns GRANTED before B
+            // (getAttributionSource == null). So permission checks will always be successful when
+            // the legacy backend is used; this is set to true for the mEnablePicker == false case.
+            permissionsRequired = true;
+        }
+
+        final boolean usingLocalNetPermission;
+        // The picker is used if requested (implies no permissions are required), or if required
+        // permissions are missing.
+        final boolean usePicker;
+        if (permissionsRequired) {
+            usingLocalNetPermission = checkDataDeliveryPermissions(
+                    clientInfo.mUid, clientInfo.mPid) == PERMISSION_GRANTED;
+            usePicker = !usingLocalNetPermission;
+        } else {
+            usingLocalNetPermission = false;
+            usePicker = pickerRequested;
+        }
+
+        final boolean noPickerFlag = !pickerRequested
+                && ((discoveryRequest.getFlags() & FLAG_NO_PICKER) != 0);
+        if (usePicker && (noPickerFlag || !mEnablePicker)) {
             clientInfo.onDiscoverServicesFailedPermissions(clientRequestId);
             return;
         }
-
-        final boolean usePicker = permResult.usePicker;
-        final boolean usingLocalNetPermission = permResult.usingLocalNetPermission;
 
         if (requestLimitReached(clientInfo)) {
             clientInfo.onDiscoverServicesFailedImmediately(clientRequestId,
