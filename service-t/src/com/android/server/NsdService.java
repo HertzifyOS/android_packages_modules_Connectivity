@@ -28,7 +28,6 @@ import static android.net.NetworkCapabilities.TRANSPORT_WIFI;
 import static android.net.NetworkStack.PERMISSION_MAINLINE_NETWORK_STACK;
 import static android.net.connectivity.ConnectivityCompatChanges.ENABLE_MATCH_NON_THREAD_LOCAL_NETWORKS;
 import static android.net.connectivity.ConnectivityCompatChanges.RESTRICT_LOCAL_NETWORK;
-import static android.net.connectivity.ConnectivityCompatChanges.USE_NSD_PICKER_WHEN_NO_LOCAL_NET_PERMISSION;
 import static android.net.nsd.AdvertisingRequest.FLAG_OFFLOAD_ONLY;
 import static android.net.nsd.AdvertisingRequest.FLAG_SKIP_PROBING;
 import static android.net.nsd.AdvertisingRequest.FLAG_SKIP_SUBTYPE_ANNOUNCEMENTS;
@@ -1432,10 +1431,9 @@ public class NsdService extends INsdManager.Stub {
         if (pickerRequested) {
             usePicker = true;
         } else if (!hasPermission) {
-            // App lacks permission. Show automatic picker if supported, allowed by flags,
-            // and the compat change is enabled. Otherwise fail the request.
-            if (pickerSupported && !noPicker && mDeps.isPickerAutoUpgradeEnabled(
-                    clientInfo.getUid())) {
+            // App lacks permission. Show automatic picker if supported, and allowed by flags.
+            // Otherwise fail the request.
+            if (pickerSupported && !noPicker) {
                 usePicker = true;
             } else {
                 return null;
@@ -3114,13 +3112,6 @@ public class NsdService extends INsdManager.Stub {
          */
         public int getCallingPid() {
             return Binder.getCallingPid();
-        }
-
-        /**
-         * @see CompatChanges#isChangeEnabled(long, int)
-         */
-        public boolean isPickerAutoUpgradeEnabled(int uid) {
-            return CompatChanges.isChangeEnabled(USE_NSD_PICKER_WHEN_NO_LOCAL_NET_PERMISSION, uid);
         }
 
         /**
