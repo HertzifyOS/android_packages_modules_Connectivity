@@ -560,7 +560,9 @@ public class IpSecPacketLossDetector extends NetworkMetricMonitor {
                             getLogPrefix());
         }
 
-        if (!Objects.equals(mLastCalculateResult, calculateResult)) {
+        if (mLastCalculateResult == null
+                || mLastCalculateResult.getPacketLossRatePercent()
+                        != calculateResult.getPacketLossRatePercent()) {
             logInfo(
                     "calculateResult changed to: "
                             + calculateResult
