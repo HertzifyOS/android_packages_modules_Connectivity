@@ -71,6 +71,7 @@ import androidx.test.uiautomator.Until
 import com.android.compatibility.common.util.PollingCheck
 import com.android.compatibility.common.util.PropertyUtil
 import com.android.compatibility.common.util.SystemUtil
+import com.android.compatibility.common.util.UiAutomatorUtils2
 import com.android.modules.utils.build.SdkLevel.isAtLeastU
 import com.android.net.module.util.DnsPacket
 import com.android.net.module.util.DnsPacket.ANSECTION
@@ -728,9 +729,9 @@ class NsdManagerTest {
             packetReader.sendResponse(buildMdnsPacket(payload2))
 
             // Wait for the picker to appear and click on the second service
-            val serviceText = uiDevice.wait(Until.findObject(By.text(serviceName2)), UI_TIMEOUT_MS)
-            assertNotNull(serviceText, "Picker did not show service $serviceName2")
-            serviceText.click()
+            UiAutomatorUtils2.waitFindObject(
+                By.text(serviceName2), UI_TIMEOUT_MS
+            ).click()
 
             // Expect the next callback to be the 2nd service being found, even though the response
             // for the 1st service was sent first
@@ -3503,14 +3504,17 @@ class NsdManagerTest {
             replaceServiceNameAndTypeWithTestSuffix(payload2, serviceName2)
             packetReader.sendResponse(buildMdnsPacket(payload2))
 
-            val service1Text = uiDevice.wait(Until.findObject(By.text("Display Name 1")),
-                UI_TIMEOUT_MS)
+            val service1Text = UiAutomatorUtils2.waitFindObject(
+                By.text("Display Name 1"), UI_TIMEOUT_MS
+            )
             assertNotNull(
                 service1Text,
                 "Picker did not show service 1 with display attribute value"
             )
 
-            val service2Text = uiDevice.wait(Until.findObject(By.text(serviceName2)), UI_TIMEOUT_MS)
+            val service2Text = UiAutomatorUtils2.waitFindObject(
+                By.text(serviceName2), UI_TIMEOUT_MS
+            )
             assertNotNull(service2Text, "Picker did not show service 2 with its service name")
         } cleanup {
             packetReader.handler.post { packetReader.stop() }
