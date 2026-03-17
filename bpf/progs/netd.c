@@ -990,8 +990,14 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb,
 
 // ----- ingress/stats -----
 
-// Android 26Q2+ 6.1+ (full featured + tcpAccECN)
-DEFINE_NETD_BPF_PROG_RANGES(ingress, stats, 6_1, INF, 26Q2, MAXAPI)
+// Android 26Q2+ 6.18+ (full featured + without tcpAccECN)
+DEFINE_NETD_BPF_PROG_RANGES(ingress, stats, 6_18, INF, 26Q2, MAXAPI)
+(struct __sk_buff* skb) {
+    return bpf_traffic_account(skb, INGRESS, KVER_6_18, API(26Q2));
+}
+
+// Android 26Q2+ 6.1/6.6/6.12 (full featured + tcpAccECN)
+DEFINE_NETD_BPF_PROG_RANGES(ingress, stats, 6_1, 6_18, 26Q2, MAXAPI)
 (struct __sk_buff* skb) {
     update_accecn_counter(skb);
     return bpf_traffic_account(skb, INGRESS, KVER_6_1, API(26Q2));
