@@ -2846,13 +2846,13 @@ public class NsdService extends INsdManager.Stub {
                 .setIsAggressiveQueryModeEnabled(mDeps.isFeatureEnabled(
                         mContext, MdnsFeatureFlags.NSD_AGGRESSIVE_QUERY_MODE))
                 .setIsQueryWithKnownAnswerEnabled(mDeps.isAconfigFlagEnabled(
-                        com.android.tethering.flags.Flags.FLAG_NSD_QUERY_WITH_KNOWN_ANSWER))
+                        Flags.FLAG_NSD_QUERY_WITH_KNOWN_ANSWER))
                 // Both accurate_delay_callback and optimized_expired_service_removal features are
                 // tied with query_with_known_answer feature.
                 .setIsAccurateDelayCallbackEnabled(mDeps.isAconfigFlagEnabled(
-                        com.android.tethering.flags.Flags.FLAG_NSD_QUERY_WITH_KNOWN_ANSWER))
+                        Flags.FLAG_NSD_QUERY_WITH_KNOWN_ANSWER))
                 .setIsOptimizedExpiredServiceRemovalEnabled(mDeps.isAconfigFlagEnabled(
-                        com.android.tethering.flags.Flags.FLAG_NSD_QUERY_WITH_KNOWN_ANSWER))
+                        Flags.FLAG_NSD_QUERY_WITH_KNOWN_ANSWER))
                 .setAvoidAdvertisingEmptyTxtRecords(mDeps.isTetheringFeatureNotChickenedOut(
                         mContext, MdnsFeatureFlags.NSD_AVOID_ADVERTISING_EMPTY_TXT_RECORDS))
                 .setIsCachedServicesRemovalEnabled(mDeps.isTetheringFeatureNotChickenedOut(
@@ -2880,7 +2880,9 @@ public class NsdService extends INsdManager.Stub {
                                 && mDeps.isCompatChangeEnabledForSystem(
                                         ENABLE_MATCH_NON_THREAD_LOCAL_NETWORKS))
                 .setIsMdnsScanOffloadEnabled(mDeps.isAconfigFlagEnabled(
-                        com.android.tethering.flags.Flags.FLAG_NSD_MDNS_SCAN_OFFLOAD))
+                        Flags.FLAG_NSD_MDNS_SCAN_OFFLOAD))
+                .setIsDualQueryForUnicastResponseEnabled(mDeps.isAconfigFlagEnabled(
+                        Flags.FLAG_NSD_DUAL_QUERY_FOR_UNICAST_RESPONSE))
                 .setOverrideProvider(new MdnsFeatureFlags.FlagOverrideProvider() {
                     @Override
                     public boolean isForceEnabledForTest(@NonNull String flag) {
@@ -3026,17 +3028,16 @@ public class NsdService extends INsdManager.Stub {
         /** Get whether a feature config is enabled. */
         public boolean isAconfigFlagEnabled(String feature) {
             return switch (feature) {
-                case Flags.FLAG_NSD_QUERY_WITH_KNOWN_ANSWER ->
-                        com.android.tethering.flags.Flags.nsdQueryWithKnownAnswer();
+                case Flags.FLAG_NSD_QUERY_WITH_KNOWN_ANSWER -> Flags.nsdQueryWithKnownAnswer();
                 case Flags.FLAG_NSD_USE_NETWORK_CALLBACK_FOR_LOCAL_NETWORKS ->
                         Flags.nsdUseNetworkCallbackForLocalNetworks();
-                case com.android.tethering.flags.Flags.FLAG_NSD_MDNS_SCAN_OFFLOAD ->
-                        com.android.tethering.flags.Flags.nsdMdnsScanOffload();
-                case FLAG_NSD_SERVICE_PICKER ->
-                        com.android.tethering.flags.Flags.nsdServicePicker();
+                case Flags.FLAG_NSD_MDNS_SCAN_OFFLOAD -> Flags.nsdMdnsScanOffload();
+                case FLAG_NSD_SERVICE_PICKER -> Flags.nsdServicePicker();
                 case com.android.tethering.mainline.beta.Flags
                         .FLAG_TETHERING_AND_P2P_GO_LOCAL_AGENT ->
                         com.android.tethering.mainline.beta.Flags.tetheringAndP2pGoLocalAgent();
+                case Flags.FLAG_NSD_DUAL_QUERY_FOR_UNICAST_RESPONSE ->
+                        Flags.nsdDualQueryForUnicastResponse();
                 default -> throw new IllegalStateException("Unknown flag " + feature);
             };
         }
