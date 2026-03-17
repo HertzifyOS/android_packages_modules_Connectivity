@@ -1555,7 +1555,7 @@ static int doLoad(char** argv, char * const envp[]) {
     // first in U QPR2 beta~2
     const bool has_platform_netbpfload_rc = exists("/system/etc/init/netbpfload.rc");
 
-    ALOGI("NetBpfLoad (%s) api:%d/%d kver:%07x (%s:%uk) libbpf: v%u.%u uid:%u rc:%d%d user:%d%d%d",
+    ALOGI("%s api:%d/%d kver:%07x (%s:%uk) libbpf: v%u.%u uid:%u rc:%d%d user:%d%d%d",
           argv[0], android_get_device_api_level(), api_level_full,
           kernelVer, describeArch(), page_size >> 10,
           libbpf_major_version(), libbpf_minor_version(), getuid(), has_platform_bpfloader_rc,
