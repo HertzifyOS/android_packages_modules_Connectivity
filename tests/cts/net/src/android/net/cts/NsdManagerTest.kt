@@ -140,7 +140,9 @@ import java.net.ServerSocket
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
 import java.util.Random
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executor
+import java.util.concurrent.TimeUnit
 import java.util.regex.Pattern
 import kotlin.math.min
 import kotlin.test.assertContentEquals
@@ -684,6 +686,21 @@ class NsdManagerTest {
     }
 
     @Test
+    fun testCheckPermissionForService_deniedByDefault() {
+        assumeTrue(runAsShell(READ_DEVICE_CONFIG) {
+            com.android.tethering.flags.Flags.nsdServicePicker()
+        })
+        val permissionDeniedFuture = CompletableFuture<Int>()
+        nsdManager.checkPermissionForService(serviceName, serviceType, Runnable::run) {
+            permissionDeniedFuture.complete(it)
+        }
+        assertEquals(
+            NsdManager.SERVICE_PERMISSION_DENIED,
+            permissionDeniedFuture.get(TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        )
+    }
+
+    @Test
     @CtsNetTestCasesLocalNetNoPermissions
     @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     @RequiresFlagsEnabled(
@@ -737,6 +754,14 @@ class NsdManagerTest {
             // for the 1st service was sent first
             val foundInfo = discoveryRecord.expectCallback<ServiceFound>(UI_TIMEOUT_MS)
             assertEquals(serviceName2, foundInfo.serviceInfo.serviceName)
+
+            // The service should now be allowlisted
+            val permissionGrantedFuture = CompletableFuture<Int>()
+            nsdManager.checkPermissionForService(serviceName2, serviceType, Runnable::run) {
+                permissionGrantedFuture.complete(it)
+            }
+            assertEquals(NsdManager.SERVICE_PERMISSION_GRANTED,
+                permissionGrantedFuture.get(TIMEOUT_MS, TimeUnit.MILLISECONDS))
         } cleanup {
             packetReader.handler.post { packetReader.stop() }
             handlerThread.waitForIdle(TIMEOUT_MS)
