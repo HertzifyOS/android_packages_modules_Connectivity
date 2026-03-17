@@ -187,7 +187,7 @@ static Status initPrograms(const char* cg2_path) {
     }
 
     if (isAtLeast26Q2) {
-        if (isAtLeastKernelVersion(6, 1)) {
+        if (isAtLeastKernelVersion(6, 1) && !isAtLeastKernelVersion(6, 18)) {
             RETURN_IF_NOT_OK(attachProgramToCgroup(L4S_OPTIONS_SOCKOPS_PROG_PATH,
                                         cg_fd, BPF_CGROUP_SOCK_OPS));
         }
@@ -231,7 +231,7 @@ static Status initPrograms(const char* cg2_path) {
     }
 
     if (isAtLeast26Q2) {
-        if (isAtLeastKernelVersion(6, 1)) {
+        if (isAtLeastKernelVersion(6, 1) && !isAtLeastKernelVersion(6, 18)) {
             if (queryProgram(cg_fd, BPF_CGROUP_SOCK_OPS) <= 0) abort();
         }
     }
