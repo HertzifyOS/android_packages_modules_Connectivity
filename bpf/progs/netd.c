@@ -891,14 +891,14 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb,
     SkbIpPacketData packet_data = {};
     bool parsed = parse_skb(&packet_data, skb, kver);
 
-    if (parsed && API_IS_AT_LEAST(lvl, 25Q4) && (match != DROP) && egress.egress
+    if (API_IS_AT_LEAST(lvl, 25Q4) && parsed && (match != DROP) && egress.egress
         && skb->ifindex == 1) {
         if (should_block_loopback_access(&packet_data, skb, sock_uid)) {
             match = DROP;
         }
     }
 
-    if (parsed && API_IS_AT_LEAST(lvl, 25Q2) && (match != DROP) && !dns) {
+    if (API_IS_AT_LEAST(lvl, 25Q2) && parsed && (match != DROP) && !dns) {
         if (should_block_local_network_packets(&packet_data, sock_uid,
                                                skb->ifindex, egress, kver)) {
             if (KVER_IS_AT_LEAST(kver, 5, 10, 0) && skb->sk && egress.egress) {
