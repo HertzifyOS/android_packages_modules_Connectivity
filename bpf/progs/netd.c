@@ -523,6 +523,16 @@ static __always_inline inline bool parse_skb(SkbIpPacketData *const packet,
         (void)bpf_skb_load_bytes_net(skb, IP6_OFFSET(nexthdr), &proto,
                                      sizeof(proto), kver);
         L4_off = sizeof(struct ipv6hdr);
+        // skip over a *single* HOPOPTS or DSTOPTS extension header (if present)
+        if (proto == IPPROTO_HOPOPTS || proto == IPPROTO_DSTOPTS) {
+            struct {
+                uint8_t proto, len;
+            } ext_hdr;
+            if (!bpf_skb_load_bytes_net(skb, L4_off, &ext_hdr, sizeof(ext_hdr), kver)) {
+                proto = ext_hdr.proto;
+                L4_off += (ext_hdr.len + 1) * 8;
+            }
+        }
     } else {
         // Not an IP packet. Don't continue parsing.
         return false;
@@ -627,7 +637,8 @@ should_block_loopback_access(const SkbIpPacketData *const packet_data,
 }
 
 static __always_inline inline void do_packet_tracing(
-        const struct __sk_buff* const skb, const struct egress_bool egress, const uint32_t uid,
+        const struct __sk_buff* const skb, const SkbIpPacketData* const packet,
+        const struct egress_bool egress, const uint32_t uid,
         const uint32_t tag, const struct kver_uint kver) {
     if (!KVER_IS_AT_LEAST(kver, 5, 10, 0)) return;
 
@@ -639,73 +650,20 @@ static __always_inline inline void do_packet_tracing(
     PacketTrace* pkt = bpf_packet_trace_ringbuf_reserve();
     if (pkt == NULL) return;
 
-    // Errors from bpf_skb_load_bytes_net are ignored to favor returning something
-    // over returning nothing. In the event of an error, the kernel will fill in
-    // zero for the destination memory. Do not change the default '= 0' below.
-
-    uint8_t proto = 0;
-    uint8_t L4_off = 0;
-    uint8_t ipVersion = 0;
-    if (skb->protocol == htons(ETH_P_IP)) {
-        (void)bpf_skb_load_bytes_net(skb, IP4_OFFSET(protocol), &proto, sizeof(proto), kver);
-        (void)bpf_skb_load_bytes_net(skb, IPPROTO_IHL_OFF, &L4_off, sizeof(L4_off), kver);
-        L4_off = (L4_off & 0x0F) * 4;  // IHL calculation.
-        ipVersion = 4;
-    } else if (skb->protocol == htons(ETH_P_IPV6)) {
-        (void)bpf_skb_load_bytes_net(skb, IP6_OFFSET(nexthdr), &proto, sizeof(proto), kver);
-        L4_off = sizeof(struct ipv6hdr);
-        ipVersion = 6;
-        // skip over a *single* HOPOPTS or DSTOPTS extension header (if present)
-        if (proto == IPPROTO_HOPOPTS || proto == IPPROTO_DSTOPTS) {
-            struct {
-                uint8_t proto, len;
-            } ext_hdr;
-            if (!bpf_skb_load_bytes_net(skb, L4_off, &ext_hdr, sizeof(ext_hdr), kver)) {
-                proto = ext_hdr.proto;
-                L4_off += (ext_hdr.len + 1) * 8;
-            }
-        }
-    }
-
-    uint8_t flags = 0;
-    __be16 sport = 0, dport = 0;
-    if (L4_off >= 20) {
-      switch (proto) {
-        case IPPROTO_TCP:
-          (void)bpf_skb_load_bytes_net(skb, L4_off + TCP_FLAG8_OFF, &flags, sizeof(flags), kver);
-          // fallthrough
-        case IPPROTO_DCCP:
-        case IPPROTO_UDP:
-        case IPPROTO_UDPLITE:
-        case IPPROTO_SCTP:
-          // all of these L4 protocols start with be16 src & dst port
-          (void)bpf_skb_load_bytes_net(skb, L4_off + 0, &sport, sizeof(sport), kver);
-          (void)bpf_skb_load_bytes_net(skb, L4_off + 2, &dport, sizeof(dport), kver);
-          break;
-        case IPPROTO_ICMP:
-        case IPPROTO_ICMPV6:
-          // Both IPv4 and IPv6 icmp start with u8 type & code, which we store in the bottom
-          // (ie. second) byte of sport/dport (which are be16s), the top byte is already zero.
-          (void)bpf_skb_load_bytes_net(skb, L4_off + 0, (char *)&sport + 1, 1, kver); //type
-          (void)bpf_skb_load_bytes_net(skb, L4_off + 1, (char *)&dport + 1, 1, kver); //code
-          break;
-      }
-    }
-
     pkt->timestampNs = bpf_ktime_get_boot_ns();
     pkt->ifindex = skb->ifindex;
     pkt->length = skb->len;
 
     pkt->uid = uid;
     pkt->tag = tag;
-    pkt->sport = sport;
-    pkt->dport = dport;
+    pkt->sport = packet->sport;
+    pkt->dport = packet->dport;
 
     pkt->egress = egress.egress;
     pkt->wakeup = !egress.egress && (skb->mark & 0x80000000);  // Fwmark.ingress_cpu_wakeup
-    pkt->ipProto = proto;
-    pkt->tcpFlags = flags;
-    pkt->ipVersion = ipVersion;
+    pkt->ipProto = packet->ip_proto;
+    pkt->tcpFlags = packet->tcp_flags;
+    pkt->ipVersion = packet->ip_version;
 
     bpf_packet_trace_ringbuf_submit(pkt);
 }
@@ -926,8 +884,7 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb,
 
     if (!selectedMap) return PASS;  // cannot happen, needed to keep bpf verifier happy
 
-    // TODO(b/467964186): use the parsed skb
-    do_packet_tracing(skb, egress, statsUid, tag, kver);
+    do_packet_tracing(skb, &packet_data, egress, statsUid, tag, kver);
     update_stats_with_config(*selectedMap, skb, &key, egress, kver, ACCOUNT);
     update_app_uid_stats_map(skb, &statsUid, egress, kver, ACCOUNT);
 
