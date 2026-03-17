@@ -42,7 +42,9 @@ static const int DROP_UNLESS_DNS = 2;  // internal to our program
 
 // This is the offset of the 2nd byte of tcp flags
 #define TCP_FLAG8_OFF (TCP_OFFSET(flags16) + 1)
+#define TCP_FLAG8_FIN 0x01
 #define TCP_FLAG8_SYN 0x02
+#define TCP_FLAG8_RST 0x04
 
 #define EINVAL  22
 #define EUNATCH 49
@@ -668,40 +670,16 @@ static __always_inline inline void do_packet_tracing(
     bpf_packet_trace_ringbuf_submit(pkt);
 }
 
-static __always_inline inline bool skip_owner_match(struct __sk_buff* skb,
-                                                    const struct egress_bool egress,
-                                                    const struct kver_uint kver) {
-    __be16 flags16 = 0;
-    if (skb->protocol == htons(ETH_P_IP)) {
-        uint8_t proto;
-        // no need to check for success, proto will be zeroed if bpf_skb_load_bytes_net() fails
-        (void)bpf_skb_load_bytes_net(skb, IP4_OFFSET(protocol), &proto, sizeof(proto), kver);
-        if (proto == IPPROTO_ESP) return true;
-        if (proto != IPPROTO_TCP) return false;  // handles read failure above
-        uint8_t ihl;
-        // we don't check for success, as this cannot fail, as it is earlier in the packet than
-        // proto, the reading of which must have succeeded, additionally the next read
-        // (a little bit deeper in the packet in spite of ihl being zeroed) of the tcp flags
-        // field will also fail, and that failure we already handle correctly
-        // (we also don't check that ihl in [0x45,0x4F] nor that ipv4 header checksum is correct)
-        (void)bpf_skb_load_bytes_net(skb, IPPROTO_IHL_OFF, &ihl, sizeof(ihl), kver);
-        // if the read below fails, we'll just assume no TCP flags are set, which is fine.
-        (void)bpf_skb_load_bytes_net(skb, (ihl & 0xF) * 4 + TCP_OFFSET(flags16),
-                                     &flags16, sizeof(flags16), kver);
-    } else if (skb->protocol == htons(ETH_P_IPV6)) {
-        uint8_t proto;
-        // no need to check for success, proto will be zeroed if bpf_skb_load_bytes_net() fails
-        (void)bpf_skb_load_bytes_net(skb, IP6_OFFSET(nexthdr), &proto, sizeof(proto), kver);
-        if (proto == IPPROTO_ESP) return true;
-        if (proto != IPPROTO_TCP) return false;  // handles read failure above
-        // if the read below fails, we'll just assume no TCP flags are set, which is fine.
-        (void)bpf_skb_load_bytes_net(skb, sizeof(struct ipv6hdr) + TCP_OFFSET(flags16),
-                                     &flags16, sizeof(flags16), kver);
-    } else {
-        return false;
-    }
+static __always_inline inline bool skip_owner_match(const SkbIpPacketData* const packet,
+                                                    const struct egress_bool egress) {
+    if (packet->ip_version == 0) return false;
+
+    if (packet->ip_proto == IPPROTO_ESP) return true;
+
+    if (packet->ip_proto != IPPROTO_TCP) return false;
+
     // Always allow RST's, and additionally allow ingress FINs
-    return flags16 & (TCP_FLAG_RST | (egress.egress ? 0 : TCP_FLAG_FIN));  // false on read failure
+    return packet->tcp_flags & (TCP_FLAG8_RST | (egress.egress ? 0 : TCP_FLAG8_FIN));
 }
 
 static __always_inline inline BpfConfig getConfig(uint32_t configKey) {
@@ -714,22 +692,17 @@ static __always_inline inline BpfConfig getConfig(uint32_t configKey) {
     return *config;
 }
 
-static __always_inline inline bool ingress_should_discard(struct __sk_buff* skb,
+static __always_inline inline bool ingress_should_discard(const SkbIpPacketData* const packet,
+                                                          struct __sk_buff* skb,
                                                           const struct kver_uint kver) {
     // Require 4.19, since earlier kernels don't have bpf_skb_load_bytes_relative() which
     // provides relative to L3 header reads.  Without that we could fetch the wrong bytes.
     // Additionally earlier bpf verifiers are much harder to please.
     if (!KVER_IS_AT_LEAST(kver, 4, 19, 0)) return false;
 
-    IngressDiscardKey k = {};
-    if (skb->protocol == htons(ETH_P_IP)) {
-        k.daddr.s6_addr32[2] = htonl(0xFFFF);
-        (void)bpf_skb_load_bytes_net(skb, IP4_OFFSET(daddr), &k.daddr.s6_addr32[3], 4, kver);
-    } else if (skb->protocol == htons(ETH_P_IPV6)) {
-        (void)bpf_skb_load_bytes_net(skb, IP6_OFFSET(daddr), &k.daddr, sizeof(k.daddr), kver);
-    } else {
-        return false; // non IPv4/IPv6, so no IP to match on
-    }
+    if (packet->ip_version == 0) return false;
+
+    IngressDiscardKey k = { .daddr = packet->daddr };
 
     // we didn't check for load success, because destination bytes will be zeroed if
     // bpf_skb_load_bytes_net() fails, instead we rely on daddr of '::' and '::ffff:0.0.0.0'
@@ -743,13 +716,14 @@ static __always_inline inline bool ingress_should_discard(struct __sk_buff* skb,
     return true;  // disallowed interface
 }
 
-static __always_inline inline int bpf_owner_match(struct __sk_buff* skb, uint32_t uid,
+static __always_inline inline int bpf_owner_match(const SkbIpPacketData* const packet,
+                                                  struct __sk_buff* skb, uint32_t uid,
                                                   const struct egress_bool egress,
                                                   const struct kver_uint kver,
                                                   const struct sdk_level_uint lvl) {
     if (is_system_uid(uid)) return PASS;
 
-    if (skip_owner_match(skb, egress, kver)) return PASS;
+    if (skip_owner_match(packet, egress)) return PASS;
 
     BpfConfig enabledRules = getConfig(UID_RULES_CONFIGURATION_KEY);
 
@@ -763,7 +737,7 @@ static __always_inline inline int bpf_owner_match(struct __sk_buff* skb, uint32_
     if (isBlockedByUidRules(enabledRules, uidRules)) return DROP;
 
     if (!egress.egress && skb->ifindex != 1) {
-        if (ingress_should_discard(skb, kver)) return DROP;
+        if (ingress_should_discard(packet, skb, kver)) return DROP;
         if (uidRules & IIF_MATCH) {
             if (allowed_iif && skb->ifindex != allowed_iif) {
                 // Drops packets not coming from lo nor the allowed interface
@@ -829,8 +803,10 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb,
     // CLAT daemon receives via an untagged AF_PACKET socket.
     if (egress.egress && statsUid == AID_CLAT) return PASS;
 
-    // TODO(b/467964186): use the parsed skb
-    int match = bpf_owner_match(skb, sock_uid, egress, kver, lvl);
+    SkbIpPacketData packet_data = {};
+    bool parsed = parse_skb(&packet_data, skb, kver);
+
+    int match = bpf_owner_match(&packet_data, skb, sock_uid, egress, kver, lvl);
 
     bool dns = false;
 
@@ -845,9 +821,6 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb,
     } else {
         if (match == DROP_UNLESS_DNS) match = DROP;
     }
-
-    SkbIpPacketData packet_data = {};
-    bool parsed = parse_skb(&packet_data, skb, kver);
 
     if (API_IS_AT_LEAST(lvl, 25Q4) && parsed && (match != DROP) && egress.egress
         && skb->ifindex == 1) {
