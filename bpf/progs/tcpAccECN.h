@@ -22,7 +22,7 @@
 DEFINE_BPF_MAP_NO_NETD(l4s_conn_counter, ARRAY, uint32_t, uint32_t, 1)
 DEFINE_BPF_MAP_NO_NETD(l4s_accecn_enabled_map, ARRAY, uint32_t, bool, 1)
 
-static inline __attribute__((always_inline)) int
+static inline __always_inline int
 find_accecn_options_offset(struct __sk_buff *skb, uint8_t offset) {
     int ret;
     uint8_t opt_off;
@@ -59,7 +59,7 @@ find_accecn_options_offset(struct __sk_buff *skb, uint8_t offset) {
     return -1;
 }
 
-static inline __attribute__((always_inline)) int
+static inline __always_inline int
 parse_tcp_mss_option(struct __sk_buff *skb, uint8_t offset) {
     int ret;
     uint8_t opt_off;
@@ -98,7 +98,7 @@ parse_tcp_mss_option(struct __sk_buff *skb, uint8_t offset) {
     return -1;
 }
 
-static inline __attribute__((always_inline)) int
+static inline __always_inline int
 is_l4s_enabled() {
     uint32_t status_key = 0;
     bool *l4s_status_ptr = bpf_l4s_accecn_enabled_map_lookup_elem(&status_key);
