@@ -1353,10 +1353,16 @@ static bool loadObject(const char* const progPath, const bool useLibbpf = false)
 
 static bool loadAllObjects() {
     bool libbpf = true;
+    bool funcs = false; // replace with isAtLeastKernelVersion(...) or something
+
     if (!loadObject(BPFROOT "offload.o")) return false;
     if (!loadObject(BPFROOT "test.o", true)) return false;
     if (!loadObject(BPFROOT "clatd.o", libbpf)) return false;
-    if (!loadObject(BPFROOT "dscpPolicy.o", true)) return false;
+    if (funcs) {
+        if (!loadObject(BPFROOT "dscpPolicy@funcs.o", true)) return false;
+    } else {
+        if (!loadObject(BPFROOT "dscpPolicy.o", true)) return false;
+    }
     if (!loadObject(BPFROOT "netd.o", libbpf)) return false;
     return true;
 }

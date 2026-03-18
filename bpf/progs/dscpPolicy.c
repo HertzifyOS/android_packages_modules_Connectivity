@@ -43,7 +43,13 @@ struct compute_ctx {
     RuleEntry e;
 };
 
-static long
+#ifdef BPF_USE_FUNC
+  #define callable
+#else
+  #define callable inline __always_inline
+#endif
+
+static callable long
 compute(__unused const void *map, __unused const uint32_t *key, DscpPolicy *policy, void *ctx_) {
     struct compute_ctx *ctx = ctx_;
 
@@ -238,12 +244,34 @@ static inline __always_inline void match_policy(struct __sk_buff* skb, const boo
         .e.dscp_val = -1,  // meaning no mutation
     };
 
+#ifdef BPF_USE_FUNC
     // Linear scan ipv?_dscp_policies_map since stored params didn't match skb.
     if (ipv4) {
         bpf_for_each_ipv4_dscp_policies_map_elem(compute, &ctx);
     } else {
         bpf_for_each_ipv6_dscp_policies_map_elem(compute, &ctx);
     }
+#else
+    for (register uint64_t i = 0; i < MAX_POLICIES; i++) {
+        // Using a uint64 in for loop prevents infinite loop during BPF load,
+        // but the key is uint32, so convert back.
+        uint32_t key = i;
+
+        DscpPolicy* policy;
+        if (ipv4) {
+            policy = bpf_ipv4_dscp_policies_map_lookup_elem(&key);
+        } else {
+            policy = bpf_ipv6_dscp_policies_map_lookup_elem(&key);
+        }
+
+        // Lookup failure cannot happen on an array with MAX_POLICIES entries.
+        // While 'continue' would make logical sense here, 'return' should be
+        // easier for the verifier to analyze.
+        if (!policy) return;
+
+        if (compute(NULL, &key, policy, &ctx)) break;
+    }
+#endif
 
     // Update cache with found policy.
     *existing_rule = ctx.e;
