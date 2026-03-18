@@ -105,6 +105,25 @@ is_l4s_enabled() {
     return l4s_status_ptr && *l4s_status_ptr;
 }
 
+typedef struct {
+    __u8 u8[3];
+} be24;
+STRUCT_SIZE(be24, 3);
+
+static inline __always_inline
+void assign_be24(be24 * const v, unsigned x) {
+    v->u8[2] = x; x >>= 8;
+    v->u8[1] = x; x >>= 8;
+    v->u8[0] = x;
+}
+
+typedef struct {
+    __u8 kind;
+    __u8 length;
+    be24 e1b, ceb, e0b;
+} tcp_accecn_option;
+STRUCT_SIZE(tcp_accecn_option, 1 + 1 + 3 * 3); // 11
+
 DEFINE_BPF_PROG_KVER_RANGE(sockops, accecn_option, AID_SYSTEM, 6_1, 6_18)
 (struct bpf_sock_ops *skops) {
     if (!is_l4s_enabled()) return 1;
@@ -126,7 +145,7 @@ DEFINE_BPF_PROG_KVER_RANGE(sockops, accecn_option, AID_SYSTEM, 6_1, 6_18)
 
             SkStorageValue* sks = bpf_sk_storage_get(skops->sk, 0, 0);
             if (!sks || !sks->l4s.byte_inited) break;
-            bpf_reserve_hdr_opt(skops, 11, 0);
+            bpf_reserve_hdr_opt(skops, sizeof(tcp_accecn_option), 0);
             break;
         }
         case BPF_SOCK_OPS_WRITE_HDR_OPT_CB:
@@ -136,25 +155,16 @@ DEFINE_BPF_PROG_KVER_RANGE(sockops, accecn_option, AID_SYSTEM, 6_1, 6_18)
             SkStorageValue* sks = bpf_sk_storage_get(skops->sk, 0, 0);
             if (!sks || !sks->l4s.byte_inited) break;
 
-            struct {
-                __u8 kind;
-                __u8 length;
-                __u8 data[9];
-            } __attribute__((packed)) tcp_accecn_option = {
+            tcp_accecn_option opt = {
                 .kind = 174,
-                .length = 11,
-                .data = {0},
+                .length = sizeof(opt),
             };
 
-            __u32 e0b_val = htonl((__u32)(sks->l4s.e0b & 0x0000000000FFFFFF)) >> 8;
-            __u32 ceb_val = htonl((__u32)(sks->l4s.ceb & 0x0000000000FFFFFF)) >> 8;
-            __u32 e1b_val = htonl((__u32)(sks->l4s.e1b & 0x0000000000FFFFFF)) >> 8;
+            assign_be24(&opt.e1b, sks->l4s.e1b);
+            assign_be24(&opt.ceb, sks->l4s.ceb);
+            assign_be24(&opt.e0b, sks->l4s.e0b);
 
-            __builtin_memcpy(&tcp_accecn_option.data[0], &e1b_val, 3);
-            __builtin_memcpy(&tcp_accecn_option.data[3], &ceb_val, 3);
-            __builtin_memcpy(&tcp_accecn_option.data[6], &e0b_val, 3);
-
-            bpf_store_hdr_opt(skops, &tcp_accecn_option, sizeof tcp_accecn_option, 0);
+            bpf_store_hdr_opt(skops, &opt, sizeof(opt), 0);
             break;
         }
         default:
