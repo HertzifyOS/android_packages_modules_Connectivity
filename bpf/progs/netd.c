@@ -42,7 +42,9 @@ static const int DROP_UNLESS_DNS = 2;  // internal to our program
 
 // This is the offset of the 2nd byte of tcp flags
 #define TCP_FLAG8_OFF (TCP_OFFSET(flags16) + 1)
+#define TCP_FLAG8_FIN 0x01
 #define TCP_FLAG8_SYN 0x02
+#define TCP_FLAG8_RST 0x04
 
 #define EINVAL  22
 #define EUNATCH 49
@@ -328,47 +330,6 @@ is_local_net_access_allowed(const uint32_t uid, const uint32_t if_index,
     return v && *v;
 }
 
-static __always_inline inline bool
-is_restricted_local_network(struct __sk_buff *skb, const uint32_t uid,
-                            const struct egress_bool egress,
-                            const struct kver_uint kver) {
-    struct in6_addr remote_ip6;
-    uint8_t ip_proto;
-    uint8_t L4_off;
-    if (skb->protocol == htons(ETH_P_IP)) {
-        int remote_ip_ofs = egress.egress ? IP4_OFFSET(daddr) : IP4_OFFSET(saddr);
-        remote_ip6.s6_addr32[0] = 0;
-        remote_ip6.s6_addr32[1] = 0;
-        remote_ip6.s6_addr32[2] = htonl(0xFFFF);
-        (void)bpf_skb_load_bytes_net(skb, remote_ip_ofs, &remote_ip6.s6_addr32[3], 4, kver);
-        (void)bpf_skb_load_bytes_net(skb, IP4_OFFSET(protocol), &ip_proto, sizeof(ip_proto), kver);
-        uint8_t ihl;
-        (void)bpf_skb_load_bytes_net(skb, IPPROTO_IHL_OFF, &ihl, sizeof(ihl), kver);
-        L4_off = (ihl & 0x0F) * 4;  // IHL calculation.
-    } else if (skb->protocol == htons(ETH_P_IPV6)) {
-        int remote_ip_ofs = egress.egress ? IP6_OFFSET(daddr) : IP6_OFFSET(saddr);
-        (void)bpf_skb_load_bytes_net(skb, remote_ip_ofs, &remote_ip6, sizeof(remote_ip6), kver);
-        (void)bpf_skb_load_bytes_net(skb, IP6_OFFSET(nexthdr), &ip_proto, sizeof(ip_proto), kver);
-        L4_off = sizeof(struct ipv6hdr);
-    } else {
-        return false;
-    }
-
-    __be16 remote_port = 0;
-    switch (ip_proto) {
-      case IPPROTO_TCP:
-      case IPPROTO_DCCP:
-      case IPPROTO_UDP:
-      case IPPROTO_UDPLITE:
-      case IPPROTO_SCTP:
-        (void)bpf_skb_load_bytes_net(skb, L4_off + (egress.egress ? 2 : 0), &remote_port, sizeof(remote_port), kver);
-        break;
-    }
-
-    return !is_local_net_access_allowed(uid, skb->ifindex, &remote_ip6,
-                                        ip_proto, remote_port);
-}
-
 static __always_inline inline uint8_t
 get_chunk_permissions(const uint32_t uid) {
     // All chunks has the same size CHUNK_INT64_COUNT
@@ -389,12 +350,12 @@ static __always_inline inline bool is_local_network_access_blocked(const uint32_
     bool *permissionPropagationEnabled =
         bpf_permission_propagation_enabled_map_lookup_elem(&mapKey);
     if (permissionPropagationEnabled && *permissionPropagationEnabled) {
-        // TODO: stop exempting system uids once the test failure is fixed
-        if (is_system_uid(uid)) return false;
+        if (is_system_or_root(uid)) return false;
         if (get_chunk_permissions(uid) & PERMISSION_BIT_ACCESS_LOCAL_NETWORK)
             return false;
     } else {
-        // System uid has access to restricted local network
+        // Continue exempting system UIDs for the old map. This branch will be
+        // deprecated soon.
         if (is_system_uid(uid)) return false;
 
         // Uid that is not in the blocked uid map has access to restricted local network
@@ -405,8 +366,10 @@ static __always_inline inline bool is_local_network_access_blocked(const uint32_
     return true;
 }
 
-static __always_inline inline bool should_block_local_network_packets(struct __sk_buff *skb,
-                                   const uint32_t uid, const struct egress_bool egress,
+static __always_inline inline bool
+should_block_local_network_packets(const SkbIpPacketData *const packet,
+                                   const uint32_t uid, const uint32_t if_index,
+                                   const struct egress_bool egress,
                                    const struct kver_uint kver) {
     bool reportLocalAccess = false;
     if (KVER_IS_AT_LEAST(kver, 5, 10, 0)) {
@@ -414,13 +377,17 @@ static __always_inline inline bool should_block_local_network_packets(struct __s
         bool *noteOpEnabled = bpf_local_net_note_op_enabled_map_lookup_elem(&key);
         reportLocalAccess = noteOpEnabled && *noteOpEnabled;
     }
-    bool isRestricted;
+    bool isAllowed;
+    const struct in6_addr *remote_ip6 =
+        egress.egress ? &packet->daddr : &packet->saddr;
+    const __be16 remote_port = egress.egress ? packet->dport : packet->sport;
     if (reportLocalAccess) {
-        isRestricted = is_restricted_local_network(skb, uid, egress, kver);
+        isAllowed = is_local_net_access_allowed(uid, if_index, remote_ip6,
+                                                packet->ip_proto, remote_port);
         // Currently, generate events for all local network access, regardless of the UID's
         // permission status.
         // This is to identify all UIDs that are accessing the local network.
-        if (isRestricted) {
+        if (!isAllowed) {
             // Cache to report only once per minute per UID.
             uint32_t* lastReportMinutes = bpf_local_net_note_op_cache_map_lookup_elem(&uid);
             uint32_t bootMinutes = (uint32_t) (bpf_ktime_get_boot_ns() / NS_PER_MINUTE);
@@ -440,9 +407,10 @@ static __always_inline inline bool should_block_local_network_packets(struct __s
     }
 
     if (!reportLocalAccess) {
-        isRestricted = is_restricted_local_network(skb, uid, egress, kver);
+        isAllowed = is_local_net_access_allowed(uid, if_index, remote_ip6,
+                                                packet->ip_proto, remote_port);
     }
-    return isRestricted;
+    return !isAllowed;
 }
 
 static __always_inline inline void
@@ -557,6 +525,16 @@ static __always_inline inline bool parse_skb(SkbIpPacketData *const packet,
         (void)bpf_skb_load_bytes_net(skb, IP6_OFFSET(nexthdr), &proto,
                                      sizeof(proto), kver);
         L4_off = sizeof(struct ipv6hdr);
+        // skip over a *single* HOPOPTS or DSTOPTS extension header (if present)
+        if (proto == IPPROTO_HOPOPTS || proto == IPPROTO_DSTOPTS) {
+            struct {
+                uint8_t proto, len;
+            } ext_hdr;
+            if (!bpf_skb_load_bytes_net(skb, L4_off, &ext_hdr, sizeof(ext_hdr), kver)) {
+                proto = ext_hdr.proto;
+                L4_off += (ext_hdr.len + 1) * 8;
+            }
+        }
     } else {
         // Not an IP packet. Don't continue parsing.
         return false;
@@ -595,46 +573,43 @@ static __always_inline inline bool parse_skb(SkbIpPacketData *const packet,
 }
 
 static __always_inline inline bool
-should_block_loopback_access(struct __sk_buff *const skb,
-                             const uint32_t sender_uid,
-                             const struct kver_uint kver) {
+should_block_loopback_access(const SkbIpPacketData *const packet_data,
+                             struct __sk_buff *const skb,
+                             const uint32_t sender_uid) {
     bool checks_enabled = loopback_checks_enabled();
     bool metrics_enabled = loopback_metrics_enabled();
     if (!checks_enabled && !metrics_enabled) return false;
 
-    SkbIpPacketData packet_data = {};
-    if (!parse_skb(&packet_data, skb, kver)) return false;
-
     struct bpf_sock_tuple sock_tuple = {};
     uint32_t tuple_size;
 
-    if (packet_data.ip_version == 4) {
+    if (packet_data->ip_version == 4) {
         // IPv4-mapped-v6
-        sock_tuple.ipv4.saddr = packet_data.saddr.s6_addr32[3];
-        sock_tuple.ipv4.daddr = packet_data.daddr.s6_addr32[3];
-        sock_tuple.ipv4.sport = packet_data.sport;
-        sock_tuple.ipv4.dport = packet_data.dport;
+        sock_tuple.ipv4.saddr = packet_data->saddr.s6_addr32[3];
+        sock_tuple.ipv4.daddr = packet_data->daddr.s6_addr32[3];
+        sock_tuple.ipv4.sport = packet_data->sport;
+        sock_tuple.ipv4.dport = packet_data->dport;
         tuple_size = sizeof(sock_tuple.ipv4);
-    } else if (packet_data.ip_version == 6) {
-        __builtin_memcpy(&sock_tuple.ipv6.saddr, &packet_data.saddr,
+    } else if (packet_data->ip_version == 6) {
+        __builtin_memcpy(&sock_tuple.ipv6.saddr, &packet_data->saddr,
                          sizeof(sock_tuple.ipv6.saddr));
-        __builtin_memcpy(&sock_tuple.ipv6.daddr, &packet_data.daddr,
+        __builtin_memcpy(&sock_tuple.ipv6.daddr, &packet_data->daddr,
                          sizeof(sock_tuple.ipv6.daddr));
-        sock_tuple.ipv6.sport = packet_data.sport;
-        sock_tuple.ipv6.dport = packet_data.dport;
+        sock_tuple.ipv6.sport = packet_data->sport;
+        sock_tuple.ipv6.dport = packet_data->dport;
         tuple_size = sizeof(sock_tuple.ipv6);
     } else {
         return false;
     }
 
     struct bpf_sock *local_sk;
-    if (packet_data.ip_proto == IPPROTO_TCP) {
+    if (packet_data->ip_proto == IPPROTO_TCP) {
         // Only trigger on SYN to avoid redundant lookups for established
         // connections
-        if (!(packet_data.tcp_flags & TCP_FLAG8_SYN)) return false;
+        if (!(packet_data->tcp_flags & TCP_FLAG8_SYN)) return false;
         local_sk = bpf_sk_lookup_tcp(skb, &sock_tuple, tuple_size,
                                      BPF_F_CURRENT_NETNS, 0);
-    } else if (packet_data.ip_proto == IPPROTO_UDP) {
+    } else if (packet_data->ip_proto == IPPROTO_UDP) {
         local_sk = bpf_sk_lookup_udp(skb, &sock_tuple, tuple_size,
                                      BPF_F_CURRENT_NETNS, 0);
     } else {
@@ -642,10 +617,10 @@ should_block_loopback_access(struct __sk_buff *const skb,
     }
     if (!local_sk) return false;
 
-    SkStorageValue *v = bpf_sk_storage_get(local_sk, 0, 0);
-    const uint32_t receiver_uid = v ? v->uid : 0;
+    SkStorageValue *sks = bpf_sk_storage_get(local_sk, 0, 0);
+    const uint32_t receiver_uid = sks ? sks->uid : 0;
     bpf_sk_release(local_sk);
-    if (!v) return false;
+    if (!sks) return false;
 
     // We don't care about cases where apps are sending loopback traffic to
     // themselves.
@@ -664,7 +639,8 @@ should_block_loopback_access(struct __sk_buff *const skb,
 }
 
 static __always_inline inline void do_packet_tracing(
-        const struct __sk_buff* const skb, const struct egress_bool egress, const uint32_t uid,
+        const struct __sk_buff* const skb, const SkbIpPacketData* const packet,
+        const struct egress_bool egress, const uint32_t uid,
         const uint32_t tag, const struct kver_uint kver) {
     if (!KVER_IS_AT_LEAST(kver, 5, 10, 0)) return;
 
@@ -676,111 +652,34 @@ static __always_inline inline void do_packet_tracing(
     PacketTrace* pkt = bpf_packet_trace_ringbuf_reserve();
     if (pkt == NULL) return;
 
-    // Errors from bpf_skb_load_bytes_net are ignored to favor returning something
-    // over returning nothing. In the event of an error, the kernel will fill in
-    // zero for the destination memory. Do not change the default '= 0' below.
-
-    uint8_t proto = 0;
-    uint8_t L4_off = 0;
-    uint8_t ipVersion = 0;
-    if (skb->protocol == htons(ETH_P_IP)) {
-        (void)bpf_skb_load_bytes_net(skb, IP4_OFFSET(protocol), &proto, sizeof(proto), kver);
-        (void)bpf_skb_load_bytes_net(skb, IPPROTO_IHL_OFF, &L4_off, sizeof(L4_off), kver);
-        L4_off = (L4_off & 0x0F) * 4;  // IHL calculation.
-        ipVersion = 4;
-    } else if (skb->protocol == htons(ETH_P_IPV6)) {
-        (void)bpf_skb_load_bytes_net(skb, IP6_OFFSET(nexthdr), &proto, sizeof(proto), kver);
-        L4_off = sizeof(struct ipv6hdr);
-        ipVersion = 6;
-        // skip over a *single* HOPOPTS or DSTOPTS extension header (if present)
-        if (proto == IPPROTO_HOPOPTS || proto == IPPROTO_DSTOPTS) {
-            struct {
-                uint8_t proto, len;
-            } ext_hdr;
-            if (!bpf_skb_load_bytes_net(skb, L4_off, &ext_hdr, sizeof(ext_hdr), kver)) {
-                proto = ext_hdr.proto;
-                L4_off += (ext_hdr.len + 1) * 8;
-            }
-        }
-    }
-
-    uint8_t flags = 0;
-    __be16 sport = 0, dport = 0;
-    if (L4_off >= 20) {
-      switch (proto) {
-        case IPPROTO_TCP:
-          (void)bpf_skb_load_bytes_net(skb, L4_off + TCP_FLAG8_OFF, &flags, sizeof(flags), kver);
-          // fallthrough
-        case IPPROTO_DCCP:
-        case IPPROTO_UDP:
-        case IPPROTO_UDPLITE:
-        case IPPROTO_SCTP:
-          // all of these L4 protocols start with be16 src & dst port
-          (void)bpf_skb_load_bytes_net(skb, L4_off + 0, &sport, sizeof(sport), kver);
-          (void)bpf_skb_load_bytes_net(skb, L4_off + 2, &dport, sizeof(dport), kver);
-          break;
-        case IPPROTO_ICMP:
-        case IPPROTO_ICMPV6:
-          // Both IPv4 and IPv6 icmp start with u8 type & code, which we store in the bottom
-          // (ie. second) byte of sport/dport (which are be16s), the top byte is already zero.
-          (void)bpf_skb_load_bytes_net(skb, L4_off + 0, (char *)&sport + 1, 1, kver); //type
-          (void)bpf_skb_load_bytes_net(skb, L4_off + 1, (char *)&dport + 1, 1, kver); //code
-          break;
-      }
-    }
-
     pkt->timestampNs = bpf_ktime_get_boot_ns();
     pkt->ifindex = skb->ifindex;
     pkt->length = skb->len;
 
     pkt->uid = uid;
     pkt->tag = tag;
-    pkt->sport = sport;
-    pkt->dport = dport;
+    pkt->sport = packet->sport;
+    pkt->dport = packet->dport;
 
     pkt->egress = egress.egress;
     pkt->wakeup = !egress.egress && (skb->mark & 0x80000000);  // Fwmark.ingress_cpu_wakeup
-    pkt->ipProto = proto;
-    pkt->tcpFlags = flags;
-    pkt->ipVersion = ipVersion;
+    pkt->ipProto = packet->ip_proto;
+    pkt->tcpFlags = packet->tcp_flags;
+    pkt->ipVersion = packet->ip_version;
 
     bpf_packet_trace_ringbuf_submit(pkt);
 }
 
-static __always_inline inline bool skip_owner_match(struct __sk_buff* skb,
-                                                    const struct egress_bool egress,
-                                                    const struct kver_uint kver) {
-    __be16 flags16 = 0;
-    if (skb->protocol == htons(ETH_P_IP)) {
-        uint8_t proto;
-        // no need to check for success, proto will be zeroed if bpf_skb_load_bytes_net() fails
-        (void)bpf_skb_load_bytes_net(skb, IP4_OFFSET(protocol), &proto, sizeof(proto), kver);
-        if (proto == IPPROTO_ESP) return true;
-        if (proto != IPPROTO_TCP) return false;  // handles read failure above
-        uint8_t ihl;
-        // we don't check for success, as this cannot fail, as it is earlier in the packet than
-        // proto, the reading of which must have succeeded, additionally the next read
-        // (a little bit deeper in the packet in spite of ihl being zeroed) of the tcp flags
-        // field will also fail, and that failure we already handle correctly
-        // (we also don't check that ihl in [0x45,0x4F] nor that ipv4 header checksum is correct)
-        (void)bpf_skb_load_bytes_net(skb, IPPROTO_IHL_OFF, &ihl, sizeof(ihl), kver);
-        // if the read below fails, we'll just assume no TCP flags are set, which is fine.
-        (void)bpf_skb_load_bytes_net(skb, (ihl & 0xF) * 4 + TCP_OFFSET(flags16),
-                                     &flags16, sizeof(flags16), kver);
-    } else if (skb->protocol == htons(ETH_P_IPV6)) {
-        uint8_t proto;
-        // no need to check for success, proto will be zeroed if bpf_skb_load_bytes_net() fails
-        (void)bpf_skb_load_bytes_net(skb, IP6_OFFSET(nexthdr), &proto, sizeof(proto), kver);
-        if (proto == IPPROTO_ESP) return true;
-        if (proto != IPPROTO_TCP) return false;  // handles read failure above
-        // if the read below fails, we'll just assume no TCP flags are set, which is fine.
-        (void)bpf_skb_load_bytes_net(skb, sizeof(struct ipv6hdr) + TCP_OFFSET(flags16),
-                                     &flags16, sizeof(flags16), kver);
-    } else {
-        return false;
-    }
+static __always_inline inline bool skip_owner_match(const SkbIpPacketData* const packet,
+                                                    const struct egress_bool egress) {
+    if (packet->ip_version == 0) return false;
+
+    if (packet->ip_proto == IPPROTO_ESP) return true;
+
+    if (packet->ip_proto != IPPROTO_TCP) return false;
+
     // Always allow RST's, and additionally allow ingress FINs
-    return flags16 & (TCP_FLAG_RST | (egress.egress ? 0 : TCP_FLAG_FIN));  // false on read failure
+    return packet->tcp_flags & (TCP_FLAG8_RST | (egress.egress ? 0 : TCP_FLAG8_FIN));
 }
 
 static __always_inline inline BpfConfig getConfig(uint32_t configKey) {
@@ -793,22 +692,17 @@ static __always_inline inline BpfConfig getConfig(uint32_t configKey) {
     return *config;
 }
 
-static __always_inline inline bool ingress_should_discard(struct __sk_buff* skb,
+static __always_inline inline bool ingress_should_discard(const SkbIpPacketData* const packet,
+                                                          struct __sk_buff* skb,
                                                           const struct kver_uint kver) {
     // Require 4.19, since earlier kernels don't have bpf_skb_load_bytes_relative() which
     // provides relative to L3 header reads.  Without that we could fetch the wrong bytes.
     // Additionally earlier bpf verifiers are much harder to please.
     if (!KVER_IS_AT_LEAST(kver, 4, 19, 0)) return false;
 
-    IngressDiscardKey k = {};
-    if (skb->protocol == htons(ETH_P_IP)) {
-        k.daddr.s6_addr32[2] = htonl(0xFFFF);
-        (void)bpf_skb_load_bytes_net(skb, IP4_OFFSET(daddr), &k.daddr.s6_addr32[3], 4, kver);
-    } else if (skb->protocol == htons(ETH_P_IPV6)) {
-        (void)bpf_skb_load_bytes_net(skb, IP6_OFFSET(daddr), &k.daddr, sizeof(k.daddr), kver);
-    } else {
-        return false; // non IPv4/IPv6, so no IP to match on
-    }
+    if (packet->ip_version == 0) return false;
+
+    IngressDiscardKey k = { .daddr = packet->daddr };
 
     // we didn't check for load success, because destination bytes will be zeroed if
     // bpf_skb_load_bytes_net() fails, instead we rely on daddr of '::' and '::ffff:0.0.0.0'
@@ -822,13 +716,14 @@ static __always_inline inline bool ingress_should_discard(struct __sk_buff* skb,
     return true;  // disallowed interface
 }
 
-static __always_inline inline int bpf_owner_match(struct __sk_buff* skb, uint32_t uid,
+static __always_inline inline int bpf_owner_match(const SkbIpPacketData* const packet,
+                                                  struct __sk_buff* skb, uint32_t uid,
                                                   const struct egress_bool egress,
                                                   const struct kver_uint kver,
                                                   const struct sdk_level_uint lvl) {
     if (is_system_uid(uid)) return PASS;
 
-    if (skip_owner_match(skb, egress, kver)) return PASS;
+    if (skip_owner_match(packet, egress)) return PASS;
 
     BpfConfig enabledRules = getConfig(UID_RULES_CONFIGURATION_KEY);
 
@@ -842,7 +737,7 @@ static __always_inline inline int bpf_owner_match(struct __sk_buff* skb, uint32_
     if (isBlockedByUidRules(enabledRules, uidRules)) return DROP;
 
     if (!egress.egress && skb->ifindex != 1) {
-        if (ingress_should_discard(skb, kver)) return DROP;
+        if (ingress_should_discard(packet, skb, kver)) return DROP;
         if (uidRules & IIF_MATCH) {
             if (allowed_iif && skb->ifindex != allowed_iif) {
                 // Drops packets not coming from lo nor the allowed interface
@@ -908,8 +803,10 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb,
     // CLAT daemon receives via an untagged AF_PACKET socket.
     if (egress.egress && statsUid == AID_CLAT) return PASS;
 
-    // TODO(b/467964186): use the parsed skb
-    int match = bpf_owner_match(skb, sock_uid, egress, kver, lvl);
+    SkbIpPacketData packet_data = {};
+    bool parsed = parse_skb(&packet_data, skb, kver);
+
+    int match = bpf_owner_match(&packet_data, skb, sock_uid, egress, kver, lvl);
 
     bool dns = false;
 
@@ -925,19 +822,19 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb,
         if (match == DROP_UNLESS_DNS) match = DROP;
     }
 
-    if (API_IS_AT_LEAST(lvl, 25Q4) && (match != DROP) && egress.egress &&
-        skb->ifindex == 1) {
-        if (should_block_loopback_access(skb, sock_uid, kver)) {
+    if (API_IS_AT_LEAST(lvl, 25Q4) && parsed && (match != DROP) && egress.egress
+        && skb->ifindex == 1) {
+        if (should_block_loopback_access(&packet_data, skb, sock_uid)) {
             match = DROP;
         }
     }
 
-    if (API_IS_AT_LEAST(lvl, 25Q2) && (match != DROP) && !dns) {
-        // TODO(b/467964186): use the parsed skb
-        if (should_block_local_network_packets(skb, sock_uid, egress, kver)) {
+    if (API_IS_AT_LEAST(lvl, 25Q2) && parsed && (match != DROP) && !dns) {
+        if (should_block_local_network_packets(&packet_data, sock_uid,
+                                               skb->ifindex, egress, kver)) {
             if (KVER_IS_AT_LEAST(kver, 5, 10, 0) && skb->sk && egress.egress) {
-                SkStorageValue *v = bpf_sk_storage_get(skb->sk, 0, 0);
-                if (v) v->dropReasons |= DROP_REASON_LNP;
+                SkStorageValue *sks = bpf_sk_storage_get(skb->sk, 0, 0);
+                if (sks) sks->dropReasons |= DROP_REASON_LNP;
             }
             match = DROP;
         }
@@ -960,8 +857,7 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb,
 
     if (!selectedMap) return PASS;  // cannot happen, needed to keep bpf verifier happy
 
-    // TODO(b/467964186): use the parsed skb
-    do_packet_tracing(skb, egress, statsUid, tag, kver);
+    do_packet_tracing(skb, &packet_data, egress, statsUid, tag, kver);
     update_stats_with_config(*selectedMap, skb, &key, egress, kver, ACCOUNT);
     update_app_uid_stats_map(skb, &statsUid, egress, kver, ACCOUNT);
 
@@ -990,8 +886,14 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb,
 
 // ----- ingress/stats -----
 
-// Android 26Q2+ 6.1+ (full featured + tcpAccECN)
-DEFINE_NETD_BPF_PROG_RANGES(ingress, stats, 6_1, INF, 26Q2, MAXAPI)
+// Android 26Q2+ 6.18+ (full featured + without tcpAccECN)
+DEFINE_NETD_BPF_PROG_RANGES(ingress, stats, 6_18, INF, 26Q2, MAXAPI)
+(struct __sk_buff* skb) {
+    return bpf_traffic_account(skb, INGRESS, KVER_6_18, API(26Q2));
+}
+
+// Android 26Q2+ 6.1/6.6/6.12 (full featured + tcpAccECN)
+DEFINE_NETD_BPF_PROG_RANGES(ingress, stats, 6_1, 6_18, 26Q2, MAXAPI)
 (struct __sk_buff* skb) {
     update_accecn_counter(skb);
     return bpf_traffic_account(skb, INGRESS, KVER_6_1, API(26Q2));
@@ -1028,19 +930,19 @@ DEFINE_NETD_BPF_PROG_RANGES(ingress, stats, 5_10, INF, U, 25Q2)
 }
 
 // Android T/U/V/25Q2 5.4 & T 5.10/5.15
-DEFINE_NETD_T_BPF_PROG_KVER_RANGE(ingress, stats, 5_4, INF)
+DEFINE_NETD_BPF_PROG_RANGES(ingress, stats, 5_4, INF, T, 25Q4)
 (struct __sk_buff* skb) {
     return bpf_traffic_account(skb, INGRESS, KVER_5_4, API(T));
 }
 
 // Android T/U/V 4.19
-DEFINE_NETD_T_BPF_PROG_KVER_RANGE(ingress, stats, 4_19, 5_4)
+DEFINE_NETD_BPF_PROG_RANGES(ingress, stats, 4_19, 5_4, T, 25Q2)
 (struct __sk_buff* skb) {
 return bpf_traffic_account(skb, INGRESS, KVER_4_19, API(T));
 }
 
 // Android T 4.9 & T/U 4.14
-DEFINE_NETD_T_BPF_PROG_KVER_RANGE(ingress, stats, 4_9, 4_19)
+DEFINE_NETD_BPF_PROG_RANGES(ingress, stats, 4_9, 4_19, T, V)
 (struct __sk_buff* skb) {
     return bpf_traffic_account(skb, INGRESS, KVER_4_9, API(T));
 }
@@ -1084,19 +986,19 @@ DEFINE_NETD_BPF_PROG_RANGES(egress, stats, 5_10, INF, U, 25Q2)
 }
 
 // Android T/U/V/25Q2 5.4 & T 5.10/5.15
-DEFINE_NETD_T_BPF_PROG_KVER_RANGE(egress, stats, 5_4, INF)
+DEFINE_NETD_BPF_PROG_RANGES(egress, stats, 5_4, INF, T, 25Q4)
 (struct __sk_buff* skb) {
     return bpf_traffic_account(skb, EGRESS, KVER_5_4, API(T));
 }
 
 // Android T/U/V 4.19
-DEFINE_NETD_T_BPF_PROG_KVER_RANGE(egress, stats, 4_19, 5_4)
+DEFINE_NETD_BPF_PROG_RANGES(egress, stats, 4_19, 5_4, T, 25Q2)
 (struct __sk_buff* skb) {
 return bpf_traffic_account(skb, EGRESS, KVER_4_19, API(T));
 }
 
 // Android T 4.9 & T/U 4.14
-DEFINE_NETD_T_BPF_PROG_KVER_RANGE(egress, stats, 4_9, 4_19)
+DEFINE_NETD_BPF_PROG_RANGES(egress, stats, 4_9, 4_19, T, V)
 (struct __sk_buff* skb) {
     return bpf_traffic_account(skb, EGRESS, KVER_4_9, API(T));
 }
@@ -1193,11 +1095,11 @@ static __always_inline inline int inet_socket_create(struct bpf_sock* sk,
                                                      const struct kver_uint kver) {
     uint64_t gid_uid = bpf_get_current_uid_gid();
     if (KVER_IS_AT_LEAST(kver, 5, 10, 0)) {
-        SkStorageValue *v = bpf_sk_storage_get(sk, 0, BPF_SK_STORAGE_GET_F_CREATE);
-        if (v) {
-            v->cookie = bpf_get_sk_cookie(sk);
-            v->uid = gid_uid;
-            v->gid = (gid_uid >> 32);
+        SkStorageValue *sks = bpf_sk_storage_get(sk, 0, BPF_SK_STORAGE_GET_F_CREATE);
+        if (sks) {
+            sks->cookie = bpf_get_sk_cookie(sk);
+            sks->uid = gid_uid;
+            sks->gid = (gid_uid >> 32);
         }
     }
 
@@ -1366,14 +1268,14 @@ static inline __always_inline int inet_getsockopt(struct bpf_sockopt *ctx,
             return BPF_DISALLOW;
         }
 
-        SkStorageValue *v = bpf_sk_storage_get(ctx->sk, 0, 0);
-        if (!v) {
+        SkStorageValue *sks = bpf_sk_storage_get(ctx->sk, 0, 0);
+        if (!sks) {
             if (KVER_IS_AT_LEAST(kver, 6, 1, 0)) bpf_set_retval(-EUNATCH);
             return BPF_DISALLOW;
         }
 
-        *(uint64_t *)optval = v->dropReasons;
-        v->dropReasons = DROP_REASON_NONE;
+        *(uint64_t *)optval = sks->dropReasons;
+        sks->dropReasons = DROP_REASON_NONE;
         WRITE_ONCE(ctx->retval, 0);
         WRITE_ONCE(ctx->optlen, sizeof(uint64_t));
         return BPF_ALLOW;

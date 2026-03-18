@@ -732,7 +732,7 @@ static int pinMap(const borrowed_fd& fd, const struct bpf_map_def& mapDef) {
                 ALOGE("bpfGetFdMapId failed, errno: %d", err);
                 return -err;
             }
-            ALOGI("map %s id %d", mapDef.pin_location, mapId);
+            if (!isUser) ALOGD("map %s id %d", mapDef.pin_location, mapId);
         }
         return 0;
 }
@@ -1003,7 +1003,7 @@ static int validateProg(const borrowed_fd& fd, const char* const progPinLoc) {
         ALOGE("bpfGetFdXlatProgLen failed, ret: %d", err);
         return -err;
     }
-    ALOGI("prog %s id %d len jit:%d xlat:%d", progPinLoc, progId, jitLen, xlatLen);
+    if (!isUser) ALOGD("prog %s id %d len jit:%d xlat:%d", progPinLoc, progId, jitLen, xlatLen);
 
     if (!jitLen && api_level_full >= NETBPFLOAD_25Q2_VER) {
         ALOGE("Kernel eBPF JIT failure for %s", progPinLoc);
@@ -1555,7 +1555,7 @@ static int doLoad(char** argv, char * const envp[]) {
     // first in U QPR2 beta~2
     const bool has_platform_netbpfload_rc = exists("/system/etc/init/netbpfload.rc");
 
-    ALOGI("NetBpfLoad (%s) api:%d/%d kver:%07x (%s:%uk) libbpf: v%u.%u uid:%u rc:%d%d user:%d%d%d",
+    ALOGI("%s api:%d/%d kver:%07x (%s:%uk) libbpf: v%u.%u uid:%u rc:%d%d user:%d%d%d",
           argv[0], android_get_device_api_level(), api_level_full,
           kernelVer, describeArch(), page_size >> 10,
           libbpf_major_version(), libbpf_minor_version(), getuid(), has_platform_bpfloader_rc,
