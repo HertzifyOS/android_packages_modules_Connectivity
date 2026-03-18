@@ -1352,7 +1352,8 @@ static bool loadObject(const char* const progPath, const bool useLibbpf = true) 
 #define BPFROOT APEXROOT "/etc/bpf/mainline/"
 
 static bool loadAllObjects() {
-    bool funcs = false; // replace with isAtLeastKernelVersion(...) or something
+    // Enable on kernels that have the BPF CFI backports, see: b/488034908
+    bool funcs = isAtLeastKernelVersion(6, 6, 118);
 
     if (!loadObject(BPFROOT "offload.o", /*libbpf*/false)) return false;
     if (!loadObject(BPFROOT "test.o")) return false;
