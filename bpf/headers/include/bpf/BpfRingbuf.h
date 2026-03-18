@@ -286,5 +286,41 @@ inline Result<int> BpfRingbuf<Value>::ConsumeAll(const MessageCallback& callback
   });
 }
 
+class BpfRingbufSized : public BpfRingbufBase {
+ public:
+  using MessageCallback = std::function<void(const void*)>;
+
+  // Creates a ringbuffer wrapper from a pinned path. This initialization will
+  // abort on error. To handle errors, initialize with Create instead.
+  BpfRingbufSized(const char* path, size_t value_size) : BpfRingbufBase(path, value_size) {}
+
+  // Creates a ringbuffer wrapper from a pinned path. There are no guarantees
+  // that the ringbuf outputs messaged of type `Value`, only that they are the
+  // same size. Size is only checked in ConsumeAll.
+  static base::Result<std::unique_ptr<BpfRingbufSized>> Create(const char* path, size_t value_size);
+
+  // Consumes all messages from the ring buffer, passing them to the callback.
+  // Returns the number of messages consumed or a non-ok result on error. If the
+  // ring buffer has no pending messages an OK result with count 0 is returned.
+  base::Result<int> ConsumeAll(const MessageCallback& callback);
+
+ protected:
+  // Empty ctor for use by Create.
+  BpfRingbufSized(size_t value_size) : BpfRingbufBase(value_size) {}
+};
+
+inline base::Result<std::unique_ptr<BpfRingbufSized>>
+BpfRingbufSized::Create(const char* path, size_t value_size) {
+  auto rb = std::unique_ptr<BpfRingbufSized>(new BpfRingbufSized(value_size));
+  if (auto status = rb->Init(path); !status.ok()) return status.error();
+  return rb;
+}
+
+inline base::Result<int> BpfRingbufSized::ConsumeAll(const MessageCallback& callback) {
+  return BpfRingbufBase::ConsumeAll([&](const void* value) {
+    callback(value);
+  });
+}
+
 }  // namespace bpf
 }  // namespace android
