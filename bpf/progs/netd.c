@@ -605,10 +605,10 @@ should_block_loopback_access(const SkbIpPacketData *const packet_data,
     }
     if (!local_sk) return false;
 
-    SkStorageValue *v = bpf_sk_storage_get(local_sk, 0, 0);
-    const uint32_t receiver_uid = v ? v->uid : 0;
+    SkStorageValue *sks = bpf_sk_storage_get(local_sk, 0, 0);
+    const uint32_t receiver_uid = sks ? sks->uid : 0;
     bpf_sk_release(local_sk);
-    if (!v) return false;
+    if (!sks) return false;
 
     // We don't care about cases where apps are sending loopback traffic to
     // themselves.
@@ -902,8 +902,8 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb,
         if (should_block_local_network_packets(&packet_data, sock_uid,
                                                skb->ifindex, egress, kver)) {
             if (KVER_IS_AT_LEAST(kver, 5, 10, 0) && skb->sk && egress.egress) {
-                SkStorageValue *v = bpf_sk_storage_get(skb->sk, 0, 0);
-                if (v) v->dropReasons |= DROP_REASON_LNP;
+                SkStorageValue *sks = bpf_sk_storage_get(skb->sk, 0, 0);
+                if (sks) sks->dropReasons |= DROP_REASON_LNP;
             }
             match = DROP;
         }
@@ -1165,11 +1165,11 @@ static __always_inline inline int inet_socket_create(struct bpf_sock* sk,
                                                      const struct kver_uint kver) {
     uint64_t gid_uid = bpf_get_current_uid_gid();
     if (KVER_IS_AT_LEAST(kver, 5, 10, 0)) {
-        SkStorageValue *v = bpf_sk_storage_get(sk, 0, BPF_SK_STORAGE_GET_F_CREATE);
-        if (v) {
-            v->cookie = bpf_get_sk_cookie(sk);
-            v->uid = gid_uid;
-            v->gid = (gid_uid >> 32);
+        SkStorageValue *sks = bpf_sk_storage_get(sk, 0, BPF_SK_STORAGE_GET_F_CREATE);
+        if (sks) {
+            sks->cookie = bpf_get_sk_cookie(sk);
+            sks->uid = gid_uid;
+            sks->gid = (gid_uid >> 32);
         }
     }
 
@@ -1338,14 +1338,14 @@ static inline __always_inline int inet_getsockopt(struct bpf_sockopt *ctx,
             return BPF_DISALLOW;
         }
 
-        SkStorageValue *v = bpf_sk_storage_get(ctx->sk, 0, 0);
-        if (!v) {
+        SkStorageValue *sks = bpf_sk_storage_get(ctx->sk, 0, 0);
+        if (!sks) {
             if (KVER_IS_AT_LEAST(kver, 6, 1, 0)) bpf_set_retval(-EUNATCH);
             return BPF_DISALLOW;
         }
 
-        *(uint64_t *)optval = v->dropReasons;
-        v->dropReasons = DROP_REASON_NONE;
+        *(uint64_t *)optval = sks->dropReasons;
+        sks->dropReasons = DROP_REASON_NONE;
         WRITE_ONCE(ctx->retval, 0);
         WRITE_ONCE(ctx->optlen, sizeof(uint64_t));
         return BPF_ALLOW;
