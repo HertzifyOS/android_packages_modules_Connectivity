@@ -330,6 +330,13 @@ class BpfMapRO {
         return i;
     }
 
+    // Note: this requires kernel 4.14+
+    Result<uint32_t> maxEntries() const {
+        int v = bpfGetFdMaxEntries(mMapFd);
+        if (v < 0) return ERROR_FROM_ERRNO("maxEntries");
+        return (uint32_t)v;
+    }
+
   protected:
     unique_fd mMapFd;
 };
