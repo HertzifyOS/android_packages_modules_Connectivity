@@ -30,6 +30,7 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.util.Log;
 
+import com.android.commercial.PacKey;
 import com.android.multipacprocessor.IMultiPacService;
 import com.android.multiproxyhandler.IMultiProxyService;
 import com.android.net.module.util.HandlerUtils;
@@ -63,6 +64,7 @@ public class PacCoordinator {
 
     private final Context mContext;
     private final Handler mConnectivityServiceHandler;
+    private final PacDownloader mPacDownloader;
 
     private IMultiPacService mMultiPacService;
     private IMultiProxyService mMultiProxyService;
@@ -79,6 +81,7 @@ public class PacCoordinator {
         mContext = context;
         mConnectivityServiceHandler = netThreadHandler;
         mListener = listener;
+        mPacDownloader = new PacDownloader();
     }
 
     /**
@@ -89,7 +92,10 @@ public class PacCoordinator {
      * notified when the PAC setup is complete.
      */
     public void startServingPacScript(ProxyInfo proxy, Optional<Integer> netId) {
-        throw new UnsupportedOperationException("not implemented");
+        ensureRunningOnHandlerThread();
+        bindToPacComponentsIfNeeded();
+        mPacDownloader.downloadPacScript(
+                new PacKey(proxy.getPacFileUrl(), netId), this::onPacScriptDownloaded);
     }
 
     /**
@@ -98,6 +104,7 @@ public class PacCoordinator {
      * when the PAC script is no longer be used.
      */
     public void stopServingPacScript(ProxyInfo proxy, Optional<Integer> netId) {
+        ensureRunningOnHandlerThread();
         throw new UnsupportedOperationException("not implemented");
     }
 
@@ -243,5 +250,15 @@ public class PacCoordinator {
             intent.setClassName(multiProxyPackageName.get(), MULTI_PROXY_SERVICE_NAME);
             startMultiProxyService(intent);
         }
+    }
+
+    /**
+     * Invoked by PacDownloader when a PAC script is downloaded.
+     *
+     * @param pacKey PAC script identifier (URL and optional network ID).
+     * @param pacScript the PAC script.
+     */
+    private void onPacScriptDownloaded(PacKey pacKey, String pacScript) {
+        throw new UnsupportedOperationException("not implemented");
     }
 }
