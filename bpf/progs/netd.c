@@ -331,6 +331,16 @@ function bool is_local_net_access_allowed(const uint32_t uid,
     return v && *v;
 }
 
+function bool is_local_net_access_allowed_cached(__unused struct __sk_buff *skb,
+                                                 const uint32_t uid,
+                                                 const uint32_t if_index,
+                                                 const struct in6_addr *remote_ip6,
+                                                 const uint16_t protocol,
+                                                 const __be16 remote_port,
+                                                 __unused const struct kver_uint kver) {
+    return is_local_net_access_allowed(uid, if_index, remote_ip6, protocol, remote_port);
+}
+
 function uint8_t get_chunk_permissions(const uint32_t uid) {
     // All chunks has the same size CHUNK_INT64_COUNT
     uint32_t chunkId = uid / CHUNK_UID_COUNT;
@@ -367,6 +377,7 @@ function bool is_local_network_access_blocked(const uint32_t uid) {
 }
 
 function bool should_block_local_network_packets(const SkbIpPacketData *const packet,
+                                                 struct __sk_buff *skb,
                                                  const uint32_t uid,
                                                  const uint32_t if_index,
                                                  const struct egress_bool egress,
@@ -382,8 +393,8 @@ function bool should_block_local_network_packets(const SkbIpPacketData *const pa
         egress.egress ? &packet->daddr : &packet->saddr;
     const __be16 remote_port = egress.egress ? packet->dport : packet->sport;
     if (reportLocalAccess) {
-        isAllowed = is_local_net_access_allowed(uid, if_index, remote_ip6,
-                                                packet->ip_proto, remote_port);
+        isAllowed = is_local_net_access_allowed_cached(skb, uid, if_index, remote_ip6,
+                                                       packet->ip_proto, remote_port, kver);
         // Currently, generate events for all local network access, regardless of the UID's
         // permission status.
         // This is to identify all UIDs that are accessing the local network.
@@ -407,8 +418,8 @@ function bool should_block_local_network_packets(const SkbIpPacketData *const pa
     }
 
     if (!reportLocalAccess) {
-        isAllowed = is_local_net_access_allowed(uid, if_index, remote_ip6,
-                                                packet->ip_proto, remote_port);
+        isAllowed = is_local_net_access_allowed_cached(skb, uid, if_index, remote_ip6,
+                                                       packet->ip_proto, remote_port, kver);
     }
     return !isAllowed;
 }
@@ -830,7 +841,7 @@ function int bpf_traffic_account(struct __sk_buff* skb,
     }
 
     if (API_IS_AT_LEAST(lvl, 25Q2) && parsed && (match != DROP) && !dns) {
-        if (should_block_local_network_packets(&packet_data, sock_uid,
+        if (should_block_local_network_packets(&packet_data, skb, sock_uid,
                                                skb->ifindex, egress, kver)) {
             if (KVER_IS_AT_LEAST(kver, 5, 10, 0) && skb->sk && egress.egress) {
                 SkStorageValue *sks = bpf_sk_storage_get(skb->sk, 0, 0);
