@@ -22,8 +22,7 @@
 DEFINE_BPF_MAP_NO_NETD(l4s_conn_counter, ARRAY, uint32_t, uint32_t, 1)
 DEFINE_BPF_MAP_NO_NETD(l4s_accecn_enabled_map, ARRAY, uint32_t, bool, 1)
 
-static inline __always_inline int
-find_accecn_options_offset(struct __sk_buff *skb, uint8_t offset) {
+function int find_accecn_options_offset(struct __sk_buff *skb, uint8_t offset) {
     int ret;
     uint8_t opt_off;
     struct tcphdr tcp_header = {0};
@@ -59,8 +58,7 @@ find_accecn_options_offset(struct __sk_buff *skb, uint8_t offset) {
     return -1;
 }
 
-static inline __always_inline int
-parse_tcp_mss_option(struct __sk_buff *skb, uint8_t offset) {
+function int parse_tcp_mss_option(struct __sk_buff *skb, uint8_t offset) {
     int ret;
     uint8_t opt_off;
     struct tcphdr tcp_header = {0};
@@ -98,8 +96,7 @@ parse_tcp_mss_option(struct __sk_buff *skb, uint8_t offset) {
     return -1;
 }
 
-static inline __always_inline int
-is_l4s_enabled() {
+function int is_l4s_enabled() {
     uint32_t status_key = 0;
     bool *l4s_status_ptr = bpf_l4s_accecn_enabled_map_lookup_elem(&status_key);
     return l4s_status_ptr && *l4s_status_ptr;
@@ -110,8 +107,7 @@ typedef struct {
 } be24;
 STRUCT_SIZE(be24, 3);
 
-static inline __always_inline
-void assign_be24(be24 * const v, unsigned x) {
+function void assign_be24(be24 * const v, unsigned x) {
     v->u8[2] = x; x >>= 8;
     v->u8[1] = x; x >>= 8;
     v->u8[0] = x;
@@ -264,7 +260,7 @@ DEFINE_BPF_PROG_KVER_RANGE(schedcls, egress_accecn_eth, AID_SYSTEM, 6_1, 6_18)
     return TC_ACT_PIPE;
 }
 
-static __always_inline inline int update_accecn_counter(struct __sk_buff* skb) {
+function int update_accecn_counter(struct __sk_buff* skb) {
     if (!is_l4s_enabled()) return 1;
     if (!skb->sk) {
         return 1;

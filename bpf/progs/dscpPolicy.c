@@ -33,7 +33,7 @@ DEFINE_BPF_MAP_KERNEL_INTERNAL(socket_policy_cache_map, PERCPU_ARRAY, uint32_t, 
 DEFINE_BPF_MAP_GRW(ipv4_dscp_policies_map, ARRAY, uint32_t, DscpPolicy, MAX_POLICIES, AID_SYSTEM)
 DEFINE_BPF_MAP_GRW(ipv6_dscp_policies_map, ARRAY, uint32_t, DscpPolicy, MAX_POLICIES, AID_SYSTEM)
 
-static inline __always_inline uint64_t calculate_u64(uint64_t v) {
+function uint64_t calculate_u64(uint64_t v) {
     COMPILER_FORCE_CALCULATION(v);
     return v;
 }
@@ -113,7 +113,7 @@ compute(__unused const void *map, __unused const uint32_t *key, DscpPolicy *poli
     return 0;
 }
 
-static inline __always_inline void match_policy(struct __sk_buff* skb, const bool ipv4) {
+function void match_policy(struct __sk_buff* skb, const bool ipv4) {
     void* data = (void*)(long)skb->data;
     const void* data_end = (void*)(long)skb->data_end;
 
