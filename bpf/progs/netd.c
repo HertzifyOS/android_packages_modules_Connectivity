@@ -223,11 +223,11 @@ DEFINE_BPF_MAP_RO_NETD(loopback_checks_enabled_map, ARRAY, uint32_t, bool, 1)
  * (which adjusts upward by 20 bytes per packet to account for ipv4 -> ipv6 header conversion)
  */
 #define DEFINE_UPDATE_STATS(the_stats_map, TypeOfKey)                                            \
-    static __always_inline inline void update_##the_stats_map(const struct __sk_buff* const skb, \
-                                                              const TypeOfKey* const key,        \
-                                                              const struct egress_bool egress,   \
-                                                     __unused const struct kver_uint kver,       \
-                                                              const struct undo_bool undo) {     \
+    function void update_##the_stats_map(const struct __sk_buff* const skb,                      \
+                                         const TypeOfKey* const key,                             \
+                                         const struct egress_bool egress,                        \
+                                         const struct kver_uint kver,                            \
+                                         const struct undo_bool undo) {                          \
         StatsValue* value = bpf_##the_stats_map##_lookup_elem(key);                              \
         if (!value) {                                                                            \
             StatsValue newValue = {};                                                            \
@@ -274,11 +274,11 @@ DEFINE_UPDATE_STATS(stats_map_A, StatsKey)
 DEFINE_UPDATE_STATS(stats_map_B, StatsKey)
 
 // both of these return 0 on success or -EFAULT on failure (and zero out the buffer)
-static __always_inline inline long bpf_skb_load_bytes_net(const struct __sk_buff* const skb,
-                                                          const int L3_off,
-                                                          void* const to,
-                                                          const int len,
-                                                          const struct kver_uint kver) {
+function long bpf_skb_load_bytes_net(const struct __sk_buff* const skb,
+                                     const int L3_off,
+                                     void* const to,
+                                     const int len,
+                                     const struct kver_uint kver) {
     // 'kver' (here and throughout) is the compile time guaranteed minimum kernel version,
     // ie. we're building (a version of) the bpf program for kver (or newer!) kernels.
     //
@@ -303,10 +303,11 @@ static __always_inline inline long bpf_skb_load_bytes_net(const struct __sk_buff
 // False iff arguments are found with longest prefix match lookup and
 // disallowed, and the allowlist does not contain an exception for the uid/host
 // on the interface.
-static inline __always_inline bool
-is_local_net_access_allowed(const uint32_t uid, const uint32_t if_index,
-                            const struct in6_addr *remote_ip6,
-                            const uint16_t protocol, const __be16 remote_port) {
+function bool is_local_net_access_allowed(const uint32_t uid,
+                                          const uint32_t if_index,
+                                          const struct in6_addr *remote_ip6,
+                                          const uint16_t protocol,
+                                          const __be16 remote_port) {
     LocalNetAccessKey query_key = {
         .lpm_bitlen = 8 * (sizeof(if_index) + sizeof(*remote_ip6) + sizeof(protocol)
             + sizeof(remote_port)),
@@ -330,8 +331,7 @@ is_local_net_access_allowed(const uint32_t uid, const uint32_t if_index,
     return v && *v;
 }
 
-static __always_inline inline uint8_t
-get_chunk_permissions(const uint32_t uid) {
+function uint8_t get_chunk_permissions(const uint32_t uid) {
     // All chunks has the same size CHUNK_INT64_COUNT
     uint32_t chunkId = uid / CHUNK_UID_COUNT;
     uint32_t index = uid / UIDS_PER_INT64 % CHUNK_INT64_COUNT;
@@ -345,7 +345,7 @@ get_chunk_permissions(const uint32_t uid) {
 
 #define NS_PER_MINUTE (60ULL * 1000ULL * 1000ULL * 1000ULL)
 
-static __always_inline inline bool is_local_network_access_blocked(const uint32_t uid) {
+function bool is_local_network_access_blocked(const uint32_t uid) {
     uint32_t mapKey = 0;
     bool *permissionPropagationEnabled =
         bpf_permission_propagation_enabled_map_lookup_elem(&mapKey);
@@ -366,11 +366,11 @@ static __always_inline inline bool is_local_network_access_blocked(const uint32_
     return true;
 }
 
-static __always_inline inline bool
-should_block_local_network_packets(const SkbIpPacketData *const packet,
-                                   const uint32_t uid, const uint32_t if_index,
-                                   const struct egress_bool egress,
-                                   const struct kver_uint kver) {
+function bool should_block_local_network_packets(const SkbIpPacketData *const packet,
+                                                 const uint32_t uid,
+                                                 const uint32_t if_index,
+                                                 const struct egress_bool egress,
+                                                 const struct kver_uint kver) {
     bool reportLocalAccess = false;
     if (KVER_IS_AT_LEAST(kver, 5, 10, 0)) {
         uint32_t key = 0;
@@ -413,9 +413,9 @@ should_block_local_network_packets(const SkbIpPacketData *const packet,
     return !isAllowed;
 }
 
-static __always_inline inline void
-add_loopback_access_event(const uint32_t src_uid, const uint32_t dst_uid,
-                          const enum LoopbackAccessResult result) {
+function void add_loopback_access_event(const uint32_t src_uid,
+                                        const uint32_t dst_uid,
+                                        const enum LoopbackAccessResult result) {
     LoopbackAccessEvent key = {
         .src_uid = src_uid,
         .dst_uid = dst_uid,
@@ -444,27 +444,25 @@ add_loopback_access_event(const uint32_t src_uid, const uint32_t dst_uid,
     bpf_loopback_access_ringbuf_submit(event);
 }
 
-static inline __always_inline bool loopback_metrics_enabled() {
+function bool loopback_metrics_enabled() {
     const uint32_t zero = 0;
     bool *enabled = bpf_loopback_access_metrics_enabled_map_lookup_elem(&zero);
     return enabled && *enabled;
 }
 
-static inline __always_inline bool loopback_checks_enabled() {
+function bool loopback_checks_enabled() {
     const uint32_t zero = 0;
     bool *enabled = bpf_loopback_checks_enabled_map_lookup_elem(&zero);
     return enabled && *enabled;
 }
 
-static __always_inline inline bool
-can_force_loopback(const uint32_t permissions) {
+function bool can_force_loopback(const uint32_t permissions) {
     return (permissions & PERMISSION_BIT_FORCE_USE_LOOPBACK_INTERFACE)
         && (permissions & PERMISSION_BIT_INTERACT_ACROSS_USERS_FULL);
 }
 
-static __always_inline inline bool
-uids_have_loopback_permissions(const uint32_t sender_uid,
-                               const uint32_t receiver_uid) {
+function bool uids_have_loopback_permissions(const uint32_t sender_uid,
+                                             const uint32_t receiver_uid) {
     // TODO: be more specific about which system uids we should exempt
     if (is_system_uid(sender_uid) || is_system_uid(receiver_uid)) return true;
 
@@ -489,9 +487,9 @@ uids_have_loopback_permissions(const uint32_t sender_uid,
     }
 }
 
-static __always_inline inline bool parse_skb(SkbIpPacketData *const packet,
-                                             const struct __sk_buff *const skb,
-                                             const struct kver_uint kver) {
+function bool parse_skb(SkbIpPacketData *const packet,
+                        const struct __sk_buff *const skb,
+                        const struct kver_uint kver) {
     // Errors from bpf_skb_load_bytes_net are ignored to favor returning
     // something over returning nothing. In the event of an error, the kernel
     // will fill in zero for the destination memory.
@@ -572,10 +570,9 @@ static __always_inline inline bool parse_skb(SkbIpPacketData *const packet,
     return true;
 }
 
-static __always_inline inline bool
-should_block_loopback_access(const SkbIpPacketData *const packet_data,
-                             struct __sk_buff *const skb,
-                             const uint32_t sender_uid) {
+function bool should_block_loopback_access(const SkbIpPacketData *const packet_data,
+                                           struct __sk_buff *const skb,
+                                           const uint32_t sender_uid) {
     bool checks_enabled = loopback_checks_enabled();
     bool metrics_enabled = loopback_metrics_enabled();
     if (!checks_enabled && !metrics_enabled) return false;
@@ -638,10 +635,12 @@ should_block_loopback_access(const SkbIpPacketData *const packet_data,
     return !allowed;
 }
 
-static __always_inline inline void do_packet_tracing(
-        const struct __sk_buff* const skb, const SkbIpPacketData* const packet,
-        const struct egress_bool egress, const uint32_t uid,
-        const uint32_t tag, const struct kver_uint kver) {
+function void do_packet_tracing(const struct __sk_buff* const skb,
+                                const SkbIpPacketData* const packet,
+                                const struct egress_bool egress,
+                                const uint32_t uid,
+                                const uint32_t tag,
+                                const struct kver_uint kver) {
     if (!KVER_IS_AT_LEAST(kver, 5, 10, 0)) return;
 
     uint32_t mapKey = 0;
@@ -670,8 +669,8 @@ static __always_inline inline void do_packet_tracing(
     bpf_packet_trace_ringbuf_submit(pkt);
 }
 
-static __always_inline inline bool skip_owner_match(const SkbIpPacketData* const packet,
-                                                    const struct egress_bool egress) {
+function bool skip_owner_match(const SkbIpPacketData* const packet,
+                               const struct egress_bool egress) {
     if (packet->ip_version == 0) return false;
 
     if (packet->ip_proto == IPPROTO_ESP) return true;
@@ -682,7 +681,7 @@ static __always_inline inline bool skip_owner_match(const SkbIpPacketData* const
     return packet->tcp_flags & (TCP_FLAG8_RST | (egress.egress ? 0 : TCP_FLAG8_FIN));
 }
 
-static __always_inline inline BpfConfig getConfig(uint32_t configKey) {
+function BpfConfig getConfig(uint32_t configKey) {
     uint32_t mapSettingKey = configKey;
     BpfConfig* config = bpf_configuration_map_lookup_elem(&mapSettingKey);
     if (!config) {
@@ -692,9 +691,9 @@ static __always_inline inline BpfConfig getConfig(uint32_t configKey) {
     return *config;
 }
 
-static __always_inline inline bool ingress_should_discard(const SkbIpPacketData* const packet,
-                                                          struct __sk_buff* skb,
-                                                          const struct kver_uint kver) {
+function bool ingress_should_discard(const SkbIpPacketData* const packet,
+                                     struct __sk_buff* skb,
+                                     const struct kver_uint kver) {
     // Require 4.19, since earlier kernels don't have bpf_skb_load_bytes_relative() which
     // provides relative to L3 header reads.  Without that we could fetch the wrong bytes.
     // Additionally earlier bpf verifiers are much harder to please.
@@ -716,11 +715,12 @@ static __always_inline inline bool ingress_should_discard(const SkbIpPacketData*
     return true;  // disallowed interface
 }
 
-static __always_inline inline int bpf_owner_match(const SkbIpPacketData* const packet,
-                                                  struct __sk_buff* skb, uint32_t uid,
-                                                  const struct egress_bool egress,
-                                                  const struct kver_uint kver,
-                                                  const struct sdk_level_uint lvl) {
+function int bpf_owner_match(const SkbIpPacketData* const packet,
+                             struct __sk_buff* skb,
+                             uint32_t uid,
+                             const struct egress_bool egress,
+                             const struct kver_uint kver,
+                             const struct sdk_level_uint lvl) {
     if (is_system_uid(uid)) return PASS;
 
     if (skip_owner_match(packet, egress)) return PASS;
@@ -758,12 +758,12 @@ static __always_inline inline int bpf_owner_match(const SkbIpPacketData* const p
     return PASS;
 }
 
-static __always_inline inline void update_stats_with_config(const uint32_t selectedMap,
-                                                            const struct __sk_buff* const skb,
-                                                            const StatsKey* const key,
-                                                            const struct egress_bool egress,
-                                                            const struct kver_uint kver,
-                                                            const struct undo_bool undo) {
+function void update_stats_with_config(const uint32_t selectedMap,
+                                       const struct __sk_buff* const skb,
+                                       const StatsKey* const key,
+                                       const struct egress_bool egress,
+                                       const struct kver_uint kver,
+                                       const struct undo_bool undo) {
     if (selectedMap == SELECT_MAP_A) {
         update_stats_map_A(skb, key, egress, kver, undo);
     } else {
@@ -771,10 +771,10 @@ static __always_inline inline void update_stats_with_config(const uint32_t selec
     }
 }
 
-static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb,
-                                                      const struct egress_bool egress,
-                                                      const struct kver_uint kver,
-                                                      const struct sdk_level_uint lvl) {
+function int bpf_traffic_account(struct __sk_buff* skb,
+                                 const struct egress_bool egress,
+                                 const struct kver_uint kver,
+                                 const struct sdk_level_uint lvl) {
     // sock_uid will be 'overflowuid' if !sk_fullsock(sk_to_full_sk(skb->sk))
     uint32_t sock_uid = bpf_get_socket_uid(skb);
 
@@ -1076,7 +1076,7 @@ DEFINE_XTBPF_PROG(skfilter, denylist_xtbpf)
     return XTBPF_NOMATCH;
 }
 
-static __always_inline inline uint8_t get_app_permissions() {
+function uint8_t get_app_permissions() {
     uint64_t gid_uid = bpf_get_current_uid_gid();
     uint32_t uid = (gid_uid & 0xffffffff);
     /*
@@ -1091,8 +1091,7 @@ static __always_inline inline uint8_t get_app_permissions() {
     return permissions ? *permissions : BPF_PERMISSION_INTERNET;
 }
 
-static __always_inline inline int inet_socket_create(struct bpf_sock* sk,
-                                                     const struct kver_uint kver) {
+function int inet_socket_create(struct bpf_sock* sk, const struct kver_uint kver) {
     uint64_t gid_uid = bpf_get_current_uid_gid();
     if (KVER_IS_AT_LEAST(kver, 5, 10, 0)) {
         SkStorageValue *sks = bpf_sk_storage_get(sk, 0, BPF_SK_STORAGE_GET_F_CREATE);
@@ -1135,7 +1134,7 @@ DEFINE_NETD_T_BPF_PROG_KVER(cgroupsockrelease, inet_release, 5_10)
 
 // --- BIND CGROUP HOOKS ---
 
-static inline __always_inline bool block_bind_port(__u32 protocol, __be16 user_port) {
+function bool block_bind_port(__u32 protocol, __be16 user_port) {
     if (!user_port) return false;
 
     switch (protocol) {
@@ -1163,7 +1162,7 @@ static inline __always_inline bool block_bind_port(__u32 protocol, __be16 user_p
     return false;
 }
 
-static inline __always_inline bool is_netd() {
+function bool is_netd() {
     uint32_t uid = bpf_get_current_uid_gid();  // low 32 bits is uid
     if (uid) return false;  // netd runs as root
 
@@ -1177,7 +1176,7 @@ static inline __always_inline bool is_netd() {
     return tgid == *pid;
 }
 
-static inline __always_inline bool is_root_or_shell() {
+function bool is_root_or_shell() {
     uint32_t uid = bpf_get_current_uid_gid();  // low 32 bits is uid
     return (uid == AID_ROOT) || (uid == AID_SHELL);
 }
@@ -1186,8 +1185,7 @@ static inline __always_inline bool is_root_or_shell() {
 // as a flag, it must be shifted up by 1 (making it == 2) and combined with 'generic' ALLOW (== 1)
 static const int BPF_ALLOW_IGNORING_CAP_NET_BIND = BPF_ALLOW + 2;
 
-static inline __always_inline int inet_bind(struct bpf_sock_addr *ctx,
-                                            const struct kver_uint kver) {
+function int inet_bind(struct bpf_sock_addr *ctx, const struct kver_uint kver) {
     const bool is5_15 = KVER_IS_AT_LEAST(kver, 5, 15, 0);
     if (block_bind_port(ctx->protocol, ctx->user_port)) return BPF_DISALLOW;
     if (is5_15) {
@@ -1257,8 +1255,7 @@ DEFINE_NETD_V_BPF_PROG_KVER(sendmsg6, udp6_sendmsg, 4_19)
 
 // --- GETSOCKOPT HOOK ---
 
-static inline __always_inline int inet_getsockopt(struct bpf_sockopt *ctx,
-                                                  const struct kver_uint kver) {
+function int inet_getsockopt(struct bpf_sockopt *ctx, const struct kver_uint kver) {
     if (KVER_IS_AT_LEAST(kver, 5, 10, 0) && ctx->level == SOL_SOCKET &&
         ctx->optname == SO_ANDROID_DROP_REASON) {
         uint8_t *optval_end = ctx->optval_end;
@@ -1304,8 +1301,7 @@ DEFINE_NETD_V_BPF_PROG_KVER_RANGE(getsockopt, prog, 5_4, 5_10)
 
 // --- SETSOCKOPT HOOK ---
 
-static inline __always_inline int inet_setsockopt(struct bpf_sockopt *ctx,
-                                                  __unused const struct kver_uint kver) {
+function int inet_setsockopt(struct bpf_sockopt *ctx, __unused const struct kver_uint kver) {
     // Tell kernel to use/process original buffer provided by userspace.
     // This is important if it is larger than PAGE_SIZE (max size this bpf hook can handle).
     ctx->optlen = 0;

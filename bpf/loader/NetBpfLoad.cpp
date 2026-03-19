@@ -1339,7 +1339,7 @@ static bool exists(const char* const path) {
     abort();  // can only hit this if permissions (likely selinux) are screwed up
 }
 
-static bool loadObject(const char* const progPath, const bool useLibbpf = false) {
+static bool loadObject(const char* const progPath, const bool useLibbpf = true) {
     if (useLibbpf ? loadProgByLibbpf(progPath) : loadProg(progPath)) {
         ALOGE("Failed to load object: %s, libbpf: %d", progPath, useLibbpf);
         return false;
@@ -1352,12 +1352,18 @@ static bool loadObject(const char* const progPath, const bool useLibbpf = false)
 #define BPFROOT APEXROOT "/etc/bpf/mainline/"
 
 static bool loadAllObjects() {
-    bool libbpf = true;
-    if (!loadObject(BPFROOT "offload.o")) return false;
-    if (!loadObject(BPFROOT "test.o", true)) return false;
-    if (!loadObject(BPFROOT "clatd.o", libbpf)) return false;
-    if (!loadObject(BPFROOT "dscpPolicy.o", true)) return false;
-    if (!loadObject(BPFROOT "netd.o", libbpf)) return false;
+    // Enable on kernels that have the BPF CFI backports, see: b/488034908
+    bool funcs = isAtLeastKernelVersion(6, 6, 118);
+
+    if (!loadObject(BPFROOT "offload.o", /*libbpf*/false)) return false;
+    if (!loadObject(BPFROOT "test.o")) return false;
+    if (!loadObject(BPFROOT "clatd.o")) return false;
+    if (funcs) {
+        if (!loadObject(BPFROOT "dscpPolicy@funcs.o")) return false;
+    } else {
+        if (!loadObject(BPFROOT "dscpPolicy.o")) return false;
+    }
+    if (!loadObject(BPFROOT "netd.o")) return false;
     return true;
 }
 
