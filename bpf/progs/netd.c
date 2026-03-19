@@ -303,29 +303,17 @@ function long bpf_skb_load_bytes_net(const struct __sk_buff* const skb,
 // False iff arguments are found with longest prefix match lookup and
 // disallowed, and the allowlist does not contain an exception for the uid/host
 // on the interface.
-function bool is_local_net_access_allowed(const uint32_t uid,
-                                          const uint32_t if_index,
-                                          const struct in6_addr *remote_ip6,
-                                          const uint16_t protocol,
-                                          const __be16 remote_port) {
-    LocalNetAccessKey query_key = {
-        .lpm_bitlen = 8 * (sizeof(if_index) + sizeof(*remote_ip6) + sizeof(protocol)
-            + sizeof(remote_port)),
-        .if_index = if_index,
-        .remote_ip6 = *remote_ip6,
-        .protocol = protocol,
-        .remote_port = remote_port
-    };
-    bool* v = bpf_local_net_access_map_lookup_elem(&query_key);
+function bool is_local_net_access_allowed(const LocalNetAccessKey *query_key, const uint32_t uid) {
+    bool* v = bpf_local_net_access_map_lookup_elem(query_key);
     if (!v || *v) {
         return true;
     }
     LocalNetUidHostAllowlistKey allowlist_query_key = {
         .lpm_bitlen =
-            8 * (sizeof(uid) + sizeof(if_index) + sizeof(*remote_ip6)),
+            8 * (sizeof(uid) + sizeof(query_key->if_index) + sizeof(query_key->remote_ip6)),
         .uid = uid,
-        .if_index = if_index,
-        .remote_ip6 = *remote_ip6,
+        .if_index = query_key->if_index,
+        .remote_ip6 = query_key->remote_ip6,
     };
     v = bpf_local_net_uid_host_allowlist_map_lookup_elem(&allowlist_query_key);
     return v && *v;
@@ -338,7 +326,15 @@ function bool is_local_net_access_allowed_cached(__unused struct __sk_buff *skb,
                                                  const uint16_t protocol,
                                                  const __be16 remote_port,
                                                  __unused const struct kver_uint kver) {
-    return is_local_net_access_allowed(uid, if_index, remote_ip6, protocol, remote_port);
+    LocalNetAccessKey query_key = {
+        .lpm_bitlen = 8 * (sizeof(if_index) + sizeof(*remote_ip6) + sizeof(protocol)
+                           + sizeof(remote_port)),
+        .if_index = if_index,
+        .remote_ip6 = *remote_ip6,
+        .protocol = protocol,
+        .remote_port = remote_port
+    };
+    return is_local_net_access_allowed(&query_key, uid);
 }
 
 function uint8_t get_chunk_permissions(const uint32_t uid) {
