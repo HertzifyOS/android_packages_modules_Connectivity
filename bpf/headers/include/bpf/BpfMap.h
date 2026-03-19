@@ -323,6 +323,13 @@ class BpfMapRO {
         return key.error();
     }
 
+    Result<uint32_t> count() const {
+        uint32_t i = 0;
+        auto res = forAll([&i](const Key&) { i++; });
+        if (!res.ok()) return res.error();
+        return i;
+    }
+
   protected:
     unique_fd mMapFd;
 };
