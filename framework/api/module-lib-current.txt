@@ -1,4 +1,6 @@
-// Signature format: 2.0
+// Signature format: 6.0
+// - style=java
+// - strip-java-lang-prefix=legacy
 package android.net {
 
   @FlaggedApi("com.android.tethering.flags.enable_incall_service_api") public class ConnectivityCallListenerService extends android.telecom.InCallService {
