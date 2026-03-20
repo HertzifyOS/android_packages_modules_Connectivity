@@ -1,7 +1,6 @@
 // Signature format: 6.0
 // - style=java
 // - flagged-api-inheritance=none
-// - type-argument-spacing=legacy
 package android.app.usage {
 
   public final class NetworkStats implements AutoCloseable {
@@ -130,7 +129,7 @@ package android.net {
 
   public final class IpSecTransform implements AutoCloseable {
     method public void close();
-    method @FlaggedApi("com.android.net.flags.ipsec_transform_state") public void requestIpSecTransformState(@NonNull java.util.concurrent.Executor, @NonNull android.os.OutcomeReceiver<android.net.IpSecTransformState,RuntimeException>);
+    method @FlaggedApi("com.android.net.flags.ipsec_transform_state") public void requestIpSecTransformState(@NonNull java.util.concurrent.Executor, @NonNull android.os.OutcomeReceiver<android.net.IpSecTransformState, RuntimeException>);
   }
 
   public static class IpSecTransform.Builder {
@@ -232,7 +231,7 @@ package android.net.nsd {
 
   @FlaggedApi("com.android.net.flags.nsd_subtypes_support_enabled") public final class DiscoveryRequest implements android.os.Parcelable {
     method public int describeContents();
-    method @FlaggedApi("android.permission.flags.access_local_network_permission_enabled") @NonNull public java.util.Map<String,android.os.PatternMatcher> getAttributeFilters();
+    method @FlaggedApi("android.permission.flags.access_local_network_permission_enabled") @NonNull public java.util.Map<String, android.os.PatternMatcher> getAttributeFilters();
     method @FlaggedApi("android.permission.flags.access_local_network_permission_enabled") @Nullable public String getDisplayNameAttribute();
     method @FlaggedApi("android.permission.flags.access_local_network_permission_enabled") public long getFlags();
     method @Nullable public android.net.Network getNetwork();
@@ -249,7 +248,7 @@ package android.net.nsd {
   public static final class DiscoveryRequest.Builder {
     ctor public DiscoveryRequest.Builder(@NonNull String);
     method @NonNull public android.net.nsd.DiscoveryRequest build();
-    method @FlaggedApi("android.permission.flags.access_local_network_permission_enabled") @NonNull public android.net.nsd.DiscoveryRequest.Builder setAttributeFilters(@Nullable java.util.Map<String,android.os.PatternMatcher>);
+    method @FlaggedApi("android.permission.flags.access_local_network_permission_enabled") @NonNull public android.net.nsd.DiscoveryRequest.Builder setAttributeFilters(@Nullable java.util.Map<String, android.os.PatternMatcher>);
     method @FlaggedApi("android.permission.flags.access_local_network_permission_enabled") @NonNull public android.net.nsd.DiscoveryRequest.Builder setDisplayNameAttribute(@Nullable String);
     method @FlaggedApi("android.permission.flags.access_local_network_permission_enabled") @NonNull public android.net.nsd.DiscoveryRequest.Builder setFlags(long);
     method @FlaggedApi("android.permission.flags.access_local_network_permission_enabled") @NonNull public android.net.nsd.DiscoveryRequest.Builder setFlags(long, long);
@@ -325,7 +324,7 @@ package android.net.nsd {
   public final class NsdServiceInfo implements android.os.Parcelable {
     ctor public NsdServiceInfo();
     method public int describeContents();
-    method public java.util.Map<String,byte[]> getAttributes();
+    method public java.util.Map<String, byte[]> getAttributes();
     method @Deprecated public java.net.InetAddress getHost();
     method @NonNull public java.util.List<java.net.InetAddress> getHostAddresses();
     method @FlaggedApi("com.android.net.flags.ipv6_over_ble") @Nullable public String getHostname();

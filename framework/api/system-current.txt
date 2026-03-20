@@ -1,6 +1,5 @@
 // Signature format: 6.0
 // - style=java
-// - type-argument-spacing=legacy
 package android.net {
 
   public class CaptivePortal implements android.os.Parcelable {
@@ -399,7 +398,7 @@ package android.net {
 
   public final class OemNetworkPreferences implements android.os.Parcelable {
     method public int describeContents();
-    method @NonNull public java.util.Map<String,Integer> getNetworkPreferences();
+    method @NonNull public java.util.Map<String, Integer> getNetworkPreferences();
     method public void writeToParcel(@NonNull android.os.Parcel, int);
     field @NonNull public static final android.os.Parcelable.Creator<android.net.OemNetworkPreferences> CREATOR;
     field public static final int OEM_NETWORK_PREFERENCE_OEM_PAID = 1; // 0x1

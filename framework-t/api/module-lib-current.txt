@@ -1,6 +1,5 @@
 // Signature format: 6.0
 // - style=java
-// - type-argument-spacing=legacy
 package android.app.usage {
 
   public class NetworkStatsManager {
@@ -122,7 +121,7 @@ package android.net {
   }
 
   public class NetworkStatsCollection {
-    method @NonNull public java.util.Map<android.net.NetworkStatsCollection.Key,android.net.NetworkStatsHistory> getEntries();
+    method @NonNull public java.util.Map<android.net.NetworkStatsCollection.Key, android.net.NetworkStatsHistory> getEntries();
   }
 
   public static final class NetworkStatsCollection.Builder {

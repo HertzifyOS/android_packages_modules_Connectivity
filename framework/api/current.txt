@@ -1,7 +1,6 @@
 // Signature format: 6.0
 // - style=java
 // - flagged-api-inheritance=none
-// - type-argument-spacing=legacy
 package android.net {
 
   public class CaptivePortal implements android.os.Parcelable {
@@ -698,8 +697,8 @@ package android.net.http {
 
   public abstract class HeaderBlock {
     ctor public HeaderBlock();
-    method @NonNull public abstract java.util.List<java.util.Map.Entry<String,String>> getAsList();
-    method @NonNull public abstract java.util.Map<String,java.util.List<String>> getAsMap();
+    method @NonNull public abstract java.util.List<java.util.Map.Entry<String, String>> getAsList();
+    method @NonNull public abstract java.util.Map<String, java.util.List<String>> getAsMap();
   }
 
   public abstract class HttpEngine {
@@ -768,14 +767,14 @@ package android.net.http {
 
   public static interface Proxy.HttpConnectCallback {
     method public void onBeforeRequest(@NonNull android.net.http.Proxy.HttpConnectCallback.Request);
-    method public int onResponseReceived(@NonNull java.util.List<android.util.Pair<String,String>>, int);
+    method public int onResponseReceived(@NonNull java.util.List<android.util.Pair<String, String>>, int);
     field public static final int RESPONSE_ACTION_CLOSE = 0; // 0x0
     field public static final int RESPONSE_ACTION_PROCEED = 1; // 0x1
   }
 
   public static final class Proxy.HttpConnectCallback.Request implements AutoCloseable {
     method public void close();
-    method public void proceed(@NonNull java.util.List<android.util.Pair<String,String>>);
+    method public void proceed(@NonNull java.util.List<android.util.Pair<String, String>>);
   }
 
   @FlaggedApi("android.net.http.proxy_apis") public final class ProxyOptions {
