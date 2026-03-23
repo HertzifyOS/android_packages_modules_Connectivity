@@ -27,11 +27,11 @@ import android.os.Binder
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
+import android.permission.flags.Flags
 import android.platform.test.annotations.AppModeFull
 import android.system.ErrnoException
 import android.system.Os
 import android.system.OsConstants
-import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.android.net.module.util.NetworkStackConstants
 import com.android.net.module.util.PacketBuilder
@@ -43,7 +43,8 @@ import com.android.net.module.util.structs.UdpHeader
 import com.android.testutils.AutoCloseTestResourcesRule
 import com.android.testutils.AutoCloseableTestNetworkInterface
 import com.android.testutils.AutoReleaseNetworkCallbackRule
-import com.android.testutils.DevSdkIgnoreRule
+import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo
+import com.android.testutils.DevSdkIgnoreRunner
 import com.android.testutils.PollPacketReader
 import com.android.testutils.TestableNetworkAgent
 import com.android.testutils.TestableNetworkCallback.Event
@@ -66,12 +67,14 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.fail
 import org.junit.After
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
-@RunWith(AndroidJUnit4::class)
+@IgnoreUpTo(Build.VERSION_CODES.BAKLAVA)
+@RunWith(DevSdkIgnoreRunner::class)
 class LocalNetworkTest {
     private val context by lazy { InstrumentationRegistry.getInstrumentation().context }
     private val binder = Binder()
@@ -82,9 +85,6 @@ class LocalNetworkTest {
     private lateinit var handler: Handler
     private lateinit var linkLocalIpv6Address: Inet6Address
     private lateinit var tnm: TestNetworkManager
-
-    @get:Rule
-    val ignoreRule = DevSdkIgnoreRule()
 
     private val iface =
         AutoCloseableTestNetworkInterface.createTun(context, LINK_ADDRESSES)
@@ -128,6 +128,7 @@ class LocalNetworkTest {
 
     @Before
     fun setUp() {
+        assumeTrue(Flags.accessLocalNetworkPermissionEnabled())
         handlerThread.start()
         handler = Handler(handlerThread.looper)
 
@@ -168,7 +169,6 @@ class LocalNetworkTest {
     @Test
     @AppModeFull(reason = "Cannot access local network in instant app mode")
     @CtsNetTestCasesLocalNetNoPermissions
-    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     fun testMissingPermission_dropsLocalEgressUdpPacket() {
         assertLocalNetworkPermissions(PackageManager.PERMISSION_DENIED)
         sendUdpPacketAndCheckSuccess(ON_LINK_IPV4_ADDRESS, false)
@@ -179,7 +179,6 @@ class LocalNetworkTest {
     @Test
     @AppModeFull(reason = "Cannot access local network in instant app mode")
     @CtsNetTestCasesLocalNetNoPermissions
-    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     fun testMissingPermission_allowsOffLinkEgressUdpPacket() {
         assertLocalNetworkPermissions(PackageManager.PERMISSION_DENIED)
         sendUdpPacketAndCheckSuccess(OFF_LINK_IPV4_ADDRESS, true)
@@ -188,7 +187,6 @@ class LocalNetworkTest {
 
     @Test
     @AppModeFull(reason = "Cannot access local network in instant app mode")
-    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     fun testPermissionGranted_sendsLocalEgressUdpPacket() {
         assertLocalNetworkPermissions(PackageManager.PERMISSION_GRANTED)
         sendUdpPacketAndCheckSuccess(ON_LINK_IPV4_ADDRESS, true)
@@ -199,7 +197,6 @@ class LocalNetworkTest {
     @Test
     @AppModeFull(reason = "Cannot access local network in instant app mode")
     @CtsNetTestCasesLocalNetNoPermissions
-    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     fun testMissingPermission_reuseUdpSocket() {
         assertLocalNetworkPermissions(PackageManager.PERMISSION_DENIED)
 
@@ -224,7 +221,6 @@ class LocalNetworkTest {
     @Test
     @AppModeFull(reason = "Cannot access local network in instant app mode")
     @CtsNetTestCasesLocalNetNoPermissions
-    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     fun testMissingPermission_dropsLocalEgressTcpPacket() {
         assertLocalNetworkPermissions(PackageManager.PERMISSION_DENIED)
         sendTcpPacketAndAssertPermissionDenied(ON_LINK_IPV4_ADDRESS)
@@ -235,7 +231,6 @@ class LocalNetworkTest {
     @Test
     @AppModeFull(reason = "Cannot access local network in instant app mode")
     @CtsNetTestCasesLocalNetNoPermissions
-    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     fun testMissingPermission_allowsOffLinkEgressTcpPacket() {
         assertLocalNetworkPermissions(PackageManager.PERMISSION_DENIED)
         sendTcpPacketAndAssertSuccess(OFF_LINK_IPV4_ADDRESS)
@@ -244,7 +239,6 @@ class LocalNetworkTest {
 
     @Test
     @AppModeFull(reason = "Cannot access local network in instant app mode")
-    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     fun testPermissionGranted_sendsLocalEgressTcpPacket() {
         assertLocalNetworkPermissions(PackageManager.PERMISSION_GRANTED)
         sendTcpPacketAndAssertSuccess(ON_LINK_IPV4_ADDRESS)
@@ -254,7 +248,6 @@ class LocalNetworkTest {
 
     @Test
     @AppModeFull(reason = "Cannot access local network in instant app mode")
-    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     fun testPermissionGranted_receivesLocalIngressUdpPacket() {
         assertLocalNetworkPermissions(PackageManager.PERMISSION_GRANTED)
         writeIngressUdpAndCheckSuccess(ON_LINK_IPV4_ADDRESS, true)
@@ -265,7 +258,6 @@ class LocalNetworkTest {
     @Test
     @AppModeFull(reason = "Cannot access local network in instant app mode")
     @CtsNetTestCasesLocalNetNoPermissions
-    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     fun testMissingPermission_dropsLocalIngressUdpPacket() {
         assertLocalNetworkPermissions(PackageManager.PERMISSION_DENIED)
         writeIngressUdpAndCheckSuccess(ON_LINK_IPV4_ADDRESS, false)
@@ -275,7 +267,6 @@ class LocalNetworkTest {
 
     @Test
     @AppModeFull(reason = "Cannot access local network in instant app mode")
-    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     fun testPermissionGranted_receivesOffLinkIngressUdpPacket() {
         assertLocalNetworkPermissions(PackageManager.PERMISSION_GRANTED)
         writeIngressUdpAndCheckSuccess(OFF_LINK_IPV4_ADDRESS, true)
@@ -285,7 +276,6 @@ class LocalNetworkTest {
     @Test
     @AppModeFull(reason = "Cannot access local network in instant app mode")
     @CtsNetTestCasesLocalNetNoPermissions
-    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     fun testMissingPermission_receivesOffLinkIngressUdpPacket() {
         assertLocalNetworkPermissions(PackageManager.PERMISSION_DENIED)
         writeIngressUdpAndCheckSuccess(OFF_LINK_IPV4_ADDRESS, true)
@@ -294,7 +284,6 @@ class LocalNetworkTest {
 
     @Test
     @AppModeFull(reason = "Cannot access local network in instant app mode")
-    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     fun testPermissionGranted_receivesLocalIngressTcpPacket() {
         assertLocalNetworkPermissions(PackageManager.PERMISSION_GRANTED)
         writeIngressTcpAndAssertSuccess(ON_LINK_IPV4_ADDRESS)
@@ -305,7 +294,6 @@ class LocalNetworkTest {
     @Test
     @AppModeFull(reason = "Cannot access local network in instant app mode")
     @CtsNetTestCasesLocalNetNoPermissions
-    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     fun testMissingPermission_dropsLocalIngressTcpPacket() {
         assertLocalNetworkPermissions(PackageManager.PERMISSION_DENIED)
         writeIngressTcpAndAssertPermissionDenied(ON_LINK_IPV4_ADDRESS)
@@ -315,7 +303,6 @@ class LocalNetworkTest {
 
     @Test
     @AppModeFull(reason = "Cannot access local network in instant app mode")
-    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     fun testPermissionGranted_receivesOffLinkIngressTcpPacket() {
         assertLocalNetworkPermissions(PackageManager.PERMISSION_GRANTED)
         writeIngressTcpAndAssertSuccess(OFF_LINK_IPV4_ADDRESS)
@@ -325,7 +312,6 @@ class LocalNetworkTest {
     @Test
     @AppModeFull(reason = "Cannot access local network in instant app mode")
     @CtsNetTestCasesLocalNetNoPermissions
-    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     fun testMissingPermission_receivesOffLinkIngressTcpPacket() {
         assertLocalNetworkPermissions(PackageManager.PERMISSION_DENIED)
         writeIngressTcpAndAssertSuccess(OFF_LINK_IPV4_ADDRESS)
