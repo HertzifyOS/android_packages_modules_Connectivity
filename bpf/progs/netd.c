@@ -345,11 +345,24 @@ function bool is_local_net_access_allowed_cached(struct __sk_buff *skb,
     SkStorageValue *sks = bpf_sk_storage_get(sk, 0, 0);
     if (!sks) return is_local_net_access_allowed(&query_key, uid);
 
-    if (sks->tcpIsConnected) return true; // TCP connection that has already passed the LNP check.
+    if (sks->lnp_cache.is_connected_tcp) return true;
+
+    uint32_t zero = 0;
+    uint64_t *gen_id = bpf_local_net_cache_generation_id_map_lookup_elem(&zero);
+    if (!gen_id) return false; // Should not happen
+    if (*gen_id == sks->lnp_cache.generation_id
+        && !__builtin_memcmp(&sks->lnp_cache.key, &query_key, sizeof(sks->lnp_cache.key))) {
+        return sks->lnp_cache.result;
+    }
 
     bool isAllowed = is_local_net_access_allowed(&query_key, uid);
 
-    if (protocol == IPPROTO_TCP && isAllowed) sks->tcpIsConnected = true;
+    if (!(*gen_id & 1)) {
+        sks->lnp_cache.result = isAllowed;
+        sks->lnp_cache.generation_id = *gen_id;
+        sks->lnp_cache.key = query_key;
+    }
+    if (protocol == IPPROTO_TCP && isAllowed) sks->lnp_cache.is_connected_tcp = true;
 
     return isAllowed;
 }
