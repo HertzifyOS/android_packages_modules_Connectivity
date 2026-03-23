@@ -114,6 +114,18 @@ typedef struct {
 STRUCT_SIZE(L4SStorage, 4 + 2 + 1 + 1 + 8 + 8 + 8); // 32
 
 typedef struct {
+    // Generation ID of the LNP cache when the `result` was stored
+    uint64_t generation_id;
+    LocalNetAccessKey key;
+    // Whether this socket is currently connected. Can only be true for TCP
+    bool is_connected_tcp;
+    // The cached result of LNP permission checks
+    bool result;
+    uint8_t padding[2];
+} LnpCache;
+STRUCT_SIZE(LnpCache, 8 + 28 + 1 + 1 + 2); // 40
+
+typedef struct {
     uint64_t cookie;
     // Store gid and uid to make them available outside the program types that
     // support `bpf_get_socket_uid`
@@ -121,17 +133,10 @@ typedef struct {
     uint32_t uid;
     // A bitmask of enum values in DropReasonType.
     uint64_t dropReasons;
-    // Generation ID of the LNP cache when the `lnpResult` was stored
-    uint64_t lnpGenerationId;
-    LocalNetAccessKey lnpTrieLookupKey;
-    // Whether this socket is currently connected. Can only be true for TCP
-    bool tcpIsConnected;
-    // The cached result of LNP permission checks for the lnpTrieLookupKey
-    bool lnpResult;
-    uint8_t padding[2];
+    LnpCache lnp_cache;
     L4SStorage l4s;
 } SkStorageValue;
-STRUCT_SIZE(SkStorageValue, 8 + 4 + 4 + 8 + 8 + 28 + 1 + 1 + 2 + 32); // 96
+STRUCT_SIZE(SkStorageValue, 8 + 4 + 4 + 8 + 40 + 32); // 96
 
 enum LoopbackAccessResult : uint32_t {
   LOOPBACK_ACCESS_ALLOWED = 0,
