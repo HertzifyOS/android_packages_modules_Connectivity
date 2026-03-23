@@ -115,6 +115,14 @@ bpf {
 }
 
 bpf {
+    name: "netd@funcs.o",
+    srcs: ["netd@funcs.c"],
+    include_dirs: ["packages/modules/Connectivity/bpf/progs/include"],
+    sub_dir: "mainline",
+    cflags: ["-DBPF_USE_FUNC"],
+}
+
+bpf {
     name: "offload.o",
     srcs: ["offload.c"],
     include_dirs: ["packages/modules/Connectivity/bpf/progs/include"],

@@ -1361,10 +1361,11 @@ static bool loadAllObjects() {
     if (!loadObject(BPFROOT "clatd.o")) return false;
     if (funcs) {
         if (!loadObject(BPFROOT "dscpPolicy@funcs.o")) return false;
+        if (!loadObject(BPFROOT "netd@funcs.o")) return false;
     } else {
         if (!loadObject(BPFROOT "dscpPolicy.o")) return false;
+        if (!loadObject(BPFROOT "netd.o")) return false;
     }
-    if (!loadObject(BPFROOT "netd.o")) return false;
     return true;
 }
 
