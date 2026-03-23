@@ -251,6 +251,12 @@ static long (*bpf_sk_storage_delete_unsafe) (const void* sk_storage,
 
 #define function static inline __always_inline
 
+#ifdef BPF_USE_FUNCS
+  #define procedure static
+#else
+  #define procedure static inline __always_inline
+#endif
+
 // Type safe macro to declare a ring buffer and related output functions.
 // Compatibility:
 // * BPF ring buffers are only available kernels 5.8 and above. Any program
