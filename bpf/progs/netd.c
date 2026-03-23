@@ -319,13 +319,13 @@ function bool is_local_net_access_allowed(const LocalNetAccessKey *query_key, co
     return v && *v;
 }
 
-function bool is_local_net_access_allowed_cached(__unused struct __sk_buff *skb,
+function bool is_local_net_access_allowed_cached(struct __sk_buff *skb,
                                                  const uint32_t uid,
                                                  const uint32_t if_index,
                                                  const struct in6_addr *remote_ip6,
                                                  const uint16_t protocol,
                                                  const __be16 remote_port,
-                                                 __unused const struct kver_uint kver) {
+                                                 const struct kver_uint kver) {
     LocalNetAccessKey query_key = {
         .lpm_bitlen = 8 * (sizeof(if_index) + sizeof(*remote_ip6) + sizeof(protocol)
                            + sizeof(remote_port)),
@@ -334,7 +334,24 @@ function bool is_local_net_access_allowed_cached(__unused struct __sk_buff *skb,
         .protocol = protocol,
         .remote_port = remote_port
     };
-    return is_local_net_access_allowed(&query_key, uid);
+
+    // Caching is enabled on kernel 5.10 and later, which supports BPF socket storage.
+    if (!KVER_IS_AT_LEAST(kver, 5, 10, 0)) {
+        return is_local_net_access_allowed(&query_key, uid);
+    }
+
+    struct bpf_sock* sk = skb->sk;
+    if (!sk) return is_local_net_access_allowed(&query_key, uid);
+    SkStorageValue *sks = bpf_sk_storage_get(sk, 0, 0);
+    if (!sks) return is_local_net_access_allowed(&query_key, uid);
+
+    if (sks->tcpIsConnected) return true; // TCP connection that has already passed the LNP check.
+
+    bool isAllowed = is_local_net_access_allowed(&query_key, uid);
+
+    if (protocol == IPPROTO_TCP && isAllowed) sks->tcpIsConnected = true;
+
+    return isAllowed;
 }
 
 function uint8_t get_chunk_permissions(const uint32_t uid) {
