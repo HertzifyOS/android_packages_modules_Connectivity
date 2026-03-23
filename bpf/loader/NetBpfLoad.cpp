@@ -1353,17 +1353,19 @@ static bool loadObject(const char* const progPath, const bool useLibbpf = true) 
 
 static bool loadAllObjects() {
     // Enable on kernels that have the BPF CFI backports, see: b/488034908
-    bool funcs = isAtLeastKernelVersion(6, 6, 118);
+    // b/494690861: funcs may trigger Real-time Kernel Protection (RKP)
+    bool funcs = isAtLeast26Q2 && isAtLeastKernelVersion(6, 6, 118);
 
     if (!loadObject(BPFROOT "offload.o", /*libbpf*/false)) return false;
     if (!loadObject(BPFROOT "test.o")) return false;
     if (!loadObject(BPFROOT "clatd.o")) return false;
     if (funcs) {
         if (!loadObject(BPFROOT "dscpPolicy@funcs.o")) return false;
+        if (!loadObject(BPFROOT "netd@funcs.o")) return false;
     } else {
         if (!loadObject(BPFROOT "dscpPolicy.o")) return false;
+        if (!loadObject(BPFROOT "netd.o")) return false;
     }
-    if (!loadObject(BPFROOT "netd.o")) return false;
     return true;
 }
 

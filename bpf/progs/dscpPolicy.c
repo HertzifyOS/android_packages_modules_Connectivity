@@ -43,14 +43,10 @@ struct compute_ctx {
     RuleEntry e;
 };
 
-#ifdef BPF_USE_FUNC
-  #define callable
-#else
-  #define callable inline __always_inline
-#endif
-
-static callable long
-compute(__unused const void *map, __unused const uint32_t *key, DscpPolicy *policy, void *ctx_) {
+procedure long compute(__unused const void *map,
+                       __unused const uint32_t *key,
+                       DscpPolicy *policy,
+                       void *ctx_) {
     struct compute_ctx *ctx = ctx_;
 
     // Think of 'nomatch' as a 64-bit boolean: false iff zero, true iff non-zero.
@@ -244,7 +240,7 @@ function void match_policy(struct __sk_buff* skb, const bool ipv4) {
         .e.dscp_val = -1,  // meaning no mutation
     };
 
-#ifdef BPF_USE_FUNC
+#ifdef BPF_USE_FUNCS
     // Linear scan ipv?_dscp_policies_map since stored params didn't match skb.
     if (ipv4) {
         bpf_for_each_ipv4_dscp_policies_map_elem(compute, &ctx);

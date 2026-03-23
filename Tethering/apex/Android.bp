@@ -89,6 +89,7 @@ apex {
         "dscpPolicy.o",
         "dscpPolicy@funcs.o",
         "netd.o",
+        "netd@funcs.o",
         "offload.o",
         "test.o",
     ],
