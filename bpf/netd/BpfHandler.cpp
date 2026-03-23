@@ -338,6 +338,69 @@ Result<void> BpfHandler::init(const char* cg2_path) {
         if (rv) return Error(errno) << "map write failed (rv=" << rv << ")";
     }
 
+    if (isAtLeast26Q2) {
+        // Bring up loopback interface first
+        unique_fd sock(socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0));
+        if (!sock.ok()) return Error(errno) << "socket6udp";
+
+        struct ifreq ifr = {
+            .ifr_name = "lo",
+        };
+        // due to sepolicy this cannot be a unix/dgram nor ipv6/tcp socket
+        if (ioctl(sock.get(), SIOCGIFFLAGS, &ifr)) return Error(errno) << "SIOCGIFFLAGS";
+
+        if (ifr.ifr_flags & IFF_UP) {
+            // Nothing to be done, already up.
+        } else {
+            ifr.ifr_flags |= IFF_UP;
+            if (ioctl(sock.get(), SIOCSIFFLAGS, &ifr)) return Error(errno) << "SIOCSIFFLAGS";
+        }
+    }
+
+    if (isAtLeast26Q2) {
+        // Simple boot time self test that verifies that loopback ip/tcp works
+        // (this triggers at least bpf cgroup inet_create/ingress/egress/inet_release hooks)
+
+        unique_fd server(socket(AF_INET6, SOCK_STREAM | SOCK_CLOEXEC, 0));
+        if (!server.ok()) return Error(errno) << "socket6tcp";
+
+        struct sockaddr_in6 addr6 = {
+            .sin6_family = AF_INET6,
+        };
+        if (bind(server.get(), (struct sockaddr*)&addr6, sizeof(addr6)))
+            return Error(errno) << "bind";
+
+        if (listen(server.get(), 1)) return Error(errno) << "listen";
+
+        socklen_t addr6_len = sizeof(addr6);
+        if (getsockname(server.get(), (struct sockaddr*)&addr6, &addr6_len))
+            return Error(errno) << "getsockname";
+        if (addr6_len != sizeof(addr6)) return Error() << "addr6_len";
+
+        unique_fd client(socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0));
+        if (!client.ok()) return Error(errno) << "socket4tcp";
+
+        struct sockaddr_in addr4 = {
+            .sin_family = AF_INET,
+            .sin_port = addr6.sin6_port,
+        };
+        if (connect(client.get(), (struct sockaddr*)&addr4, sizeof(addr4)))
+            return Error(errno) << "connect";  // fails with ENETUNREACH if 'lo' is down
+
+        unique_fd peer(accept4(server.get(), NULL, NULL, SOCK_CLOEXEC));
+        if (!peer.ok()) return Error(errno) << "accept";
+
+        char snd = '@';
+        if (write(client.get(), &snd, sizeof(snd)) != 1) return Error(errno) << "write";
+
+        char rcv = 0;
+        if (read(peer.get(), &rcv, sizeof(rcv)) != 1) return Error(errno) << "read";
+
+        if (rcv != snd) return Error() << "wrong";
+
+        // all 3 sockets are closed automatically
+    }
+
     return {};
 }
 
