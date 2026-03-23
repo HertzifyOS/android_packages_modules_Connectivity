@@ -303,32 +303,38 @@ function long bpf_skb_load_bytes_net(const struct __sk_buff* const skb,
 // False iff arguments are found with longest prefix match lookup and
 // disallowed, and the allowlist does not contain an exception for the uid/host
 // on the interface.
-function bool is_local_net_access_allowed(const uint32_t uid,
-                                          const uint32_t if_index,
-                                          const struct in6_addr *remote_ip6,
-                                          const uint16_t protocol,
-                                          const __be16 remote_port) {
-    LocalNetAccessKey query_key = {
-        .lpm_bitlen = 8 * (sizeof(if_index) + sizeof(*remote_ip6) + sizeof(protocol)
-            + sizeof(remote_port)),
-        .if_index = if_index,
-        .remote_ip6 = *remote_ip6,
-        .protocol = protocol,
-        .remote_port = remote_port
-    };
-    bool* v = bpf_local_net_access_map_lookup_elem(&query_key);
+function bool is_local_net_access_allowed(const LocalNetAccessKey *query_key, const uint32_t uid) {
+    bool* v = bpf_local_net_access_map_lookup_elem(query_key);
     if (!v || *v) {
         return true;
     }
     LocalNetUidHostAllowlistKey allowlist_query_key = {
         .lpm_bitlen =
-            8 * (sizeof(uid) + sizeof(if_index) + sizeof(*remote_ip6)),
+            8 * (sizeof(uid) + sizeof(query_key->if_index) + sizeof(query_key->remote_ip6)),
         .uid = uid,
-        .if_index = if_index,
-        .remote_ip6 = *remote_ip6,
+        .if_index = query_key->if_index,
+        .remote_ip6 = query_key->remote_ip6,
     };
     v = bpf_local_net_uid_host_allowlist_map_lookup_elem(&allowlist_query_key);
     return v && *v;
+}
+
+function bool is_local_net_access_allowed_cached(__unused struct __sk_buff *skb,
+                                                 const uint32_t uid,
+                                                 const uint32_t if_index,
+                                                 const struct in6_addr *remote_ip6,
+                                                 const uint16_t protocol,
+                                                 const __be16 remote_port,
+                                                 __unused const struct kver_uint kver) {
+    LocalNetAccessKey query_key = {
+        .lpm_bitlen = 8 * (sizeof(if_index) + sizeof(*remote_ip6) + sizeof(protocol)
+                           + sizeof(remote_port)),
+        .if_index = if_index,
+        .remote_ip6 = *remote_ip6,
+        .protocol = protocol,
+        .remote_port = remote_port
+    };
+    return is_local_net_access_allowed(&query_key, uid);
 }
 
 function uint8_t get_chunk_permissions(const uint32_t uid) {
@@ -367,6 +373,7 @@ function bool is_local_network_access_blocked(const uint32_t uid) {
 }
 
 function bool should_block_local_network_packets(const SkbIpPacketData *const packet,
+                                                 struct __sk_buff *skb,
                                                  const uint32_t uid,
                                                  const uint32_t if_index,
                                                  const struct egress_bool egress,
@@ -382,8 +389,8 @@ function bool should_block_local_network_packets(const SkbIpPacketData *const pa
         egress.egress ? &packet->daddr : &packet->saddr;
     const __be16 remote_port = egress.egress ? packet->dport : packet->sport;
     if (reportLocalAccess) {
-        isAllowed = is_local_net_access_allowed(uid, if_index, remote_ip6,
-                                                packet->ip_proto, remote_port);
+        isAllowed = is_local_net_access_allowed_cached(skb, uid, if_index, remote_ip6,
+                                                       packet->ip_proto, remote_port, kver);
         // Currently, generate events for all local network access, regardless of the UID's
         // permission status.
         // This is to identify all UIDs that are accessing the local network.
@@ -407,8 +414,8 @@ function bool should_block_local_network_packets(const SkbIpPacketData *const pa
     }
 
     if (!reportLocalAccess) {
-        isAllowed = is_local_net_access_allowed(uid, if_index, remote_ip6,
-                                                packet->ip_proto, remote_port);
+        isAllowed = is_local_net_access_allowed_cached(skb, uid, if_index, remote_ip6,
+                                                       packet->ip_proto, remote_port, kver);
     }
     return !isAllowed;
 }
@@ -830,7 +837,7 @@ function int bpf_traffic_account(struct __sk_buff* skb,
     }
 
     if (API_IS_AT_LEAST(lvl, 25Q2) && parsed && (match != DROP) && !dns) {
-        if (should_block_local_network_packets(&packet_data, sock_uid,
+        if (should_block_local_network_packets(&packet_data, skb, sock_uid,
                                                skb->ifindex, egress, kver)) {
             if (KVER_IS_AT_LEAST(kver, 5, 10, 0) && skb->sk && egress.egress) {
                 SkStorageValue *sks = bpf_sk_storage_get(skb->sk, 0, 0);
