@@ -260,7 +260,7 @@ DEFINE_BPF_PROG_KVER_RANGE(schedcls, egress_accecn_eth, AID_SYSTEM, 6_1, 6_18)
     return TC_ACT_PIPE;
 }
 
-function int update_accecn_counter(struct __sk_buff* skb) {
+procedure int update_accecn_counter(struct __sk_buff* skb) {
     if (!is_l4s_enabled()) return 1;
     if (!skb->sk) {
         return 1;
