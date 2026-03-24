@@ -607,9 +607,9 @@ function bool parse_skb(SkbIpPacketData *const packet,
     return true;
 }
 
-function bool should_block_loopback_access(const SkbIpPacketData *const packet_data,
-                                           struct __sk_buff *const skb,
-                                           const uint32_t sender_uid) {
+procedure bool should_block_loopback_access(const SkbIpPacketData *const packet_data,
+                                            struct __sk_buff *const skb,
+                                            const uint32_t sender_uid) {
     bool checks_enabled = loopback_checks_enabled();
     bool metrics_enabled = loopback_metrics_enabled();
     if (!checks_enabled && !metrics_enabled) return false;
