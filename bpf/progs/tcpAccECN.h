@@ -22,7 +22,7 @@
 DEFINE_BPF_MAP_NO_NETD(l4s_conn_counter, ARRAY, uint32_t, uint32_t, 1)
 DEFINE_BPF_MAP_NO_NETD(l4s_accecn_enabled_map, ARRAY, uint32_t, bool, 1)
 
-function int find_accecn_options_offset(struct __sk_buff *skb, uint8_t offset) {
+procedure int find_accecn_options_offset(struct __sk_buff *skb, uint8_t offset) {
     int ret;
     uint8_t opt_off;
     struct tcphdr tcp_header = {0};
