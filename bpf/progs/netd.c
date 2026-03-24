@@ -174,12 +174,6 @@ DEFINE_BPF_MAP_RO_NETD(loopback_checks_enabled_map, ARRAY, uint32_t, bool, 1)
 #define DEFINE_NETD_T_BPF_PROG_KVER(TYPE, NAME, minKV) \
     DEFINE_NETD_T_BPF_PROG_KVER_RANGE(TYPE, NAME, minKV, INF)
 
-#define DEFINE_NETD_V_BPF_PROG_KVER_RANGE(TYPE, NAME, minKV, maxKV) \
-    DEFINE_NETD_BPF_PROG_RANGES(TYPE, NAME, minKV, maxKV, V, MAXAPI)
-
-#define DEFINE_NETD_V_BPF_PROG_KVER(TYPE, NAME, minKV) \
-    DEFINE_NETD_V_BPF_PROG_KVER_RANGE(TYPE, NAME, minKV, INF)
-
 // programs that only need to be usable by the system server
 #define DEFINE_SYS_BPF_PROG(TYPE, NAME) \
     DEFINE_BPF_PROG_EXT(TYPE, NAME, AID_ROOT, AID_NET_ADMIN, 4_9, INF, MINAPI, MAXAPI, MANDATORY, \
@@ -1256,43 +1250,45 @@ DEFINE_NETD_T_BPF_PROG_KVER_RANGE(bind6, inet6_bind, 4_19, 5_15)
 
 // --- CONNECT CGROUP HOOKS ---
 
-DEFINE_NETD_V_BPF_PROG_KVER(connect4, inet4_connect, 4_19)
+DEFINE_NETD_BPF_PROG_RANGES(connect4, inet4_connect, 4_19, INF, V, MAXAPI)
 (__unused struct bpf_sock_addr *ctx) {
     return BPF_ALLOW;
 }
 
-DEFINE_NETD_V_BPF_PROG_KVER(connect6, inet6_connect, 4_19)
+DEFINE_NETD_BPF_PROG_RANGES(connect6, inet6_connect, 4_19, INF, V, MAXAPI)
 (__unused struct bpf_sock_addr *ctx) {
     return BPF_ALLOW;
 }
 
 // --- UDP RECVMSG HOOKS ---
 
-DEFINE_NETD_V_BPF_PROG_KVER(recvmsg4, udp4_recvmsg, 4_19)
+DEFINE_NETD_BPF_PROG_RANGES(recvmsg4, udp4_recvmsg, 4_19, INF, V, MAXAPI)
 (__unused struct bpf_sock_addr *ctx) {
     return BPF_ALLOW;
 }
 
-DEFINE_NETD_V_BPF_PROG_KVER(recvmsg6, udp6_recvmsg, 4_19)
+DEFINE_NETD_BPF_PROG_RANGES(recvmsg6, udp6_recvmsg, 4_19, INF, V, MAXAPI)
 (__unused struct bpf_sock_addr *ctx) {
     return BPF_ALLOW;
 }
 
 // --- UDP SENDMSG HOOKS ---
 
-DEFINE_NETD_V_BPF_PROG_KVER(sendmsg4, udp4_sendmsg, 4_19)
+DEFINE_NETD_BPF_PROG_RANGES(sendmsg4, udp4_sendmsg, 4_19, INF, V, MAXAPI)
 (__unused struct bpf_sock_addr *ctx) {
     return BPF_ALLOW;
 }
 
-DEFINE_NETD_V_BPF_PROG_KVER(sendmsg6, udp6_sendmsg, 4_19)
+DEFINE_NETD_BPF_PROG_RANGES(sendmsg6, udp6_sendmsg, 4_19, INF, V, MAXAPI)
 (__unused struct bpf_sock_addr *ctx) {
     return BPF_ALLOW;
 }
 
 // --- GETSOCKOPT HOOK ---
 
-function int inet_getsockopt(struct bpf_sockopt *ctx, const struct kver_uint kver) {
+function int inet_getsockopt(struct bpf_sockopt *ctx,
+                             const struct kver_uint kver,
+                             __unused const struct sdk_level_uint lvl) {
     if (KVER_IS_AT_LEAST(kver, 5, 10, 0) && ctx->level == SOL_SOCKET &&
         ctx->optname == SO_ANDROID_DROP_REASON) {
         uint8_t *optval_end = ctx->optval_end;
@@ -1321,43 +1317,45 @@ function int inet_getsockopt(struct bpf_sockopt *ctx, const struct kver_uint kve
     return BPF_ALLOW;
 }
 
-DEFINE_NETD_V_BPF_PROG_KVER(getsockopt, prog, 6_1)
+DEFINE_NETD_BPF_PROG_RANGES(getsockopt, prog, 6_1, INF, V, MAXAPI)
 (struct bpf_sockopt *ctx) {
-    return inet_getsockopt(ctx, KVER_6_1);
+    return inet_getsockopt(ctx, KVER_6_1, API(V));
 }
 
-DEFINE_NETD_V_BPF_PROG_KVER_RANGE(getsockopt, prog, 5_10, 6_1)
+DEFINE_NETD_BPF_PROG_RANGES(getsockopt, prog, 5_10, 6_1, V, MAXAPI)
 (struct bpf_sockopt *ctx) {
-    return inet_getsockopt(ctx, KVER_5_10);
+    return inet_getsockopt(ctx, KVER_5_10, API(V));
 }
 
-DEFINE_NETD_V_BPF_PROG_KVER_RANGE(getsockopt, prog, 5_4, 5_10)
+DEFINE_NETD_BPF_PROG_RANGES(getsockopt, prog, 5_4, 5_10, V, MAXAPI)
 (struct bpf_sockopt *ctx) {
-    return inet_getsockopt(ctx, KVER_5_4);
+    return inet_getsockopt(ctx, KVER_5_4, API(V));
 }
 
 // --- SETSOCKOPT HOOK ---
 
-function int inet_setsockopt(struct bpf_sockopt *ctx, __unused const struct kver_uint kver) {
+function int inet_setsockopt(struct bpf_sockopt *ctx,
+                             __unused const struct kver_uint kver,
+                             __unused const struct sdk_level_uint lvl) {
     // Tell kernel to use/process original buffer provided by userspace.
     // This is important if it is larger than PAGE_SIZE (max size this bpf hook can handle).
     ctx->optlen = 0;
     return BPF_ALLOW;
 }
 
-DEFINE_NETD_V_BPF_PROG_KVER(setsockopt, prog, 6_1)
+DEFINE_NETD_BPF_PROG_RANGES(setsockopt, prog, 6_1, INF, V, MAXAPI)
 (struct bpf_sockopt *ctx) {
-    return inet_setsockopt(ctx, KVER_6_1);
+    return inet_setsockopt(ctx, KVER_6_1, API(V));
 }
 
-DEFINE_NETD_V_BPF_PROG_KVER_RANGE(setsockopt, prog, 5_10, 6_1)
+DEFINE_NETD_BPF_PROG_RANGES(setsockopt, prog, 5_10, 6_1, V, MAXAPI)
 (struct bpf_sockopt *ctx) {
-    return inet_setsockopt(ctx, KVER_5_10);
+    return inet_setsockopt(ctx, KVER_5_10, API(V));
 }
 
-DEFINE_NETD_V_BPF_PROG_KVER_RANGE(setsockopt, prog, 5_4, 5_10)
+DEFINE_NETD_BPF_PROG_RANGES(setsockopt, prog, 5_4, 5_10, V, MAXAPI)
 (struct bpf_sockopt *ctx) {
-    return inet_setsockopt(ctx, KVER_5_4);
+    return inet_setsockopt(ctx, KVER_5_4, API(V));
 }
 
 LICENSE("Apache 2.0");
