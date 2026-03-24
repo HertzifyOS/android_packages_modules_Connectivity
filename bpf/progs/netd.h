@@ -104,14 +104,14 @@ STRUCT_SIZE(LocalNetAccessKey, 4 + 4 + 16 + 2 + 2); // 28
 
 typedef struct {
     uint32_t ce_count;
-    uint16_t mss;
     uint8_t  ce_inited;
     uint8_t  byte_inited;
+    uint8_t  pad[2];
     uint64_t ceb;
     uint64_t e0b;
     uint64_t e1b;
 } L4SStorage;
-STRUCT_SIZE(L4SStorage, 4 + 2 + 1 + 1 + 8 + 8 + 8); // 32
+STRUCT_SIZE(L4SStorage, 4 + 1 + 1 + 2 + 8 + 8 + 8); // 32
 
 typedef struct {
     // Generation ID of the LNP cache when the `result` was stored
