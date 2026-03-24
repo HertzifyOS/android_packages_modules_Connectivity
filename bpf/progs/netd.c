@@ -1317,7 +1317,17 @@ function int inet_getsockopt(struct bpf_sockopt *ctx,
     return BPF_ALLOW;
 }
 
-DEFINE_NETD_BPF_PROG_RANGES(getsockopt, prog, 6_1, INF, V, MAXAPI)
+DEFINE_NETD_BPF_PROG_RANGES(getsockopt, prog, 6_18, INF, V, MAXAPI)
+(struct bpf_sockopt *ctx) {
+    return inet_getsockopt(ctx, KVER_6_18, API(V));
+}
+
+DEFINE_NETD_BPF_PROG_RANGES(getsockopt, prog, 6_1, 6_18, 26Q2, MAXAPI)
+(struct bpf_sockopt *ctx) {
+    return inet_getsockopt(ctx, KVER_6_1, API(26Q2));
+}
+
+DEFINE_NETD_BPF_PROG_RANGES(getsockopt, prog, 6_1, 6_18, V, 26Q2)
 (struct bpf_sockopt *ctx) {
     return inet_getsockopt(ctx, KVER_6_1, API(V));
 }
@@ -1343,7 +1353,17 @@ function int inet_setsockopt(struct bpf_sockopt *ctx,
     return BPF_ALLOW;
 }
 
-DEFINE_NETD_BPF_PROG_RANGES(setsockopt, prog, 6_1, INF, V, MAXAPI)
+DEFINE_NETD_BPF_PROG_RANGES(setsockopt, prog, 6_18, INF, V, MAXAPI)
+(struct bpf_sockopt *ctx) {
+    return inet_setsockopt(ctx, KVER_6_18, API(V));
+}
+
+DEFINE_NETD_BPF_PROG_RANGES(setsockopt, prog, 6_1, 6_18, 26Q2, MAXAPI)
+(struct bpf_sockopt *ctx) {
+    return inet_setsockopt(ctx, KVER_6_1, API(26Q2));
+}
+
+DEFINE_NETD_BPF_PROG_RANGES(setsockopt, prog, 6_1, 6_18, V, 26Q2)
 (struct bpf_sockopt *ctx) {
     return inet_setsockopt(ctx, KVER_6_1, API(V));
 }
