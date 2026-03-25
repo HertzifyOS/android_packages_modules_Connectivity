@@ -41,7 +41,7 @@ class BpfRingbufBase {
  public:
   virtual ~BpfRingbufBase() {
     if (mConsumerPtr) munmap(mConsumerPtr, sizeof(*mConsumerPtr));
-    if (mProducerPtr) munmap(mProducerPtr, sizeof(*mProducerPtr));
+    if (mProducerPtr) munmap(const_cast<std::atomic_uint32_t*>(mProducerPtr), sizeof(*mProducerPtr));
     if (mDataPtr) munmap(mDataPtr, dataSize());
     mConsumerPtr = nullptr;
     mProducerPtr = nullptr;
@@ -121,7 +121,7 @@ class BpfRingbufBase {
   // in a little-endian architecture, is safe since the entire page is mapped into memory and a
   // 32-bit kernel will just ignore the high-order bits.
   std::atomic_uint64_t *mConsumerPtr = nullptr;
-  std::atomic_uint32_t *mProducerPtr = nullptr;
+  const std::atomic_uint32_t *mProducerPtr = nullptr;
   std::atomic_uint32_t *mLength = nullptr;
 
   // In order to guarantee atomic access in a 32 bit userspace environment, atomic_uint64_t is used
