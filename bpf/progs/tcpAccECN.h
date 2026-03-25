@@ -46,39 +46,53 @@ typedef struct {
 } tcp_accecn_option;
 STRUCT_SIZE(tcp_accecn_option, 1 + 1 + 3 * 3); // 11
 
-procedure int find_accecn_options_offset(struct __sk_buff *skb, uint8_t offset) {
-    int ret;
-    uint8_t opt_off;
-    struct tcphdr tcp_header = {0};
+// prefer long/u64 because they're native register size.
+// int/u32 require constant <<=32 >>=32 adjustments
+procedure long find_accecn_options_offset(struct __sk_buff *skb, uint64_t offset) {
+    struct tcphdr tcp_header;
+    if (bpf_skb_load_bytes(skb, offset, &tcp_header, sizeof(tcp_header))) return -1;
 
-    ret = bpf_skb_load_bytes(skb, offset, &tcp_header, (sizeof(struct tcphdr)));
-    if (ret) {
-        return -1;
-    }
-    opt_off = offset + (sizeof(struct tcphdr));
-    for (int i = 0; i < 8; i++) {
-        uint8_t kind;
-        uint8_t length;
+    // nibble, so 0..15, counts u32s, so 0..60, but 20 tcp header + 0..40 options
+    if (tcp_header.doff < 5) return -1;  // invalid TCP header
 
-        ret = bpf_skb_load_bytes(skb, opt_off, &kind, 1);
-        if (ret) {
-            return -1;
+    const uint64_t end_off = offset + tcp_header.doff * 4;
+    uint64_t opt_off = offset + sizeof(tcp_header);
+
+    // in theory could have 40-11 NOPs, then 11 byte accecn option, thus 8 should be 40-11 + 1
+    for (uint64_t i = 0; i < 8; i++) {
+        // is there still room for a true option?
+        if (opt_off + 2 > end_off) break;
+
+        // in case of EOL/NOP we'll read garbage length, but it doesn't hurt us
+        struct {
+          uint8_t kind, length;
+        } option;
+        if (bpf_skb_load_bytes(skb, opt_off, &option, sizeof(option))) return -1;
+
+        // TCP option 'End of Option List' - no length field, done.
+        if (option.kind == 0) break;
+
+        // TCP option 'No-Operation' - no length field (used for padding)
+        if (option.kind == 1) {
+            opt_off++;
+            continue;
         }
-        if (kind == 172 || kind == 174) {
-            return opt_off-offset;
-        }
-        if (kind == 0) {
-            break;
-        } else if (kind == 1) {
-            opt_off += 1;
-        } else {
-            ret = bpf_skb_load_bytes(skb, opt_off + 1, &length, 1);
-            if (ret || length < 2) {
-                return -1;
-            }
-            opt_off += length;
-        }
+
+        // all other TCP options have a length field, and it MUST be >= 2
+        if (option.length < 2) break;
+
+        // does the TCP option fit in the TCP header?
+        if (opt_off + option.length > end_off) break;
+
+        // TCP options 'Accurate ECN Order 0/1 (AccECN0/1)'
+        if (option.kind == 172 || option.kind == 174)
+            return opt_off - offset;
+
+        // Move on to the next option
+        opt_off += option.length;
     }
+
+    // TCP AccECN option not found
     return -1;
 }
 
