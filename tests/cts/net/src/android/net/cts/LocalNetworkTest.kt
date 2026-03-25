@@ -50,6 +50,7 @@ import com.android.testutils.TestableNetworkCallback.Event
 import com.android.testutils.filters.CtsNetTestCasesLocalNetNoPermissions
 import com.android.testutils.runAsShell
 import com.android.testutils.waitForIdle
+import java.io.FileDescriptor
 import java.net.Inet4Address
 import java.net.Inet6Address
 import java.net.InetAddress
@@ -193,6 +194,31 @@ class LocalNetworkTest {
         sendUdpPacketAndCheckSuccess(ON_LINK_IPV4_ADDRESS, true)
         sendUdpPacketAndCheckSuccess(ON_LINK_IPV6_ADDRESS, true)
         sendUdpPacketAndCheckSuccess(linkLocalIpv6Address, true)
+    }
+
+    @Test
+    @AppModeFull(reason = "Cannot access local network in instant app mode")
+    @CtsNetTestCasesLocalNetNoPermissions
+    @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    fun testMissingPermission_reuseUdpSocket() {
+        assertLocalNetworkPermissions(PackageManager.PERMISSION_DENIED)
+
+        val sock = Os.socket(
+            OsConstants.AF_INET6,
+            OsConstants.SOCK_DGRAM,
+            OsConstants.IPPROTO_UDP
+        )
+        network.bindSocket(sock)
+        try {
+            sendUdpPacketAndCheckSuccess(sock, ON_LINK_IPV6_ADDRESS, false)
+            sendUdpPacketAndCheckSuccess(sock, ON_LINK_IPV6_ADDRESS, false)
+            sendUdpPacketAndCheckSuccess(sock, OFF_LINK_IPV6_ADDRESS, true)
+            sendUdpPacketAndCheckSuccess(sock, OFF_LINK_IPV6_ADDRESS, true)
+            sendUdpPacketAndCheckSuccess(sock, ON_LINK_IPV6_ADDRESS, false)
+            sendUdpPacketAndCheckSuccess(sock, ON_LINK_IPV6_ADDRESS, false)
+        } finally {
+            Os.close(sock)
+        }
     }
 
     @Test
@@ -538,10 +564,12 @@ class LocalNetworkTest {
     }
 
     // ------------ UDP Helpers ------------
-    private fun sendUdpPacketAndCheckSuccess(dstAddress: InetAddress, expectSuccess: Boolean) {
-        val domain = if (dstAddress is Inet6Address) OsConstants.AF_INET6 else OsConstants.AF_INET
-        val sock = Os.socket(domain, OsConstants.SOCK_DGRAM, OsConstants.IPPROTO_UDP)
-        network.bindSocket(sock)
+
+    private fun sendUdpPacketAndCheckSuccess(
+        sock: FileDescriptor,
+        dstAddress: InetAddress,
+        expectSuccess: Boolean
+    ) {
         try {
             Os.sendto(sock, ByteBuffer.wrap(PACKET_PAYLOAD), 0, dstAddress, PORT)
             if (!expectSuccess) {
@@ -558,6 +586,15 @@ class LocalNetworkTest {
                 )
             }
             assertEquals(OsConstants.EPERM, e.errno)
+        }
+    }
+
+    private fun sendUdpPacketAndCheckSuccess(dstAddress: InetAddress, expectSuccess: Boolean) {
+        val domain = if (dstAddress is Inet6Address) OsConstants.AF_INET6 else OsConstants.AF_INET
+        val sock = Os.socket(domain, OsConstants.SOCK_DGRAM, OsConstants.IPPROTO_UDP)
+        network.bindSocket(sock)
+        try {
+            sendUdpPacketAndCheckSuccess(sock, dstAddress, expectSuccess)
         } finally {
             Os.close(sock)
         }

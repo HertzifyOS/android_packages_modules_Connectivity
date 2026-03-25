@@ -22,7 +22,7 @@
 DEFINE_BPF_MAP_NO_NETD(l4s_conn_counter, ARRAY, uint32_t, uint32_t, 1)
 DEFINE_BPF_MAP_NO_NETD(l4s_accecn_enabled_map, ARRAY, uint32_t, bool, 1)
 
-function int find_accecn_options_offset(struct __sk_buff *skb, uint8_t offset) {
+procedure int find_accecn_options_offset(struct __sk_buff *skb, uint8_t offset) {
     int ret;
     uint8_t opt_off;
     struct tcphdr tcp_header = {0};
@@ -54,44 +54,6 @@ function int find_accecn_options_offset(struct __sk_buff *skb, uint8_t offset) {
             }
             opt_off += length;
         }
-    }
-    return -1;
-}
-
-function int parse_tcp_mss_option(struct __sk_buff *skb, uint8_t offset) {
-    int ret;
-    uint8_t opt_off;
-    struct tcphdr tcp_header = {0};
-
-    ret = bpf_skb_load_bytes(skb, offset, &tcp_header, sizeof(struct tcphdr));
-    if (ret)
-        return -1;
-
-    opt_off = offset + sizeof(struct tcphdr);
-
-    for (int i = 0; i < 8; i++) {
-        uint8_t kind = 0, length = 0;
-        ret = bpf_skb_load_bytes(skb, opt_off, &kind, 1);
-        if (ret)
-            return -1;
-        if (kind == 0)
-            break;
-        if (kind == 1) {
-            opt_off += 1;
-            continue;
-        }
-
-        ret = bpf_skb_load_bytes(skb, opt_off + 1, &length, 1);
-        if (ret || length < 2)
-            return -1;
-        if (kind == 2 && length == 4) {
-            uint16_t mss = 0;
-            ret = bpf_skb_load_bytes(skb, opt_off + 2, &mss, 2);
-            if (ret)
-                return -1;
-            return ntohs(mss);
-        }
-        opt_off += length;
     }
     return -1;
 }
@@ -339,9 +301,6 @@ procedure int update_accecn_counter(struct __sk_buff* skb) {
             sks->l4s.ce_count = (ip_ecn == 0b11) ? 0b110 : 0b101;
             sks->l4s.ce_inited = 1;
 
-            int mss_value = parse_tcp_mss_option(skb, hdr_len);
-            if (mss_value > 0) sks->l4s.mss = (__u16)mss_value;
-
             uint32_t conn_key = 0;
             uint32_t* conn_count = bpf_l4s_conn_counter_lookup_elem(&conn_key);
             uint32_t oneConnection = 1;
@@ -373,11 +332,7 @@ procedure int update_accecn_counter(struct __sk_buff* skb) {
     if (tcph->fin || tcph->rst) return 1;
 
     if (ip_ecn == 0b11) {
-        __u32 ce_packets = 1;
-        __u16 mss = sks->l4s.mss;
-        if (mss && mss != 0xFFFF) {
-            ce_packets = (__u32)(payload_size / mss) + 1;
-        }
+        __u32 ce_packets = skb->gso_segs;
         __sync_fetch_and_add(&sks->l4s.ce_count, ce_packets);
     }
 
