@@ -42,7 +42,8 @@ struct kver_uint { unsigned int kver; };
 #define KVER_6_18 KVER(6, 18, 0)
 #define KVER_INF KVER_(0xFFFFFFFFu)
 
-#define KVER_IS_AT_LEAST(kver, a, b, c) ((kver).kver >= KVER(a, b, c).kver)
+#define KVER_IS_AT_LEAST3(kver, a, b, c) ((kver).kver >= KVER(a, b, c).kver)
+#define KVER_IS_AT_LEAST(kver, a, b) KVER_IS_AT_LEAST3(kver, a, b, 0)
 
 // Helpers for writing sdk level specific bpf programs
 //
