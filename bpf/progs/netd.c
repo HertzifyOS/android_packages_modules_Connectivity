@@ -609,6 +609,10 @@ procedure bool should_block_loopback_access(const SkbIpPacketData *const packet_
     bool metrics_enabled = loopback_metrics_enabled();
     if (!checks_enabled && !metrics_enabled) return false;
 
+    // TCP connections that already passed loopback access check
+    if (packet_data->ip_proto == IPPROTO_TCP
+        && !(packet_data->tcp_flags & TCP_FLAG8_SYN)) return false;
+
     struct bpf_sock_tuple sock_tuple = {};
     uint32_t tuple_size;
 
@@ -633,9 +637,6 @@ procedure bool should_block_loopback_access(const SkbIpPacketData *const packet_
 
     struct bpf_sock *local_sk;
     if (packet_data->ip_proto == IPPROTO_TCP) {
-        // Only trigger on SYN to avoid redundant lookups for established
-        // connections
-        if (!(packet_data->tcp_flags & TCP_FLAG8_SYN)) return false;
         local_sk = bpf_sk_lookup_tcp(skb, &sock_tuple, tuple_size,
                                      BPF_F_CURRENT_NETNS, 0);
     } else if (packet_data->ip_proto == IPPROTO_UDP) {
