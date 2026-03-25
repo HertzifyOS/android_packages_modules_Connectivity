@@ -82,55 +82,6 @@ function int is_l4s_enabled() {
     return l4s_status_ptr && *l4s_status_ptr;
 }
 
-DEFINE_BPF_PROG_KVER_RANGE(sockops, accecn_option, AID_SYSTEM, 6_1, 6_18)
-(struct bpf_sock_ops *skops) {
-    if (!is_l4s_enabled()) return 1;
-    if (!skops->sk) {
-        return 1;
-    }
-    switch (skops->op) {
-        case BPF_SOCK_OPS_TCP_CONNECT_CB:
-        case BPF_SOCK_OPS_PASSIVE_ESTABLISHED_CB:
-             bpf_sock_ops_cb_flags_set(
-                skops,
-                skops->bpf_sock_ops_cb_flags |
-                BPF_SOCK_OPS_WRITE_HDR_OPT_CB_FLAG
-            );
-            break;
-        case BPF_SOCK_OPS_HDR_OPT_LEN_CB:
-        {
-            if (skops->skb_tcp_flags & TCP_FLAG8_SYN) break;
-
-            SkStorageValue* sks = bpf_sk_storage_get(skops->sk, 0, 0);
-            if (!sks || !sks->l4s.byte_inited) break;
-            bpf_reserve_hdr_opt(skops, sizeof(tcp_accecn_option), 0);
-            break;
-        }
-        case BPF_SOCK_OPS_WRITE_HDR_OPT_CB:
-        {
-            if (skops->skb_tcp_flags & TCP_FLAG8_SYN) break;
-
-            SkStorageValue* sks = bpf_sk_storage_get(skops->sk, 0, 0);
-            if (!sks || !sks->l4s.byte_inited) break;
-
-            tcp_accecn_option opt = {
-                .kind = 174,
-                .length = sizeof(opt),
-            };
-
-            assign_be24(&opt.e1b, sks->l4s.e1b);
-            assign_be24(&opt.ceb, sks->l4s.ceb);
-            assign_be24(&opt.e0b, sks->l4s.e0b);
-
-            bpf_store_hdr_opt(skops, &opt, sizeof(opt), 0);
-            break;
-        }
-        default:
-            break;
-    }
-    return 1;
-}
-
 procedure int update_accecn_counter(struct __sk_buff* skb) {
     if (!is_l4s_enabled()) return 1;
     if (!skb->sk) {
@@ -255,6 +206,55 @@ procedure int update_accecn_counter(struct __sk_buff* skb) {
         else if (ip_ecn == 0b01) {
            __sync_fetch_and_add(&sks->l4s.e1b, payload_size);
         }
+    }
+    return 1;
+}
+
+DEFINE_BPF_PROG_KVER_RANGE(sockops, accecn_option, AID_SYSTEM, 6_1, 6_18)
+(struct bpf_sock_ops *skops) {
+    if (!is_l4s_enabled()) return 1;
+    if (!skops->sk) {
+        return 1;
+    }
+    switch (skops->op) {
+        case BPF_SOCK_OPS_TCP_CONNECT_CB:
+        case BPF_SOCK_OPS_PASSIVE_ESTABLISHED_CB:
+             bpf_sock_ops_cb_flags_set(
+                skops,
+                skops->bpf_sock_ops_cb_flags |
+                BPF_SOCK_OPS_WRITE_HDR_OPT_CB_FLAG
+            );
+            break;
+        case BPF_SOCK_OPS_HDR_OPT_LEN_CB:
+        {
+            if (skops->skb_tcp_flags & TCP_FLAG8_SYN) break;
+
+            SkStorageValue* sks = bpf_sk_storage_get(skops->sk, 0, 0);
+            if (!sks || !sks->l4s.byte_inited) break;
+            bpf_reserve_hdr_opt(skops, sizeof(tcp_accecn_option), 0);
+            break;
+        }
+        case BPF_SOCK_OPS_WRITE_HDR_OPT_CB:
+        {
+            if (skops->skb_tcp_flags & TCP_FLAG8_SYN) break;
+
+            SkStorageValue* sks = bpf_sk_storage_get(skops->sk, 0, 0);
+            if (!sks || !sks->l4s.byte_inited) break;
+
+            tcp_accecn_option opt = {
+                .kind = 174,
+                .length = sizeof(opt),
+            };
+
+            assign_be24(&opt.e1b, sks->l4s.e1b);
+            assign_be24(&opt.ceb, sks->l4s.ceb);
+            assign_be24(&opt.e0b, sks->l4s.e0b);
+
+            bpf_store_hdr_opt(skops, &opt, sizeof(opt), 0);
+            break;
+        }
+        default:
+            break;
     }
     return 1;
 }
