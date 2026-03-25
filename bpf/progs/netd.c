@@ -667,6 +667,8 @@ procedure bool should_block_loopback_access(const SkbIpPacketData *const packet_
     return !allowed;
 }
 
+#define LOOPBACK_CACHE_EXPIRATION_NS (10ULL * 1000ULL * 1000ULL) // 10ms
+
 procedure bool should_block_loopback_access_cached(const SkbIpPacketData *const packet_data,
                                             struct __sk_buff *const skb,
                                             const uint32_t sender_uid) {
@@ -678,8 +680,32 @@ procedure bool should_block_loopback_access_cached(const SkbIpPacketData *const 
     if (packet_data->ip_proto == IPPROTO_TCP
         && !(packet_data->tcp_flags & TCP_FLAG8_SYN)) return false;
 
-    return should_block_loopback_access(packet_data, skb, sender_uid,
-                                        checks_enabled, metrics_enabled);
+    struct bpf_sock* sk = skb->sk;
+    if (!sk) return should_block_loopback_access(packet_data, skb, sender_uid,
+                                                 checks_enabled, metrics_enabled);
+    SkStorageValue *sks = bpf_sk_storage_get(sk, 0, 0);
+    if (!sks) return should_block_loopback_access(packet_data, skb, sender_uid,
+                                                 checks_enabled, metrics_enabled);
+
+    LoopbackCache *lc = &sks->loopback_cache;
+    uint64_t current_ns = bpf_ktime_get_boot_ns();
+    if (packet_data->ip_proto == IPPROTO_UDP
+        && current_ns - lc->cached_at_ns < LOOPBACK_CACHE_EXPIRATION_NS
+        && !__builtin_memcmp(&lc->daddr, &packet_data->daddr, sizeof(struct in6_addr))
+        && lc->dport == packet_data->dport) {
+        return lc->result;
+    }
+
+    bool result = should_block_loopback_access(packet_data, skb, sender_uid,
+                                               checks_enabled, metrics_enabled);
+
+    if (packet_data->ip_proto == IPPROTO_UDP) {
+        lc->cached_at_ns = current_ns;
+        __builtin_memcpy(&lc->daddr, &packet_data->daddr, sizeof(struct in6_addr));
+        lc->dport = packet_data->dport;
+        lc->result = result;
+    }
+    return result;
 }
 
 function void do_packet_tracing(const struct __sk_buff* const skb,
