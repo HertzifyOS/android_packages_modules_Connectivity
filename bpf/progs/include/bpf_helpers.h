@@ -45,6 +45,12 @@ struct kver_uint { unsigned int kver; };
 #define KVER_IS_AT_LEAST3(kver, a, b, c) ((kver).kver >= KVER(a, b, c).kver)
 #define KVER_IS_AT_LEAST(kver, a, b) KVER_IS_AT_LEAST3(kver, a, b, 0)
 
+#define KVER_IS_BETWEEN3(a, b, c, kver, d, e, f) \
+    (KVER_IS_AT_LEAST3(kver, a, b, c) && !KVER_IS_AT_LEAST3(kver, d, e, f))
+
+#define KVER_IS_BETWEEN(a, b, kver, c, d) \
+    KVER_IS_BETWEEN3(a, b, 0, kver, c, d, 0)
+
 // Helpers for writing sdk level specific bpf programs
 //
 // Note: we choose to follow 'ro.build.version.sdk_full'

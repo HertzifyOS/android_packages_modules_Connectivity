@@ -45,7 +45,9 @@ using bpf::isAtLeastU;
 using bpf::isAtLeastV;
 using bpf::isAtLeast25Q2;
 using bpf::isAtLeast26Q2;
+using bpf::isKernel64Bit;
 using bpf::isUser;
+using bpf::isUserspace64bit;
 using bpf::queryProgram;
 using bpf::retrieveProgram;
 
@@ -84,7 +86,7 @@ static Result<void> checkProgramAccessible(const char* programPath) {
 
 static void getsockoptTest() {
     // getsockopt bpf hook is not called if the device is running in compat mode.
-    if (bpf::isKernel64Bit() != bpf::isUserspace64bit() && !isAtLeastKernelVersion(6, 13)) return;
+    if (isKernel64Bit() != isUserspace64bit() && !isAtLeastKernelVersion(6, 13)) return;
 
     // SO_ANDROID_DROP_REASON option is only supported on 5.10+.
     if (!isAtLeastKernelVersion(5, 10)) return;
@@ -379,6 +381,62 @@ Result<void> BpfHandler::init(const char* cg2_path) {
 
         unique_fd client(socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0));
         if (!client.ok()) return Error(errno) << "socket4tcp";
+
+        if (isKernel64Bit() == isUserspace64bit()
+            && isAtLeastKernelVersion(6, 1) && !isAtLeastKernelVersion(6, 18)) {
+            {
+                bool b = false;
+                socklen_t len = sizeof(b);
+                if (getsockopt(server.get(), SOL_TCP, TCP_ANDROID_L4S, &b, &len)) return Error(errno) << "gs-s1";
+                if (len != sizeof(b)) return Error(errno) << "gs-s-len1";
+                if (!b) return Error(errno) << "gs-s-off1";
+            }
+            {
+                bool b = false;
+                socklen_t len = sizeof(b);
+                if (getsockopt(client.get(), SOL_TCP, TCP_ANDROID_L4S, &b, &len)) return Error(errno) << "gs-c1";
+                if (len != sizeof(b)) return Error(errno) << "gs-c-len1";
+                if (!b) return Error(errno) << "gs-c-off1";
+            }
+            {
+                const bool off = false;
+                if (setsockopt(server.get(), SOL_TCP, TCP_ANDROID_L4S, &off, sizeof(off))) return Error(errno) << "ss-s2";
+                if (setsockopt(client.get(), SOL_TCP, TCP_ANDROID_L4S, &off, sizeof(off))) return Error(errno) << "ss-c2";
+            }
+            {
+                bool b = true;
+                socklen_t len = sizeof(b);
+                if (getsockopt(server.get(), SOL_TCP, TCP_ANDROID_L4S, &b, &len)) return Error(errno) << "gs-s3";
+                if (len != sizeof(b)) return Error(errno) << "gs-s-len3";
+                if (b) return Error(errno) << "gs-s-on3";
+            }
+            {
+                bool b = true;
+                socklen_t len = sizeof(b);
+                if (getsockopt(client.get(), SOL_TCP, TCP_ANDROID_L4S, &b, &len)) return Error(errno) << "gs-c3";
+                if (len != sizeof(b)) return Error(errno) << "gs-c-len3";
+                if (b) return Error(errno) << "gs-c-on3";
+            }
+            {
+                const bool on = true;
+                if (setsockopt(server.get(), SOL_TCP, TCP_ANDROID_L4S, &on, sizeof(on))) return Error(errno) << "ss-s4";
+                if (setsockopt(client.get(), SOL_TCP, TCP_ANDROID_L4S, &on, sizeof(on))) return Error(errno) << "ss-c4";
+            }
+            {
+                bool b = false;
+                socklen_t len = sizeof(b);
+                if (getsockopt(server.get(), SOL_TCP, TCP_ANDROID_L4S, &b, &len)) return Error(errno) << "gs-s5";
+                if (len != sizeof(b)) return Error(errno) << "gs-s-len5";
+                if (!b) return Error(errno) << "gs-s-off5";
+            }
+            {
+                bool b = false;
+                socklen_t len = sizeof(b);
+                if (getsockopt(client.get(), SOL_TCP, TCP_ANDROID_L4S, &b, &len)) return Error(errno) << "gs-c5";
+                if (len != sizeof(b)) return Error(errno) << "gs-c-len5";
+                if (!b) return Error(errno) << "gs-c-off5";
+            }
+        }
 
         struct sockaddr_in addr4 = {
             .sin_family = AF_INET,
