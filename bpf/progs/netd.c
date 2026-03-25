@@ -674,6 +674,7 @@ procedure bool should_block_loopback_access_cached(const SkbIpPacketData *const 
     // TCP connections that already passed loopback access check
     if (packet_data->ip_proto == IPPROTO_TCP
         && !(packet_data->tcp_flags & TCP_FLAG8_SYN)) return false;
+    // Remaining TCP will only trigger on SYN to avoid redundant lookups for established connections
 
     struct bpf_sock* sk = skb->sk;
     if (!sk) return should_block_loopback_access(packet_data, skb, sender_uid,
