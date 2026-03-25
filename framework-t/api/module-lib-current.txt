@@ -1,4 +1,7 @@
-// Signature format: 2.0
+// Signature format: 6.0
+// - style=java
+// - strip-java-lang-prefix=legacy
+// - type-argument-spacing=legacy
 package android.app.usage {
 
   public class NetworkStatsManager {
@@ -186,8 +189,8 @@ package android.net {
   }
 
   public static final class NetworkTemplate.Builder {
-    ctor public NetworkTemplate.Builder(int);
     ctor @FlaggedApi("com.android.net.flags.netstats_transport_type") public NetworkTemplate.Builder();
+    ctor public NetworkTemplate.Builder(int);
     method @NonNull public android.net.NetworkTemplate build();
     method @NonNull public android.net.NetworkTemplate.Builder setDefaultNetworkStatus(int);
     method @NonNull public android.net.NetworkTemplate.Builder setMeteredness(int);

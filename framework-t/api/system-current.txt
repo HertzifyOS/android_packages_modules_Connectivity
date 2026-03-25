@@ -1,4 +1,8 @@
-// Signature format: 2.0
+// Signature format: 6.0
+// - style=java
+// - flagged-api-inheritance=none
+// - strip-java-lang-prefix=legacy
+// - type-argument-spacing=legacy
 package android.app.usage {
 
   public class NetworkStatsManager {
@@ -467,8 +471,8 @@ package android.net.thread {
   }
 
   public static final class ActiveOperationalDataset.Builder {
-    ctor public ActiveOperationalDataset.Builder(@NonNull android.net.thread.ActiveOperationalDataset);
     ctor public ActiveOperationalDataset.Builder();
+    ctor public ActiveOperationalDataset.Builder(@NonNull android.net.thread.ActiveOperationalDataset);
     method @NonNull public android.net.thread.ActiveOperationalDataset build();
     method @NonNull public android.net.thread.ActiveOperationalDataset.Builder setActiveTimestamp(@NonNull android.net.thread.OperationalDatasetTimestamp);
     method @NonNull public android.net.thread.ActiveOperationalDataset.Builder setChannel(@IntRange(from=0, to=255) int, @IntRange(from=0, to=65535) int);
