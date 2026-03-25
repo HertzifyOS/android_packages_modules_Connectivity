@@ -67,6 +67,7 @@ class BpfRingbufBase {
   }
 
   bool isEmpty(void);
+  bool discard(void);
 
   // returns !isEmpty() for convenience
   bool wait(int timeout_ms = -1);
@@ -240,6 +241,14 @@ inline bool BpfRingbufBase::isEmpty(void) {
   uint64_t prod_pos = mProducerPtr->load(std::memory_order_relaxed);
   uint64_t cons_pos = mConsumerPtr->load(std::memory_order_relaxed);
   return kernel_ulong_equal(prod_pos, cons_pos);
+}
+
+// returns true if anything was discarded
+inline bool BpfRingbufBase::discard(void) {
+  uint64_t prod_pos = mProducerPtr->load(std::memory_order_acquire);
+  uint64_t cons_pos = mConsumerPtr->load(std::memory_order_relaxed);
+  mConsumerPtr->store(prod_pos, std::memory_order_release);
+  return kernel_ulong_unequal(prod_pos, cons_pos);
 }
 
 inline bool BpfRingbufBase::wait(int timeout_ms) {
