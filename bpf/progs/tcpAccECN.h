@@ -22,6 +22,24 @@
 DEFINE_BPF_MAP_NO_NETD(l4s_conn_counter, ARRAY, uint32_t, uint32_t, 1)
 DEFINE_BPF_MAP_NO_NETD(l4s_accecn_enabled_map, ARRAY, uint32_t, bool, 1)
 
+typedef struct {
+    __u8 u8[3];
+} be24;
+STRUCT_SIZE(be24, 3);
+
+function void assign_be24(be24 * const v, unsigned x) {
+    v->u8[2] = x; x >>= 8;
+    v->u8[1] = x; x >>= 8;
+    v->u8[0] = x;
+}
+
+typedef struct {
+    __u8 kind;
+    __u8 length;
+    be24 e1b, ceb, e0b;
+} tcp_accecn_option;
+STRUCT_SIZE(tcp_accecn_option, 1 + 1 + 3 * 3); // 11
+
 procedure int find_accecn_options_offset(struct __sk_buff *skb, uint8_t offset) {
     int ret;
     uint8_t opt_off;
@@ -63,24 +81,6 @@ function int is_l4s_enabled() {
     bool *l4s_status_ptr = bpf_l4s_accecn_enabled_map_lookup_elem(&status_key);
     return l4s_status_ptr && *l4s_status_ptr;
 }
-
-typedef struct {
-    __u8 u8[3];
-} be24;
-STRUCT_SIZE(be24, 3);
-
-function void assign_be24(be24 * const v, unsigned x) {
-    v->u8[2] = x; x >>= 8;
-    v->u8[1] = x; x >>= 8;
-    v->u8[0] = x;
-}
-
-typedef struct {
-    __u8 kind;
-    __u8 length;
-    be24 e1b, ceb, e0b;
-} tcp_accecn_option;
-STRUCT_SIZE(tcp_accecn_option, 1 + 1 + 3 * 3); // 11
 
 DEFINE_BPF_PROG_KVER_RANGE(sockops, accecn_option, AID_SYSTEM, 6_1, 6_18)
 (struct bpf_sock_ops *skops) {
