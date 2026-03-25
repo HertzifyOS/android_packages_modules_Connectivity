@@ -46,6 +46,7 @@ static const int DROP_UNLESS_DNS = 2;  // internal to our program
 #define TCP_FLAG8_SYN 0x02
 #define TCP_FLAG8_RST 0x04
 
+#define EPERM 1
 #define EINVAL  22
 #define EUNATCH 49
 
@@ -229,7 +230,7 @@ DEFINE_BPF_MAP_RO_NETD(loopback_checks_enabled_map, ARRAY, uint32_t, bool, 1)
             value = bpf_##the_stats_map##_lookup_elem(key);                                      \
         }                                                                                        \
         if (value) {                                                                             \
-            const bool is5_4 = KVER_IS_AT_LEAST(kver, 5, 4, 0);                                  \
+            const bool is5_4 = KVER_IS_AT_LEAST(kver, 5, 4);                                     \
             const int mtu = 1500;                                                                \
             uint64_t packets = 1;                                                                \
             uint64_t bytes = skb->len;                                                           \
@@ -289,7 +290,7 @@ function long bpf_skb_load_bytes_net(const struct __sk_buff* const skb,
     //
     // For similar reasons this will fail with non-offloaded VLAN tags on < 4.19 kernels,
     // since those extend the ethernet header from 14 to 18 bytes.
-    return KVER_IS_AT_LEAST(kver, 4, 19, 0)
+    return KVER_IS_AT_LEAST(kver, 4, 19)
         ? bpf_skb_load_bytes_relative(skb, L3_off, to, len, BPF_HDR_START_NET)
         : bpf_skb_load_bytes(skb, L3_off, to, len);
 }
@@ -330,7 +331,7 @@ function bool is_local_net_access_allowed_cached(struct __sk_buff *skb,
     };
 
     // Caching is enabled on kernel 5.10 and later, which supports BPF socket storage.
-    if (!KVER_IS_AT_LEAST(kver, 5, 10, 0)) {
+    if (!KVER_IS_AT_LEAST(kver, 5, 10)) {
         return is_local_net_access_allowed(&query_key, uid);
     }
 
@@ -403,7 +404,7 @@ function bool should_block_local_network_packets(const SkbIpPacketData *const pa
                                                  const struct egress_bool egress,
                                                  const struct kver_uint kver) {
     bool reportLocalAccess = false;
-    if (KVER_IS_AT_LEAST(kver, 5, 10, 0)) {
+    if (KVER_IS_AT_LEAST(kver, 5, 10)) {
         uint32_t key = 0;
         bool *noteOpEnabled = bpf_local_net_note_op_enabled_map_lookup_elem(&key);
         reportLocalAccess = noteOpEnabled && *noteOpEnabled;
@@ -608,6 +609,10 @@ procedure bool should_block_loopback_access(const SkbIpPacketData *const packet_
     bool metrics_enabled = loopback_metrics_enabled();
     if (!checks_enabled && !metrics_enabled) return false;
 
+    // TCP connections that already passed loopback access check
+    if (packet_data->ip_proto == IPPROTO_TCP
+        && !(packet_data->tcp_flags & TCP_FLAG8_SYN)) return false;
+
     struct bpf_sock_tuple sock_tuple = {};
     uint32_t tuple_size;
 
@@ -632,9 +637,6 @@ procedure bool should_block_loopback_access(const SkbIpPacketData *const packet_
 
     struct bpf_sock *local_sk;
     if (packet_data->ip_proto == IPPROTO_TCP) {
-        // Only trigger on SYN to avoid redundant lookups for established
-        // connections
-        if (!(packet_data->tcp_flags & TCP_FLAG8_SYN)) return false;
         local_sk = bpf_sk_lookup_tcp(skb, &sock_tuple, tuple_size,
                                      BPF_F_CURRENT_NETNS, 0);
     } else if (packet_data->ip_proto == IPPROTO_UDP) {
@@ -672,7 +674,7 @@ function void do_packet_tracing(const struct __sk_buff* const skb,
                                 const uint32_t uid,
                                 const uint32_t tag,
                                 const struct kver_uint kver) {
-    if (!KVER_IS_AT_LEAST(kver, 5, 10, 0)) return;
+    if (!KVER_IS_AT_LEAST(kver, 5, 10)) return;
 
     uint32_t mapKey = 0;
     bool* traceConfig = bpf_packet_trace_enabled_map_lookup_elem(&mapKey);
@@ -728,7 +730,7 @@ function bool ingress_should_discard(const SkbIpPacketData* const packet,
     // Require 4.19, since earlier kernels don't have bpf_skb_load_bytes_relative() which
     // provides relative to L3 header reads.  Without that we could fetch the wrong bytes.
     // Additionally earlier bpf verifiers are much harder to please.
-    if (!KVER_IS_AT_LEAST(kver, 4, 19, 0)) return false;
+    if (!KVER_IS_AT_LEAST(kver, 4, 19)) return false;
 
     if (packet->ip_version == 0) return false;
 
@@ -863,7 +865,7 @@ function int bpf_traffic_account(struct __sk_buff* skb,
     if (API_IS_AT_LEAST(lvl, 25Q2) && parsed && (match != DROP) && !dns) {
         if (should_block_local_network_packets(&packet_data, skb, sock_uid,
                                                skb->ifindex, egress, kver)) {
-            if (KVER_IS_AT_LEAST(kver, 5, 10, 0) && skb->sk && egress.egress) {
+            if (KVER_IS_AT_LEAST(kver, 5, 10) && skb->sk && egress.egress) {
                 SkStorageValue *sks = bpf_sk_storage_get(skb->sk, 0, 0);
                 if (sks) sks->dropReasons |= DROP_REASON_LNP;
             }
@@ -1124,7 +1126,7 @@ function uint8_t get_app_permissions() {
 
 function int inet_socket_create(struct bpf_sock* sk, const struct kver_uint kver) {
     uint64_t gid_uid = bpf_get_current_uid_gid();
-    if (KVER_IS_AT_LEAST(kver, 5, 10, 0)) {
+    if (KVER_IS_AT_LEAST(kver, 5, 10)) {
         SkStorageValue *sks = bpf_sk_storage_get(sk, 0, BPF_SK_STORAGE_GET_F_CREATE);
         if (sks) {
             sks->cookie = bpf_get_sk_cookie(sk);
@@ -1217,7 +1219,7 @@ function bool is_root_or_shell() {
 static const int BPF_ALLOW_IGNORING_CAP_NET_BIND = BPF_ALLOW + 2;
 
 function int inet_bind(struct bpf_sock_addr *ctx, const struct kver_uint kver) {
-    const bool is5_15 = KVER_IS_AT_LEAST(kver, 5, 15, 0);
+    const bool is5_15 = KVER_IS_AT_LEAST(kver, 5, 15);
     if (block_bind_port(ctx->protocol, ctx->user_port)) return BPF_DISALLOW;
     if (is5_15) {
         if (ctx->user_port == htons(53) && is_netd())
@@ -1288,21 +1290,37 @@ DEFINE_NETD_BPF_PROG_RANGES(sendmsg6, udp6_sendmsg, 4_19, INF, V, MAXAPI)
 
 function int inet_getsockopt(struct bpf_sockopt *ctx,
                              const struct kver_uint kver,
-                             __unused const struct sdk_level_uint lvl) {
-    if (KVER_IS_AT_LEAST(kver, 5, 10, 0) && ctx->level == SOL_SOCKET &&
-        ctx->optname == SO_ANDROID_DROP_REASON) {
-        uint8_t *optval_end = ctx->optval_end;
-        uint8_t *optval = ctx->optval;
-        if (optval + sizeof(uint64_t) > optval_end) {
-            if (KVER_IS_AT_LEAST(kver, 6, 1, 0)) bpf_set_retval(-EINVAL);
-            return BPF_DISALLOW;
-        }
+                             const struct sdk_level_uint lvl) {
+    SkStorageValue *sks = KVER_IS_AT_LEAST(kver, 5, 10) ? bpf_sk_storage_get(ctx->sk, 0, 0) : NULL;
+    uint8_t *optval_end = ctx->optval_end;
+    uint8_t *optval = ctx->optval;
 
-        SkStorageValue *sks = bpf_sk_storage_get(ctx->sk, 0, 0);
-        if (!sks) {
-            if (KVER_IS_AT_LEAST(kver, 6, 1, 0)) bpf_set_retval(-EUNATCH);
-            return BPF_DISALLOW;
-        }
+    if (API_IS_AT_LEAST(lvl, 26Q2)
+        && KVER_IS_BETWEEN(6, 1, kver, 6, 18)
+        && ctx->level == SOL_TCP
+        && ctx->optname == TCP_ANDROID_L4S
+        && ctx->sk->type == SOCK_STREAM
+        && ctx->sk->protocol == IPPROTO_TCP) {
+
+        if (!is_netd()) return bpf_disallow(EPERM);
+
+        if (optval + sizeof(uint8_t) > optval_end) return bpf_disallow(EINVAL);
+
+        if (!sks) return bpf_disallow(EUNATCH);
+
+        *(uint8_t *)optval = !sks->l4s.disabled;
+        WRITE_ONCE(ctx->retval, 0);
+        WRITE_ONCE(ctx->optlen, sizeof(uint8_t));
+        return BPF_ALLOW;
+    }
+
+    if (KVER_IS_AT_LEAST(kver, 5, 10)
+        && ctx->level == SOL_SOCKET
+        && ctx->optname == SO_ANDROID_DROP_REASON) {
+
+        if (optval + sizeof(uint64_t) > optval_end) return bpf_disallow(EINVAL);
+
+        if (!sks) return bpf_disallow(EUNATCH);
 
         *(uint64_t *)optval = sks->dropReasons;
         sks->dropReasons = DROP_REASON_NONE;
@@ -1345,8 +1363,30 @@ DEFINE_NETD_BPF_PROG_RANGES(getsockopt, prog, 5_4, 5_10, V, MAXAPI)
 // --- SETSOCKOPT HOOK ---
 
 function int inet_setsockopt(struct bpf_sockopt *ctx,
-                             __unused const struct kver_uint kver,
-                             __unused const struct sdk_level_uint lvl) {
+                             const struct kver_uint kver,
+                             const struct sdk_level_uint lvl) {
+    SkStorageValue *sks = KVER_IS_AT_LEAST(kver, 5, 10) ? bpf_sk_storage_get(ctx->sk, 0, 0) : NULL;
+    uint8_t *optval_end = ctx->optval_end;
+    uint8_t *optval = ctx->optval;
+
+    if (API_IS_AT_LEAST(lvl, 26Q2)
+        && KVER_IS_BETWEEN(6, 1, kver, 6, 18)
+        && ctx->level == SOL_TCP
+        && ctx->optname == TCP_ANDROID_L4S
+        && ctx->sk->type == SOCK_STREAM
+        && ctx->sk->protocol == IPPROTO_TCP) {
+
+        if (!is_netd()) return bpf_disallow(EPERM);
+
+        if (optval + sizeof(uint8_t) > optval_end) return bpf_disallow(EINVAL);
+
+        if (!sks) return bpf_disallow(EUNATCH);
+
+        sks->l4s.disabled = !*optval;
+        WRITE_ONCE(ctx->optlen, -1);
+        return BPF_ALLOW;
+    }
+
     // Tell kernel to use/process original buffer provided by userspace.
     // This is important if it is larger than PAGE_SIZE (max size this bpf hook can handle).
     ctx->optlen = 0;
