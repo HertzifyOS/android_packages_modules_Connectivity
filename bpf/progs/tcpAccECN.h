@@ -131,97 +131,6 @@ DEFINE_BPF_PROG_KVER_RANGE(sockops, accecn_option, AID_SYSTEM, 6_1, 6_18)
     return 1;
 }
 
-DEFINE_BPF_PROG_KVER_RANGE(schedcls, egress_accecn_eth, AID_SYSTEM, 6_1, 6_18)
-(struct __sk_buff* skb) {
-    if (!is_l4s_enabled()) return TC_ACT_PIPE;
-
-    void* data = (void*)(long)skb->data;
-    void* data_end = (void*)(long)skb->data_end;
-
-    if (data + sizeof(struct ethhdr) + sizeof(struct iphdr) > data_end) {
-        return TC_ACT_PIPE;
-    }
-
-    const bool isIpv4 = skb->protocol == htons(ETH_P_IP);
-    const bool isIpv6 = skb->protocol == htons(ETH_P_IPV6);
-    struct tcphdr* tcph = NULL;
-
-    if (isIpv4) {
-        struct iphdr* ip = data + ETH_HLEN;
-        if (ip->protocol == IPPROTO_TCP) {
-            if (data + sizeof(struct ethhdr) + sizeof(struct iphdr) + sizeof(struct tcphdr) > data_end) {
-                return TC_ACT_PIPE;
-            }
-            tcph = (void*)(ip + 1);
-        } else {
-            return TC_ACT_PIPE;
-        }
-    } else if (isIpv6) {
-        if (data + sizeof(struct ethhdr) + sizeof(struct ipv6hdr) > data_end) {
-            return TC_ACT_PIPE;
-        }
-        struct ipv6hdr* ip6 = data + ETH_HLEN;
-        if (ip6->nexthdr == IPPROTO_TCP) {
-            if (data + sizeof(struct ethhdr) + sizeof(struct ipv6hdr) + sizeof(struct tcphdr) > data_end) {
-                return TC_ACT_PIPE;
-            }
-            tcph = (void*)(ip6 + 1);
-        } else {
-            return TC_ACT_PIPE;
-        }
-    } else {
-        return TC_ACT_PIPE;
-    }
-
-    int tcp_flags_offset = isIpv4 ? ETH_IP4_TCP_OFFSET(flags16) : ETH_IP6_TCP_OFFSET(flags16);
-    int tcp_csum_offset = isIpv4 ? ETH_IP4_TCP_OFFSET(check) : ETH_IP6_TCP_OFFSET(check);
-    int ret = 0;
-
-    // if SYN, then set ACE to 111
-    if (tcph->syn && !tcph->ack) {
-        __u16 cur_flags = load_half(skb, tcp_flags_offset);
-        __u16 new_flags = htons(cur_flags | 0x01c0);
-        __u16 cur_ace = (cur_flags & 0x01c0) >> 6;
-
-        // connection requesting AccECN by default
-        if (cur_ace == 0b111) {
-            return TC_ACT_PIPE;
-        } else {
-            ret = bpf_l4_csum_replace(skb, tcp_csum_offset, htons(cur_flags), new_flags, 2);
-            if (ret) return TC_ACT_PIPE;
-            ret = bpf_skb_store_bytes(skb, tcp_flags_offset, &new_flags, sizeof(new_flags), 0);
-            if (ret) return TC_ACT_PIPE;
-        }
-        return TC_ACT_PIPE;
-    }
-
-    struct bpf_sock* sk = (struct bpf_sock*)skb->sk;
-    if (!sk) {
-        return TC_ACT_PIPE;
-    }
-
-    SkStorageValue* sks = bpf_sk_storage_get(sk, 0 , 0);
-    if (sks) {
-        if (sks->l4s.ce_inited) {
-            __u16 cur_flags = load_half(skb, tcp_flags_offset);
-            __u16 new_flags = htons((cur_flags & 0xfe3f) | ((sks->l4s.ce_count & 7) << 6));
-
-            bpf_l4_csum_replace(skb, tcp_csum_offset, htons(cur_flags), new_flags, 2);
-            bpf_skb_store_bytes(skb, tcp_flags_offset, &new_flags, sizeof(new_flags), 0);
-
-            int ip_tos_offset = isIpv4 ? ETH_IP4_OFFSET(tos) : ETH_IP6_OFFSET(flow_lbl);
-            __u8 old_tos = load_byte(skb, ip_tos_offset);
-            __u8 new_tos = old_tos | (isIpv4 ? 0x01 : 0x10);
-
-            if (isIpv4) {
-                bpf_l3_csum_replace(skb, ETH_IP4_OFFSET(check), htons(old_tos), htons(new_tos), 2);
-            }
-            bpf_skb_store_bytes(skb, ip_tos_offset, &new_tos, sizeof(new_tos), 0);
-       }
-    }
-    return TC_ACT_PIPE;
-}
-
 procedure int update_accecn_counter(struct __sk_buff* skb) {
     if (!is_l4s_enabled()) return 1;
     if (!skb->sk) {
@@ -348,6 +257,97 @@ procedure int update_accecn_counter(struct __sk_buff* skb) {
         }
     }
     return 1;
+}
+
+DEFINE_BPF_PROG_KVER_RANGE(schedcls, egress_accecn_eth, AID_SYSTEM, 6_1, 6_18)
+(struct __sk_buff* skb) {
+    if (!is_l4s_enabled()) return TC_ACT_PIPE;
+
+    void* data = (void*)(long)skb->data;
+    void* data_end = (void*)(long)skb->data_end;
+
+    if (data + sizeof(struct ethhdr) + sizeof(struct iphdr) > data_end) {
+        return TC_ACT_PIPE;
+    }
+
+    const bool isIpv4 = skb->protocol == htons(ETH_P_IP);
+    const bool isIpv6 = skb->protocol == htons(ETH_P_IPV6);
+    struct tcphdr* tcph = NULL;
+
+    if (isIpv4) {
+        struct iphdr* ip = data + ETH_HLEN;
+        if (ip->protocol == IPPROTO_TCP) {
+            if (data + sizeof(struct ethhdr) + sizeof(struct iphdr) + sizeof(struct tcphdr) > data_end) {
+                return TC_ACT_PIPE;
+            }
+            tcph = (void*)(ip + 1);
+        } else {
+            return TC_ACT_PIPE;
+        }
+    } else if (isIpv6) {
+        if (data + sizeof(struct ethhdr) + sizeof(struct ipv6hdr) > data_end) {
+            return TC_ACT_PIPE;
+        }
+        struct ipv6hdr* ip6 = data + ETH_HLEN;
+        if (ip6->nexthdr == IPPROTO_TCP) {
+            if (data + sizeof(struct ethhdr) + sizeof(struct ipv6hdr) + sizeof(struct tcphdr) > data_end) {
+                return TC_ACT_PIPE;
+            }
+            tcph = (void*)(ip6 + 1);
+        } else {
+            return TC_ACT_PIPE;
+        }
+    } else {
+        return TC_ACT_PIPE;
+    }
+
+    int tcp_flags_offset = isIpv4 ? ETH_IP4_TCP_OFFSET(flags16) : ETH_IP6_TCP_OFFSET(flags16);
+    int tcp_csum_offset = isIpv4 ? ETH_IP4_TCP_OFFSET(check) : ETH_IP6_TCP_OFFSET(check);
+    int ret = 0;
+
+    // if SYN, then set ACE to 111
+    if (tcph->syn && !tcph->ack) {
+        __u16 cur_flags = load_half(skb, tcp_flags_offset);
+        __u16 new_flags = htons(cur_flags | 0x01c0);
+        __u16 cur_ace = (cur_flags & 0x01c0) >> 6;
+
+        // connection requesting AccECN by default
+        if (cur_ace == 0b111) {
+            return TC_ACT_PIPE;
+        } else {
+            ret = bpf_l4_csum_replace(skb, tcp_csum_offset, htons(cur_flags), new_flags, 2);
+            if (ret) return TC_ACT_PIPE;
+            ret = bpf_skb_store_bytes(skb, tcp_flags_offset, &new_flags, sizeof(new_flags), 0);
+            if (ret) return TC_ACT_PIPE;
+        }
+        return TC_ACT_PIPE;
+    }
+
+    struct bpf_sock* sk = (struct bpf_sock*)skb->sk;
+    if (!sk) {
+        return TC_ACT_PIPE;
+    }
+
+    SkStorageValue* sks = bpf_sk_storage_get(sk, 0 , 0);
+    if (sks) {
+        if (sks->l4s.ce_inited) {
+            __u16 cur_flags = load_half(skb, tcp_flags_offset);
+            __u16 new_flags = htons((cur_flags & 0xfe3f) | ((sks->l4s.ce_count & 7) << 6));
+
+            bpf_l4_csum_replace(skb, tcp_csum_offset, htons(cur_flags), new_flags, 2);
+            bpf_skb_store_bytes(skb, tcp_flags_offset, &new_flags, sizeof(new_flags), 0);
+
+            int ip_tos_offset = isIpv4 ? ETH_IP4_OFFSET(tos) : ETH_IP6_OFFSET(flow_lbl);
+            __u8 old_tos = load_byte(skb, ip_tos_offset);
+            __u8 new_tos = old_tos | (isIpv4 ? 0x01 : 0x10);
+
+            if (isIpv4) {
+                bpf_l3_csum_replace(skb, ETH_IP4_OFFSET(check), htons(old_tos), htons(new_tos), 2);
+            }
+            bpf_skb_store_bytes(skb, ip_tos_offset, &new_tos, sizeof(new_tos), 0);
+       }
+    }
+    return TC_ACT_PIPE;
 }
 
 DEFINE_BPF_PROG_KVER_RANGE(schedcls, egress_accecn_rawip, AID_SYSTEM, 6_1, 6_18)
