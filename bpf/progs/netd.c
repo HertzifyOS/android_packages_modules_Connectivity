@@ -1293,16 +1293,10 @@ function int inet_getsockopt(struct bpf_sockopt *ctx,
         ctx->optname == SO_ANDROID_DROP_REASON) {
         uint8_t *optval_end = ctx->optval_end;
         uint8_t *optval = ctx->optval;
-        if (optval + sizeof(uint64_t) > optval_end) {
-            if (KVER_IS_AT_LEAST(kver, 6, 1)) bpf_set_retval(-EINVAL);
-            return BPF_DISALLOW;
-        }
+        if (optval + sizeof(uint64_t) > optval_end) return bpf_disallow(EINVAL);
 
         SkStorageValue *sks = bpf_sk_storage_get(ctx->sk, 0, 0);
-        if (!sks) {
-            if (KVER_IS_AT_LEAST(kver, 6, 1)) bpf_set_retval(-EUNATCH);
-            return BPF_DISALLOW;
-        }
+        if (!sks) return bpf_disallow(EUNATCH);
 
         *(uint64_t *)optval = sks->dropReasons;
         sks->dropReasons = DROP_REASON_NONE;
