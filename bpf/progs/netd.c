@@ -609,15 +609,9 @@ function bool parse_skb(SkbIpPacketData *const packet,
 
 procedure bool should_block_loopback_access(const SkbIpPacketData *const packet_data,
                                             struct __sk_buff *const skb,
-                                            const uint32_t sender_uid) {
-    bool checks_enabled = loopback_checks_enabled();
-    bool metrics_enabled = loopback_metrics_enabled();
-    if (!checks_enabled && !metrics_enabled) return false;
-
-    // TCP connections that already passed loopback access check
-    if (packet_data->ip_proto == IPPROTO_TCP
-        && !(packet_data->tcp_flags & TCP_FLAG8_SYN)) return false;
-
+                                            const uint32_t sender_uid,
+                                            const bool checks_enabled,
+                                            const bool metrics_enabled) {
     struct bpf_sock_tuple sock_tuple = {};
     uint32_t tuple_size;
 
@@ -667,10 +661,25 @@ procedure bool should_block_loopback_access(const SkbIpPacketData *const packet_
     }
     if (metrics_enabled) {
         add_loopback_access_event(
-            sender_uid, receiver_uid,
-            allowed ? LOOPBACK_ACCESS_ALLOWED : LOOPBACK_ACCESS_BLOCKED);
+                sender_uid, receiver_uid,
+                allowed ? LOOPBACK_ACCESS_ALLOWED : LOOPBACK_ACCESS_BLOCKED);
     }
     return !allowed;
+}
+
+procedure bool should_block_loopback_access_cached(const SkbIpPacketData *const packet_data,
+                                            struct __sk_buff *const skb,
+                                            const uint32_t sender_uid) {
+    bool checks_enabled = loopback_checks_enabled();
+    bool metrics_enabled = loopback_metrics_enabled();
+    if (!checks_enabled && !metrics_enabled) return false;
+
+    // TCP connections that already passed loopback access check
+    if (packet_data->ip_proto == IPPROTO_TCP
+        && !(packet_data->tcp_flags & TCP_FLAG8_SYN)) return false;
+
+    return should_block_loopback_access(packet_data, skb, sender_uid,
+                                        checks_enabled, metrics_enabled);
 }
 
 function void do_packet_tracing(const struct __sk_buff* const skb,
@@ -862,7 +871,7 @@ function int bpf_traffic_account(struct __sk_buff* skb,
 
     if (API_IS_AT_LEAST(lvl, 25Q4) && parsed && (match != DROP) && egress.egress
         && skb->ifindex == 1) {
-        if (should_block_loopback_access(&packet_data, skb, sock_uid)) {
+        if (should_block_loopback_access_cached(&packet_data, skb, sock_uid)) {
             match = DROP;
         }
     }
