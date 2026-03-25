@@ -46,6 +46,7 @@ static const int DROP_UNLESS_DNS = 2;  // internal to our program
 #define TCP_FLAG8_SYN 0x02
 #define TCP_FLAG8_RST 0x04
 
+#define EPERM 1
 #define EINVAL  22
 #define EUNATCH 49
 
@@ -1288,14 +1289,36 @@ DEFINE_NETD_BPF_PROG_RANGES(sendmsg6, udp6_sendmsg, 4_19, INF, V, MAXAPI)
 
 function int inet_getsockopt(struct bpf_sockopt *ctx,
                              const struct kver_uint kver,
-                             __unused const struct sdk_level_uint lvl) {
-    if (KVER_IS_AT_LEAST(kver, 5, 10) && ctx->level == SOL_SOCKET &&
-        ctx->optname == SO_ANDROID_DROP_REASON) {
-        uint8_t *optval_end = ctx->optval_end;
-        uint8_t *optval = ctx->optval;
+                             const struct sdk_level_uint lvl) {
+    SkStorageValue *sks = KVER_IS_AT_LEAST(kver, 5, 10) ? bpf_sk_storage_get(ctx->sk, 0, 0) : NULL;
+    uint8_t *optval_end = ctx->optval_end;
+    uint8_t *optval = ctx->optval;
+
+    if (API_IS_AT_LEAST(lvl, 26Q2)
+        && KVER_IS_BETWEEN(6, 1, kver, 6, 18)
+        && ctx->level == SOL_TCP
+        && ctx->optname == TCP_ANDROID_L4S
+        && ctx->sk->type == SOCK_STREAM
+        && ctx->sk->protocol == IPPROTO_TCP) {
+
+        if (!is_netd()) return bpf_disallow(EPERM);
+
+        if (optval + sizeof(uint8_t) > optval_end) return bpf_disallow(EINVAL);
+
+        if (!sks) return bpf_disallow(EUNATCH);
+
+        *(uint8_t *)optval = !sks->l4s.disabled;
+        WRITE_ONCE(ctx->retval, 0);
+        WRITE_ONCE(ctx->optlen, sizeof(uint8_t));
+        return BPF_ALLOW;
+    }
+
+    if (KVER_IS_AT_LEAST(kver, 5, 10)
+        && ctx->level == SOL_SOCKET
+        && ctx->optname == SO_ANDROID_DROP_REASON) {
+
         if (optval + sizeof(uint64_t) > optval_end) return bpf_disallow(EINVAL);
 
-        SkStorageValue *sks = bpf_sk_storage_get(ctx->sk, 0, 0);
         if (!sks) return bpf_disallow(EUNATCH);
 
         *(uint64_t *)optval = sks->dropReasons;
@@ -1339,8 +1362,30 @@ DEFINE_NETD_BPF_PROG_RANGES(getsockopt, prog, 5_4, 5_10, V, MAXAPI)
 // --- SETSOCKOPT HOOK ---
 
 function int inet_setsockopt(struct bpf_sockopt *ctx,
-                             __unused const struct kver_uint kver,
-                             __unused const struct sdk_level_uint lvl) {
+                             const struct kver_uint kver,
+                             const struct sdk_level_uint lvl) {
+    SkStorageValue *sks = KVER_IS_AT_LEAST(kver, 5, 10) ? bpf_sk_storage_get(ctx->sk, 0, 0) : NULL;
+    uint8_t *optval_end = ctx->optval_end;
+    uint8_t *optval = ctx->optval;
+
+    if (API_IS_AT_LEAST(lvl, 26Q2)
+        && KVER_IS_BETWEEN(6, 1, kver, 6, 18)
+        && ctx->level == SOL_TCP
+        && ctx->optname == TCP_ANDROID_L4S
+        && ctx->sk->type == SOCK_STREAM
+        && ctx->sk->protocol == IPPROTO_TCP) {
+
+        if (!is_netd()) return bpf_disallow(EPERM);
+
+        if (optval + sizeof(uint8_t) > optval_end) return bpf_disallow(EINVAL);
+
+        if (!sks) return bpf_disallow(EUNATCH);
+
+        sks->l4s.disabled = !*optval;
+        WRITE_ONCE(ctx->optlen, -1);
+        return BPF_ALLOW;
+    }
+
     // Tell kernel to use/process original buffer provided by userspace.
     // This is important if it is larger than PAGE_SIZE (max size this bpf hook can handle).
     ctx->optlen = 0;

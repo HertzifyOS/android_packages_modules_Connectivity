@@ -98,9 +98,10 @@ procedure long find_accecn_options_offset(struct __sk_buff *skb, uint64_t offset
 
 procedure int update_accecn_counter(struct __sk_buff* skb) {
     if (!is_l4s_enabled()) return 1;
-    if (!skb->sk) {
-        return 1;
-    }
+    struct bpf_sock *sk = skb->sk;
+    if (!sk) return 1;
+    SkStorageValue *sks = bpf_sk_storage_get(sk, 0, 0);
+    if (!sks || sks->l4s.disabled) return 1;
 
     void* data = (void*)(long)skb->data;
     void* data_end = (void*)(long)skb->data_end;
@@ -153,11 +154,6 @@ procedure int update_accecn_counter(struct __sk_buff* skb) {
         return 1;
     }
 
-    struct bpf_sock* sk = (struct bpf_sock*)skb->sk;
-    if (!sk) {
-        return 1;
-    }
-
     int tcp_flags_offset = isIpv4 ? IP4_TCP_OFFSET(flags16) : IP6_TCP_OFFSET(flags16);
 
     if (tcph->syn && tcph->ack) {
@@ -169,11 +165,8 @@ procedure int update_accecn_counter(struct __sk_buff* skb) {
         __u16 ace = (ntohs(flags) & 0x01c0) >> 6;
 
         if (ace == 0b010 || ace == 0b011 || ace == 0b100 || ace == 0b110) {
-            SkStorageValue* sks = bpf_sk_storage_get(sk, 0, 0);
-            if (!sks) return 1;
-
             sks->l4s.ce_count = (ip_ecn == 0b11) ? 0b110 : 0b101;
-            sks->l4s.ce_inited = 1;
+            sks->l4s.ce_inited = true;
 
             uint32_t conn_key = 0;
             uint32_t* conn_count = bpf_l4s_conn_counter_lookup_elem(&conn_key);
@@ -187,7 +180,7 @@ procedure int update_accecn_counter(struct __sk_buff* skb) {
             if (!sks->l4s.byte_inited) {
                 int is_accecn = find_accecn_options_offset(skb, hdr_len);
                 if (is_accecn != -1) {
-                    sks->l4s.byte_inited = 1;
+                    sks->l4s.byte_inited = true;
                     sks->l4s.e0b = 1;
                     sks->l4s.e1b = 1;
                     sks->l4s.ceb = 0;
@@ -199,9 +192,6 @@ procedure int update_accecn_counter(struct __sk_buff* skb) {
 
         return 1;
     }
-
-    SkStorageValue* sks = bpf_sk_storage_get(sk, 0, 0);
-    if (!sks) return 1;
 
     if (tcph->fin || tcph->rst) return 1;
 
@@ -227,9 +217,10 @@ procedure int update_accecn_counter(struct __sk_buff* skb) {
 DEFINE_BPF_PROG_KVER_RANGE(sockops, accecn_option, AID_SYSTEM, 6_1, 6_18)
 (struct bpf_sock_ops *skops) {
     if (!is_l4s_enabled()) return 1;
-    if (!skops->sk) {
-        return 1;
-    }
+    struct bpf_sock *sk = skops->sk;
+    if (!sk) return 1;
+    SkStorageValue *sks = bpf_sk_storage_get(sk, 0, 0);
+    if (!sks || sks->l4s.disabled) return 1;
     switch (skops->op) {
         case BPF_SOCK_OPS_TCP_CONNECT_CB:
         case BPF_SOCK_OPS_PASSIVE_ESTABLISHED_CB:
@@ -242,18 +233,14 @@ DEFINE_BPF_PROG_KVER_RANGE(sockops, accecn_option, AID_SYSTEM, 6_1, 6_18)
         case BPF_SOCK_OPS_HDR_OPT_LEN_CB:
         {
             if (skops->skb_tcp_flags & TCP_FLAG8_SYN) break;
-
-            SkStorageValue* sks = bpf_sk_storage_get(skops->sk, 0, 0);
-            if (!sks || !sks->l4s.byte_inited) break;
+            if (!sks->l4s.byte_inited) break;
             bpf_reserve_hdr_opt(skops, sizeof(tcp_accecn_option), 0);
             break;
         }
         case BPF_SOCK_OPS_WRITE_HDR_OPT_CB:
         {
             if (skops->skb_tcp_flags & TCP_FLAG8_SYN) break;
-
-            SkStorageValue* sks = bpf_sk_storage_get(skops->sk, 0, 0);
-            if (!sks || !sks->l4s.byte_inited) break;
+            if (!sks->l4s.byte_inited) break;
 
             tcp_accecn_option opt = {
                 .kind = 174,
@@ -276,6 +263,10 @@ DEFINE_BPF_PROG_KVER_RANGE(sockops, accecn_option, AID_SYSTEM, 6_1, 6_18)
 DEFINE_BPF_PROG_KVER_RANGE(schedcls, egress_accecn_eth, AID_SYSTEM, 6_1, 6_18)
 (struct __sk_buff* skb) {
     if (!is_l4s_enabled()) return TC_ACT_PIPE;
+    struct bpf_sock *sk = skb->sk;
+    if (!sk) return TC_ACT_PIPE;
+    SkStorageValue *sks = bpf_sk_storage_get(sk, 0, 0);
+    if (!sks || sks->l4s.disabled) return TC_ACT_PIPE;
 
     void* data = (void*)(long)skb->data;
     void* data_end = (void*)(long)skb->data_end;
@@ -337,29 +328,21 @@ DEFINE_BPF_PROG_KVER_RANGE(schedcls, egress_accecn_eth, AID_SYSTEM, 6_1, 6_18)
         return TC_ACT_PIPE;
     }
 
-    struct bpf_sock* sk = (struct bpf_sock*)skb->sk;
-    if (!sk) {
-        return TC_ACT_PIPE;
-    }
+    if (sks->l4s.ce_inited) {
+        __u16 cur_flags = load_half(skb, tcp_flags_offset);
+        __u16 new_flags = htons((cur_flags & 0xfe3f) | ((sks->l4s.ce_count & 7) << 6));
 
-    SkStorageValue* sks = bpf_sk_storage_get(sk, 0 , 0);
-    if (sks) {
-        if (sks->l4s.ce_inited) {
-            __u16 cur_flags = load_half(skb, tcp_flags_offset);
-            __u16 new_flags = htons((cur_flags & 0xfe3f) | ((sks->l4s.ce_count & 7) << 6));
+        bpf_l4_csum_replace(skb, tcp_csum_offset, htons(cur_flags), new_flags, 2);
+        bpf_skb_store_bytes(skb, tcp_flags_offset, &new_flags, sizeof(new_flags), 0);
 
-            bpf_l4_csum_replace(skb, tcp_csum_offset, htons(cur_flags), new_flags, 2);
-            bpf_skb_store_bytes(skb, tcp_flags_offset, &new_flags, sizeof(new_flags), 0);
+        int ip_tos_offset = isIpv4 ? ETH_IP4_OFFSET(tos) : ETH_IP6_OFFSET(flow_lbl);
+        __u8 old_tos = load_byte(skb, ip_tos_offset);
+        __u8 new_tos = old_tos | (isIpv4 ? 0x01 : 0x10);
 
-            int ip_tos_offset = isIpv4 ? ETH_IP4_OFFSET(tos) : ETH_IP6_OFFSET(flow_lbl);
-            __u8 old_tos = load_byte(skb, ip_tos_offset);
-            __u8 new_tos = old_tos | (isIpv4 ? 0x01 : 0x10);
-
-            if (isIpv4) {
-                bpf_l3_csum_replace(skb, ETH_IP4_OFFSET(check), htons(old_tos), htons(new_tos), 2);
-            }
-            bpf_skb_store_bytes(skb, ip_tos_offset, &new_tos, sizeof(new_tos), 0);
-       }
+        if (isIpv4) {
+            bpf_l3_csum_replace(skb, ETH_IP4_OFFSET(check), htons(old_tos), htons(new_tos), 2);
+        }
+        bpf_skb_store_bytes(skb, ip_tos_offset, &new_tos, sizeof(new_tos), 0);
     }
     return TC_ACT_PIPE;
 }
@@ -367,6 +350,10 @@ DEFINE_BPF_PROG_KVER_RANGE(schedcls, egress_accecn_eth, AID_SYSTEM, 6_1, 6_18)
 DEFINE_BPF_PROG_KVER_RANGE(schedcls, egress_accecn_rawip, AID_SYSTEM, 6_1, 6_18)
 (struct __sk_buff* skb) {
     if (!is_l4s_enabled()) return TC_ACT_PIPE;
+    struct bpf_sock *sk = skb->sk;
+    if (!sk) return TC_ACT_PIPE;
+    SkStorageValue *sks = bpf_sk_storage_get(sk, 0, 0);
+    if (!sks || sks->l4s.disabled) return TC_ACT_PIPE;
 
     void* data = (void*)(long)skb->data;
     void* data_end = (void*)(long)skb->data_end;
@@ -428,29 +415,21 @@ DEFINE_BPF_PROG_KVER_RANGE(schedcls, egress_accecn_rawip, AID_SYSTEM, 6_1, 6_18)
         return TC_ACT_PIPE;
     }
 
-    struct bpf_sock* sk = (struct bpf_sock*)skb->sk;
-    if (!sk) {
-        return TC_ACT_PIPE;
-    }
+    if (sks->l4s.ce_inited) {
+        __u16 cur_flags = load_half(skb, tcp_flags_offset);
+        __u16 new_flags = htons((cur_flags & 0xfe3f) | ((sks->l4s.ce_count & 7) << 6));
 
-    SkStorageValue* sks = bpf_sk_storage_get(sk, 0 , 0);
-    if (sks) {
-        if (sks->l4s.ce_inited) {
-            __u16 cur_flags = load_half(skb, tcp_flags_offset);
-            __u16 new_flags = htons((cur_flags & 0xfe3f) | ((sks->l4s.ce_count & 7) << 6));
+        bpf_l4_csum_replace(skb, tcp_csum_offset, htons(cur_flags), new_flags, 2);
+        bpf_skb_store_bytes(skb, tcp_flags_offset, &new_flags, sizeof(new_flags), 0);
 
-            bpf_l4_csum_replace(skb, tcp_csum_offset, htons(cur_flags), new_flags, 2);
-            bpf_skb_store_bytes(skb, tcp_flags_offset, &new_flags, sizeof(new_flags), 0);
+        int ip_tos_offset = isIpv4 ? IP4_OFFSET(tos) : IP6_OFFSET(flow_lbl);
+        __u8 old_tos = load_byte(skb, ip_tos_offset);
+        __u8 new_tos = old_tos | (isIpv4 ? 0x01 : 0x10);
 
-            int ip_tos_offset = isIpv4 ? IP4_OFFSET(tos) : IP6_OFFSET(flow_lbl);
-            __u8 old_tos = load_byte(skb, ip_tos_offset);
-            __u8 new_tos = old_tos | (isIpv4 ? 0x01 : 0x10);
-
-            if (isIpv4) {
-                bpf_l3_csum_replace(skb, IP4_OFFSET(check), htons(old_tos), htons(new_tos), 2);
-            }
-            bpf_skb_store_bytes(skb, ip_tos_offset, &new_tos, sizeof(new_tos), 0);
-       }
+        if (isIpv4) {
+            bpf_l3_csum_replace(skb, IP4_OFFSET(check), htons(old_tos), htons(new_tos), 2);
+        }
+        bpf_skb_store_bytes(skb, ip_tos_offset, &new_tos, sizeof(new_tos), 0);
     }
     return TC_ACT_PIPE;
 }
