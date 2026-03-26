@@ -96,72 +96,48 @@ procedure long find_accecn_options_offset(struct __sk_buff *skb, uint64_t offset
     return -1;
 }
 
-procedure int update_accecn_counter(struct __sk_buff* skb) {
-    if (!is_l4s_enabled()) return 1;
+procedure void update_accecn_counter(struct __sk_buff* skb) {
+    if (!is_l4s_enabled()) return;
     struct bpf_sock *sk = skb->sk;
-    if (!sk) return 1;
+    if (!sk) return;
     SkStorageValue *sks = bpf_sk_storage_get(sk, 0, 0);
-    if (!sks || sks->l4s.disabled) return 1;
+    if (!sks || sks->l4s.disabled) return;
 
     void* data = (void*)(long)skb->data;
     void* data_end = (void*)(long)skb->data_end;
 
-    if (data + sizeof(struct iphdr) > data_end) {
-        return 1;
-    }
+    struct tcphdr* tcph;
+    __u8 ip_ecn;
+    uint64_t payload_size;
+    int hdr_len;
+    int tcp_flags_offset;
 
-    const bool isIpv4 = skb->protocol == htons(ETH_P_IP);
-    const bool isIpv6 = skb->protocol == htons(ETH_P_IPV6);
-    struct tcphdr* tcph = NULL;
-    __u8 ip_ecn = 0;
-    uint64_t payload_size = 0;
-    int hdr_len = 0;
-
-    if (isIpv4) {
+    if (skb->protocol == htons(ETH_P_IP)) {
+        if (data + sizeof(struct iphdr) + sizeof(struct tcphdr) > data_end) return;
         struct iphdr* ip = data;
-        if (ip->protocol == IPPROTO_TCP) {
-            if (data + sizeof(struct iphdr) + sizeof(struct tcphdr) > data_end) {
-                return 1;
-            }
-            tcph = (void*)(ip + 1);
-            ip_ecn = ip->tos & 0x03;
-            payload_size = ntohs(ip->tot_len) - (ip->ihl * 4) - (tcph->doff * 4);
-            hdr_len += sizeof(struct iphdr);
-        } else {
-            return 1;
-        }
-    } else if (isIpv6) {
-        if (data + sizeof(struct ipv6hdr) > data_end) {
-            return 1;
-        }
+        if (ip->ihl != 5) return;
+        if (ip->protocol != IPPROTO_TCP) return;
+        tcph = (void*)(ip + 1);
+        ip_ecn = ip->tos & 0x03;
+        payload_size = ntohs(ip->tot_len) - sizeof(struct iphdr) - (tcph->doff * 4);
+        hdr_len = sizeof(struct iphdr);
+        tcp_flags_offset = IP4_TCP_OFFSET(flags16);
+    } else if (skb->protocol == htons(ETH_P_IPV6)) {
+        if (data + sizeof(struct ipv6hdr) + sizeof(struct tcphdr) > data_end) return;
         struct ipv6hdr* ip6 = data;
-        if (ip6->nexthdr == IPPROTO_TCP) {
-            if (data + sizeof(struct ipv6hdr) + sizeof(struct tcphdr) > data_end) {
-                return 1;
-            }
-            tcph = (void*)(ip6 + 1);
-            ip_ecn = (ip6->flow_lbl[0] & 0x30) >> 4;
-            payload_size = ntohs(ip6->payload_len) - (tcph->doff * 4);
-            hdr_len += sizeof(struct ipv6hdr);
-        } else {
-            return 1;
-        }
-    } else {
-        return 1;
-    }
-
-    if (!isIpv4 && !isIpv6) {
-        return 1;
-    }
-
-    int tcp_flags_offset = isIpv4 ? IP4_TCP_OFFSET(flags16) : IP6_TCP_OFFSET(flags16);
+        if (ip6->nexthdr != IPPROTO_TCP) return;
+        tcph = (void*)(ip6 + 1);
+        ip_ecn = (ip6->flow_lbl[0] & 0x30) >> 4;
+        payload_size = ntohs(ip6->payload_len) - (tcph->doff * 4);
+        hdr_len = sizeof(struct ipv6hdr);
+        tcp_flags_offset = IP6_TCP_OFFSET(flags16);
+    } else return;
 
     if (tcph->syn && tcph->ack) {
         __u16 flags;
         if (bpf_skb_load_bytes_relative(skb, tcp_flags_offset, &flags,
-                                        sizeof(flags), BPF_HDR_START_NET)) {
-            return 1;
-        }
+                                        sizeof(flags), BPF_HDR_START_NET)) return;
+
         __u16 ace = (ntohs(flags) & 0x01c0) >> 6;
 
         if (ace == 0b010 || ace == 0b011 || ace == 0b100 || ace == 0b110) {
@@ -186,32 +162,27 @@ procedure int update_accecn_counter(struct __sk_buff* skb) {
                     sks->l4s.ceb = 0;
                 }
             }
-
-            return 1;
         }
 
-        return 1;
+        return;
     }
 
-    if (tcph->fin || tcph->rst) return 1;
+    if (tcph->fin || tcph->rst) return;
 
     if (ip_ecn == 0b11) {
         __u32 ce_packets = skb->gso_segs;
         __sync_fetch_and_add(&sks->l4s.ce_count, ce_packets);
     }
 
-    if (sks->l4s.byte_inited) {
-        if (ip_ecn == 0b11) {
-            __sync_fetch_and_add(&sks->l4s.ceb, payload_size);
-        }
-        else if (ip_ecn == 0b10) {
-           __sync_fetch_and_add(&sks->l4s.e0b, payload_size);
-        }
-        else if (ip_ecn == 0b01) {
-           __sync_fetch_and_add(&sks->l4s.e1b, payload_size);
-        }
+    if (!sks->l4s.byte_inited) return;
+
+    if (ip_ecn == 0b11) {
+        __sync_fetch_and_add(&sks->l4s.ceb, payload_size);
+    } else if (ip_ecn == 0b10) {
+       __sync_fetch_and_add(&sks->l4s.e0b, payload_size);
+    } else if (ip_ecn == 0b01) {
+       __sync_fetch_and_add(&sks->l4s.e1b, payload_size);
     }
-    return 1;
 }
 
 DEFINE_BPF_PROG_KVER_RANGE(sockops, accecn_option, AID_SYSTEM, 6_1, 6_18)
