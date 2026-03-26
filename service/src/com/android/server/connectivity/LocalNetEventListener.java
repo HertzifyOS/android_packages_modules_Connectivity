@@ -23,6 +23,9 @@ import static com.android.server.ConnectivityStatsLog.CORE_NETWORKING_CRITICAL_C
 import static com.android.server.ConnectivityStatsLog.CORE_NETWORKING_CRITICAL_COUNTS_EVENT_OCCURRED__EVENT_TYPE__CRITICAL_COUNTS_EVENT_TYPE_LOCAL_NETWORK_ACCESS;
 
 import android.annotation.NonNull;
+import android.app.AppOpsManager;
+import android.content.Context;
+import android.content.pm.PackageManager;
 import android.os.Looper;
 import android.util.Log;
 import android.util.SparseIntArray;
@@ -31,6 +34,7 @@ import com.android.internal.annotations.VisibleForTesting;
 import com.android.server.ConnectivityStatsLog;
 
 import java.io.FileDescriptor;
+import java.util.Objects;
 
 /**
  * LocalNetEventListener reports metrics on local net access. It uses a MessageQueue to listen
@@ -41,6 +45,11 @@ import java.io.FileDescriptor;
  */
 public class LocalNetEventListener {
     private static final String TAG = LocalNetEventListener.class.getSimpleName();
+    // See {@link android.app.AppOpsManager#OPSTR_ACCESS_LOCAL_NETWORK}
+    // TODO: make this string visible to mainline
+    private static final String APP_OP = "android:access_local_network";
+    private final PackageManager mPackageManager;
+    private final AppOpsManager mAppOpsManager;
     private final Dependencies mDeps;
     private final FileDescriptor mRingbufFd;
     private final Looper mLooper;
@@ -48,14 +57,17 @@ public class LocalNetEventListener {
     private final boolean mNoteOpsEnabled;
     private boolean mStarted;
 
-    public LocalNetEventListener(@NonNull Looper looper, boolean metricsEnabled,
-            boolean noteOpsEnabled) {
-        this(new Dependencies(), looper, metricsEnabled, noteOpsEnabled);
+    public LocalNetEventListener(@NonNull Context context, @NonNull Looper looper,
+            boolean metricsEnabled, boolean noteOpsEnabled) {
+        this(new Dependencies(), context, looper, metricsEnabled, noteOpsEnabled);
     }
 
     @VisibleForTesting
-    public LocalNetEventListener(@NonNull final Dependencies deps, @NonNull Looper looper,
-            boolean metricsEnabled, boolean noteOpsEnabled) {
+    public LocalNetEventListener(@NonNull final Dependencies deps, @NonNull Context context,
+            @NonNull Looper looper, boolean metricsEnabled, boolean noteOpsEnabled) {
+        Objects.requireNonNull(context);
+        mPackageManager = context.getPackageManager();
+        mAppOpsManager = context.getSystemService(AppOpsManager.class);
         mDeps = deps;
         mLooper = looper;
         mMetricsEnabled = metricsEnabled;
@@ -118,7 +130,9 @@ public class LocalNetEventListener {
                 if (mMetricsEnabled) {
                     writeStats(uidsPids);
                 }
-                // TODO: check for and report note ops
+                if (mNoteOpsEnabled) {
+                    reportNoteOps(uidsPids);
+                }
             } catch (Exception e) {
                 Log.e(TAG, "Error consuming local net access ring buffer data", e);
             }
@@ -139,6 +153,24 @@ public class LocalNetEventListener {
             int uid = uidCounts.keyAt(i);
             long count = uidCounts.valueAt(i);
             mDeps.writeStats(uid, count);
+        }
+    }
+
+    private void reportNoteOps(int[] uidsPids) {
+        for (int i = 0; i < uidsPids.length; i += 2) {
+            int uid = uidsPids[i];
+            // TODO: use ActivityManagerLocal#getPackageNamesForPid
+            String[] packages = mPackageManager.getPackagesForUid(uid);
+            if (packages == null || packages.length == 0) {
+                // No packages found for this UID
+                continue;
+            }
+            mAppOpsManager.noteOpNoThrow(
+                    APP_OP,
+                    uid,
+                    packages[0],
+                    null,
+                    null);
         }
     }
 
