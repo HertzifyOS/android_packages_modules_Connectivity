@@ -1162,12 +1162,14 @@ function uint8_t get_app_permissions() {
 
 function int inet_socket_create(struct bpf_sock* sk, const struct kver_uint kver) {
     uint64_t gid_uid = bpf_get_current_uid_gid();
+
     if (KVER_IS_AT_LEAST(kver, 5, 10)) {
         SkStorageValue *sks = bpf_sk_storage_get(sk, 0, BPF_SK_STORAGE_GET_F_CREATE);
         if (sks) {
             sks->cookie = bpf_get_sk_cookie(sk);
             sks->uid = gid_uid;
             sks->gid = (gid_uid >> 32);
+            sks->l4s.enabled = (sk->type == SOCK_STREAM && sk->protocol == IPPROTO_TCP);
         }
     }
 
@@ -1344,7 +1346,7 @@ function int inet_getsockopt(struct bpf_sockopt *ctx,
 
         if (!sks) return bpf_disallow(EUNATCH);
 
-        *(uint8_t *)optval = !sks->l4s.disabled;
+        *optval = sks->l4s.enabled;
         WRITE_ONCE(ctx->retval, 0);
         WRITE_ONCE(ctx->optlen, sizeof(uint8_t));
         return BPF_ALLOW;
@@ -1418,7 +1420,7 @@ function int inet_setsockopt(struct bpf_sockopt *ctx,
 
         if (!sks) return bpf_disallow(EUNATCH);
 
-        sks->l4s.disabled = !*optval;
+        sks->l4s.enabled = !!*optval;
         WRITE_ONCE(ctx->optlen, -1);
         return BPF_ALLOW;
     }
