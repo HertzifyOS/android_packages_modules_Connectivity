@@ -105,7 +105,7 @@ procedure void update_accecn_counter(struct __sk_buff* skb) {
     void* data = (void*)(long)skb->data;
     void* data_end = (void*)(long)skb->data_end;
 
-    const struct tcphdr* tcph;
+    const struct tcphdr_with_flags16* tcph;
     __u8 ip_ecn;
     uint64_t payload_size;
     int hdr_len;
@@ -115,7 +115,7 @@ procedure void update_accecn_counter(struct __sk_buff* skb) {
         const struct iphdr* ip = data;
         if (ip->ihl != 5) return;
         if (ip->protocol != IPPROTO_TCP) return;
-        tcph = (void*)(ip + 1);
+        tcph = (const struct tcphdr_with_flags16*)(ip + 1);
         ip_ecn = ip->tos & 0x03;
         payload_size = ntohs(ip->tot_len) - sizeof(struct iphdr) - tcph->doff * 4;
         hdr_len = sizeof(struct iphdr);
@@ -123,15 +123,14 @@ procedure void update_accecn_counter(struct __sk_buff* skb) {
         if (data + sizeof(struct ipv6hdr) + sizeof(struct tcphdr) > data_end) return;
         const struct ipv6hdr* ip6 = data;
         if (ip6->nexthdr != IPPROTO_TCP) return;
-        tcph = (void*)(ip6 + 1);
+        tcph = (const struct tcphdr_with_flags16*)(ip6 + 1);
         ip_ecn = (ip6->flow_lbl[0] & 0x30) >> 4;
         payload_size = ntohs(ip6->payload_len) - tcph->doff * 4;
         hdr_len = sizeof(struct ipv6hdr);
     } else return;
 
     if (tcph->syn && tcph->ack) {
-        const struct tcphdr_with_flags16* tcph16 = (void*)tcph;
-        __u16 ace = (ntohs(tcph16->flags16) & 0x01c0) >> 6;
+        __u16 ace = (ntohs(tcph->flags16) & 0x01c0) >> 6;
 
         if (ace == 0b010 || ace == 0b011 || ace == 0b100 || ace == 0b110) {
             sks->l4s.ce_count = (ip_ecn == 0b11) ? 0b110 : 0b101;
@@ -239,7 +238,7 @@ function void do_egress_accecn(struct __sk_buff* skb, const struct rawip_bool ra
         if (ip->ihl != 5) return;
         if (ip->protocol != IPPROTO_TCP) return;
 
-        tcph = (struct tcphdr*)(ip + 1);
+        tcph = (const struct tcphdr*)(ip + 1);
     } else if (isIpv6) {
         if (data + l2_header_size + sizeof(struct ipv6hdr) + sizeof(struct tcphdr) > data_end)
             return;
@@ -247,7 +246,7 @@ function void do_egress_accecn(struct __sk_buff* skb, const struct rawip_bool ra
         const struct ipv6hdr* ip6 = data + l2_header_size;
         if (ip6->nexthdr != IPPROTO_TCP) return;
 
-        tcph = (struct tcphdr*)(ip6 + 1);
+        tcph = (const struct tcphdr*)(ip6 + 1);
     } else return;
 
     int tcp_flags_offset = l2_header_size + (isIpv4 ? IP4_TCP_OFFSET(flags16) : IP6_TCP_OFFSET(flags16));
