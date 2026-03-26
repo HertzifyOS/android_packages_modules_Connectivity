@@ -10004,11 +10004,12 @@ public class ConnectivityService extends IConnectivityManager.Stub
         if (nai.isVPN()) return false;
 
         // TODO: add metrics in updateCapabilities to make sure these capabilities are not changed
-        return nai.networkCapabilities.hasCapability(NET_CAPABILITY_INTERNET)
-                || nai.networkCapabilities.hasCapability(NET_CAPABILITY_PRIORITIZE_LATENCY)
-                || nai.networkCapabilities.hasCapability(
-                NET_CAPABILITY_PRIORITIZE_UNIFIED_COMMUNICATIONS)
-                || nai.networkCapabilities.hasCapability(NET_CAPABILITY_PRIORITIZE_BANDWIDTH);
+        final NetworkCapabilities nc = nai.networkCapabilities;
+        return nc.hasCapability(NET_CAPABILITY_INTERNET)
+                || nc.hasCapability(NET_CAPABILITY_PRIORITIZE_LATENCY)
+                || nc.hasCapability(NET_CAPABILITY_PRIORITIZE_UNIFIED_COMMUNICATIONS)
+                || nc.hasCapability(NET_CAPABILITY_PRIORITIZE_BANDWIDTH)
+                || nc.hasTransport(TRANSPORT_TEST);
     }
 
     /**
