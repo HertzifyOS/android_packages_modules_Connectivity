@@ -17,7 +17,7 @@
 package android.net.cts
 
 import android.Manifest.permission.MANAGE_TEST_NETWORKS
-import android.net.InetAddresses
+import android.net.InetAddresses.parseNumericAddress
 import android.net.LinkAddress
 import android.net.Network
 import android.net.TestNetworkManager
@@ -90,24 +90,22 @@ open class TestInterfaceBase {
         internal const val PORT = 8000
         internal const val TCP_INITIAL_SEQ = 123456789.toShort()
         internal const val TCP_WINDOW_SIZE = 65535
-        internal val ON_LINK_IPV4_ADDRESS = InetAddresses.parseNumericAddress("192.168.0.10")
-        internal val ON_LINK_IPV6_ADDRESS = InetAddresses.parseNumericAddress("2001:db8:abcd::2")
-        internal val OFF_LINK_IPV4_ADDRESS = InetAddresses.parseNumericAddress("192.0.2.1")
-        internal val OFF_LINK_IPV6_ADDRESS = InetAddresses.parseNumericAddress("2001:db8:1::1")
-        internal val DEVICE_IPV4_ADDRESS: InetAddress =
-            InetAddresses.parseNumericAddress("192.168.0.1")
-        internal val DEVICE_IPV6_ADDRESS: InetAddress =
-            InetAddresses.parseNumericAddress("2001:db8:abcd::1")
-        internal val ALWAYS_ALLOWED_IPV4_ADDRESS = InetAddresses.parseNumericAddress("192.0.2.2")
-        internal val ALWAYS_ALLOWED_IPV6_ADDRESS = InetAddresses.parseNumericAddress("2001:db8:1::2")
+        internal val ON_LINK_IPV4_ADDRESS = parseNumericAddress("192.168.0.10")
+        internal val ON_LINK_IPV6_ADDRESS = parseNumericAddress("2001:db8:abcd::2")
+        internal val OFF_LINK_IPV4_ADDRESS = parseNumericAddress("192.0.2.1")
+        internal val OFF_LINK_IPV6_ADDRESS = parseNumericAddress("2001:db8:1::1")
+        internal val DEVICE_IPV4_ADDRESS: InetAddress = parseNumericAddress("192.168.0.1")
+        internal val DEVICE_IPV6_ADDRESS: InetAddress = parseNumericAddress("2001:db8:abcd::1")
+        internal val ALWAYS_ALLOWED_IPV4_ADDRESS = parseNumericAddress("192.0.2.2")
+        internal val ALWAYS_ALLOWED_IPV6_ADDRESS = parseNumericAddress("2001:db8:1::2")
         internal val LINK_ADDRESSES =
             listOf(LinkAddress("192.168.0.1/16"), LinkAddress("2001:db8:abcd::1/64"))
         internal val PACKET_PAYLOAD = "abcdefghijklmnop".toByteArray(Charsets.UTF_8)
 
         internal fun makeLinkLocalAddress(iface: String): Inet6Address {
             return Inet6Address.getByAddress(
-                null, /* host */
-                InetAddresses.parseNumericAddress("fe80::1").address,
+                null, // host
+                parseNumericAddress("fe80::1").address,
                 NetworkInterface.getByName(iface).index
             )
         }
@@ -350,8 +348,8 @@ open class TestInterfaceBase {
         })
     }
 
-    protected fun matchTcpPacket(packet: ByteArray, dstAddress: InetAddress, tcpFlags: Int): Boolean {
-        val buf = ByteBuffer.wrap(packet)
+    protected fun matchTcpPacket(pkt: ByteArray, dstAddress: InetAddress, tcpFlags: Int): Boolean {
+        val buf = ByteBuffer.wrap(pkt)
         try {
             if (!checkIpHeader(buf, dstAddress, OsConstants.IPPROTO_TCP.toByte())) {
                 return false
