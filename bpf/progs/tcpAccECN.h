@@ -100,7 +100,7 @@ procedure void update_accecn_counter(struct __sk_buff* skb) {
     struct bpf_sock *sk = skb->sk;
     if (!sk) return;
     SkStorageValue *sks = bpf_sk_storage_get(sk, 0, 0);
-    if (!sks || sks->l4s.disabled) return;
+    if (!sks || !sks->l4s.enabled) return;
 
     void* data = (void*)(long)skb->data;
     void* data_end = (void*)(long)skb->data_end;
@@ -177,7 +177,7 @@ DEFINE_BPF_PROG_KVER_RANGE(sockops, accecn_option, AID_SYSTEM, 6_1, 6_18)
     struct bpf_sock *sk = skops->sk;
     if (!sk) return 1;
     SkStorageValue *sks = bpf_sk_storage_get(sk, 0, 0);
-    if (!sks || sks->l4s.disabled) return 1;
+    if (!sks || !sks->l4s.enabled) return 1;
     switch (skops->op) {
         case BPF_SOCK_OPS_TCP_CONNECT_CB:
         case BPF_SOCK_OPS_PASSIVE_ESTABLISHED_CB:
@@ -222,7 +222,7 @@ function void do_egress_accecn(struct __sk_buff* skb, const struct rawip_bool ra
     struct bpf_sock *sk = skb->sk;
     if (!sk) return;
     SkStorageValue *sks = bpf_sk_storage_get(sk, 0, 0);
-    if (!sks || sks->l4s.disabled) return;
+    if (!sks || !sks->l4s.enabled) return;
 
     void* data = (void*)(long)skb->data;
     void* data_end = (void*)(long)skb->data_end;
