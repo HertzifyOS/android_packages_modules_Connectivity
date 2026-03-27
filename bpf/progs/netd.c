@@ -1250,6 +1250,42 @@ function bool is_root_or_shell() {
     return (uid == AID_ROOT) || (uid == AID_SHELL);
 }
 
+function bool is_unpriv_tcp_port(__be16 port) {
+    switch (port) {
+        case htons(20):   // ftp (active mode data)
+        case htons(21):   // ftp (control)
+        case htons(22):   // ssh (incl. sftp)
+        case htons(23):   // telnet
+        case htons(80):   // http
+        case htons(443):  // https
+        case htons(445):  // smb over ip (direct host)
+        case htons(515):  // lpd
+        case htons(631):  // ipp
+            return true;
+        default:
+            return false;
+    }
+}
+
+function bool is_unpriv_udp_port(__be16 port) {
+    switch (port) {
+        case htons(319):  // ptp
+        case htons(320):  // ptp
+        case htons(443):  // http/3
+            return true;
+        default:
+            return false;
+    }
+}
+
+function bool is_unpriv_port(__u32 protocol, __be16 port) {
+    switch (protocol) {
+        case IPPROTO_TCP: return is_unpriv_tcp_port(port);
+        case IPPROTO_UDP: return is_unpriv_udp_port(port);
+        default:          return false;
+    }
+}
+
 // kernel's include/linux/bpf.h defines flag BPF_RET_BIND_NO_CAP_NET_BIND_SERVICE as (1 << 0) == 1,
 // as a flag, it must be shifted up by 1 (making it == 2) and combined with 'generic' ALLOW (== 1)
 static const int BPF_ALLOW_IGNORING_CAP_NET_BIND = BPF_ALLOW + 2;
@@ -1261,6 +1297,8 @@ function int inet_bind(struct bpf_sock_addr *ctx, const struct kver_uint kver) {
         if (ctx->user_port == htons(53) && is_netd())
             return BPF_ALLOW_IGNORING_CAP_NET_BIND;
         if (ctx->protocol == IPPROTO_TCP && ctx->user_port == htons(555) && is_root_or_shell())
+            return BPF_ALLOW_IGNORING_CAP_NET_BIND;
+        if (is_unpriv_port(ctx->protocol, ctx->user_port))
             return BPF_ALLOW_IGNORING_CAP_NET_BIND;
     }
     return BPF_ALLOW;
