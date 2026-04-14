@@ -655,6 +655,24 @@ public class PermissionMonitorTest {
     }
 
     @Test
+    public void testUpdateUidsAllowedOnRestrictedNetworksAutomotive() {
+        when(mPackageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)).thenReturn(true);
+        initialize();
+        verify(mDeps, never()).registerContentObserver(any(), any(), anyBoolean(), any());
+        verify(mDeps, never()).getUidsAllowedOnRestrictedNetworks(any());
+    }
+
+    @Test
+    public void testUpdateUidsAllowedOnRestrictedNetworksNonAutomotive() {
+        when(mPackageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)).thenReturn(false);
+        initialize();
+        verify(mDeps).registerContentObserver(any(),
+                eq(Settings.Global.getUriFor(UIDS_ALLOWED_ON_RESTRICTED_NETWORKS)),
+                anyBoolean(), any());
+        verify(mDeps).getUidsAllowedOnRestrictedNetworks(any());
+    }
+
+    @Test
     public void testIsAppAllowedOnRestrictedNetworks() {
         mPermissionMonitor.updateUidsAllowedOnRestrictedNetworks(Set.of());
         assertFalse(wouldBeUidAllowedOnRestrictedNetworks(MOCK_UID11));

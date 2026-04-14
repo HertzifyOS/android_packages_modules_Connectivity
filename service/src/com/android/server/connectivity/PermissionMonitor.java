@@ -739,8 +739,11 @@ public class PermissionMonitor {
                     mIntentReceiver, userIntentFilter, NETWORK_STACK, handler);
         }
 
-        // Register UIDS_ALLOWED_ON_RESTRICTED_NETWORKS setting observer
-        mDeps.registerContentObserver(
+        // The UIDS_ALLOWED_ON_RESTRICTED_NETWORKS setting is ignored on automotive devices to
+        // ensure only privileged apps can access restricted networks.
+        if (!isAutomotiveDevice()) {
+            // Register UIDS_ALLOWED_ON_RESTRICTED_NETWORKS setting observer
+            mDeps.registerContentObserver(
                 userAllContext,
                 Settings.Global.getUriFor(UIDS_ALLOWED_ON_RESTRICTED_NETWORKS),
                 false /* notifyForDescendants */,
@@ -751,9 +754,11 @@ public class PermissionMonitor {
                     }
                 });
 
-        // Read UIDS_ALLOWED_ON_RESTRICTED_NETWORKS setting and update
-        // mUidsAllowedOnRestrictedNetworks.
-        updateUidsAllowedOnRestrictedNetworks(mDeps.getUidsAllowedOnRestrictedNetworks(mContext));
+            // Read UIDS_ALLOWED_ON_RESTRICTED_NETWORKS setting and update
+            // mUidsAllowedOnRestrictedNetworks.
+            updateUidsAllowedOnRestrictedNetworks(
+                    mDeps.getUidsAllowedOnRestrictedNetworks(mContext));
+        }
 
         // Read system traffic permissions when a user removed and put them to USER_ALL because they
         // are not specific to any particular user.
@@ -785,6 +790,10 @@ public class PermissionMonitor {
      */
     public boolean useBroadcastReceiveHelper() {
         return mUseBroadcastReceiveHelper;
+    }
+
+    private boolean isAutomotiveDevice() {
+        return mContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE);
     }
 
     @VisibleForTesting
