@@ -16,12 +16,14 @@
 
 package com.android.server.connectivityservice
 
+import android.content.pm.PackageManager
 import android.net.InetAddresses
 import android.net.IpPrefix
 import android.net.LinkAddress
 import android.net.LinkProperties
 import android.net.NetworkCapabilities
 import android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET
+import android.net.NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED
 import android.net.NetworkCapabilities.NET_CAPABILITY_NOT_VCN_MANAGED
 import android.net.NetworkCapabilities.NET_CAPABILITY_NOT_VPN
 import android.net.NetworkCapabilities.TRANSPORT_VPN
@@ -52,6 +54,7 @@ import org.mockito.ArgumentMatchers.anyString
 import org.mockito.InOrder
 import org.mockito.Mockito.atLeastOnce
 import org.mockito.Mockito.clearInvocations
+import org.mockito.Mockito.doReturn
 import org.mockito.Mockito.inOrder
 import org.mockito.Mockito.never
 import org.mockito.Mockito.reset
@@ -1018,6 +1021,57 @@ class CSLocalNetworkProtectionTest : CSTest() {
         )
         doTestExpectedLocalPrefixes(lp, LINK_LOCAL_PREFIX, IPV6_HOME_PREFIX, ULA_ONLINK_PREFIX,
             ULA_STUB_PREFIX, IPV4_PREFIX_1)
+    }
+
+    fun doTestRestrictedNetwork(
+            isAuto: Boolean,
+            isRestricted: Boolean,
+            expectedLnpApplied: Boolean
+    ) {
+        doReturn(isAuto).`when`(packageManager).hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)
+
+        val nr = NetworkRequest.Builder()
+                .clearCapabilities()
+                .addTransportType(TRANSPORT_WIFI)
+                .build()
+        val cb = TestableNetworkCallback()
+        cm.requestNetwork(nr, cb)
+
+        val wifiLp = lp(WIFI_IFNAME, IPV4_ADDRESS_1)
+        val wifiNcBuilder = NetworkCapabilities.Builder()
+                .addTransportType(TRANSPORT_WIFI)
+                .addCapability(NET_CAPABILITY_INTERNET)
+                .addCapability(NET_CAPABILITY_NOT_VCN_MANAGED)
+        if (isRestricted) {
+            wifiNcBuilder.removeCapability(NET_CAPABILITY_NOT_RESTRICTED)
+        }
+        val wifiNc = wifiNcBuilder.build()
+
+        val wifiAgent = Agent(nc = wifiNc, lp = wifiLp)
+        wifiAgent.connect()
+        cb.expectAvailableCallbacks(wifiAgent.network, validated = false)
+
+        if (expectedLnpApplied) {
+            verifyAddedToLocal(IPV4_PREFIX_1)
+            verifyPopulationOfMulticastAndBroadcastAddress()
+        } else {
+            verifyNeverAddedToLocal(IPV4_PREFIX_1)
+        }
+    }
+
+    @Test
+    fun testRestrictedNetworkOnAutomotive_LnpNotApplied() {
+        doTestRestrictedNetwork(isAuto = true, isRestricted = true, expectedLnpApplied = false)
+    }
+
+    @Test
+    fun testUnrestrictedNetworkOnAutomotive_LnpApplied() {
+        doTestRestrictedNetwork(isAuto = true, isRestricted = false, expectedLnpApplied = true)
+    }
+
+    @Test
+    fun testRestrictedNetworkOnNonAutomotive_LnpApplied() {
+        doTestRestrictedNetwork(isAuto = false, isRestricted = true, expectedLnpApplied = true)
     }
 
     @Test
