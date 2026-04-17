@@ -296,6 +296,11 @@ open class CSTest {
     @Target(FUNCTION)
     annotation class BoolConfig(val index: Int, val value: Boolean)
 
+
+    @Retention(RUNTIME)
+    @Target(FUNCTION)
+    annotation class SystemFeature(val name: String, val supported: Boolean)
+
     @Before
     open fun setUp() {
         handleTestAnnotations()
@@ -328,6 +333,12 @@ open class CSTest {
                 for (config in configProperty.bools) {
                     doReturn(config.value).`when`(sysResources).getBoolean(config.index)
                 }
+            }
+
+            val systemFeature = testMethod.getAnnotation(SystemFeature::class.java)
+            if (systemFeature != null) {
+                doReturn(systemFeature.supported).`when`(packageManager)
+                        .hasSystemFeature(systemFeature.name)
             }
         } catch (ignored: NoSuchMethodException) {
             // This is expected for parameterized tests

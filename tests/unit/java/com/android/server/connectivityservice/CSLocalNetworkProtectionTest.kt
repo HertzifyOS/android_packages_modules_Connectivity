@@ -1023,13 +1023,7 @@ class CSLocalNetworkProtectionTest : CSTest() {
             ULA_STUB_PREFIX, IPV4_PREFIX_1)
     }
 
-    fun doTestRestrictedNetwork(
-            isAuto: Boolean,
-            isRestricted: Boolean,
-            expectedLnpApplied: Boolean
-    ) {
-        doReturn(isAuto).`when`(packageManager).hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)
-
+    fun doTestRestrictedNetwork(isRestricted: Boolean, expectedLnpApplied: Boolean) {
         val nr = NetworkRequest.Builder()
                 .clearCapabilities()
                 .addTransportType(TRANSPORT_WIFI)
@@ -1060,18 +1054,21 @@ class CSLocalNetworkProtectionTest : CSTest() {
     }
 
     @Test
+    @CSTest.SystemFeature(name = PackageManager.FEATURE_AUTOMOTIVE, supported = true)
     fun testRestrictedNetworkOnAutomotive_LnpNotApplied() {
-        doTestRestrictedNetwork(isAuto = true, isRestricted = true, expectedLnpApplied = false)
+        doTestRestrictedNetwork(isRestricted = true, expectedLnpApplied = false)
     }
 
     @Test
+    @CSTest.SystemFeature(name = PackageManager.FEATURE_AUTOMOTIVE, supported = true)
     fun testUnrestrictedNetworkOnAutomotive_LnpApplied() {
-        doTestRestrictedNetwork(isAuto = true, isRestricted = false, expectedLnpApplied = true)
+        doTestRestrictedNetwork(isRestricted = false, expectedLnpApplied = true)
     }
 
     @Test
+    @CSTest.SystemFeature(name = PackageManager.FEATURE_AUTOMOTIVE, supported = false)
     fun testRestrictedNetworkOnNonAutomotive_LnpApplied() {
-        doTestRestrictedNetwork(isAuto = false, isRestricted = true, expectedLnpApplied = true)
+        doTestRestrictedNetwork(isRestricted = true, expectedLnpApplied = true)
     }
 
     @Test

@@ -1229,6 +1229,11 @@ public class ConnectivityService extends IConnectivityManager.Stub
     // NetlinkMonitor for ConnectivityService
     @Nullable private final AddressUpdateMonitor mAddressUpdateMonitor;
 
+    // Flag to determine if the device is an automotive device, rather than calling the
+    // PackageManager on every check.
+    @VisibleForTesting
+    private final boolean mIsAutomotiveDevice;
+
     /**
      * Implements support for the legacy "one network per network type" model.
      *
@@ -2561,6 +2566,8 @@ public class ConnectivityService extends IConnectivityManager.Stub
 
         mUseSatelliteReportedSuspendedAndRoaming = mDeps.isFeatureNotChickenedOut(
                 context, USE_SATELLITE_REPORTED_SUSPENDED_AND_ROAMING);
+        mIsAutomotiveDevice = mContext.getPackageManager().hasSystemFeature(
+                PackageManager.FEATURE_AUTOMOTIVE);
     }
 
     /**
@@ -15954,7 +15961,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
 
     // Temporary workaround for automotive networks - limit to sdk37(C)
     private boolean shouldSkipLnpOnAutomotive(@NonNull final NetworkAgentInfo nai) {
-        return mContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)
+        return mIsAutomotiveDevice
                 && !nai.networkCapabilities.hasCapability(NET_CAPABILITY_NOT_RESTRICTED)
                 &&  Build.VERSION.SDK_INT == Build.VERSION_CODES.CINNAMON_BUN;
     }
