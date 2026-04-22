@@ -6368,7 +6368,8 @@ public class ConnectivityService extends IConnectivityManager.Stub
         // destroyed pending replacement they will be sent when it is disconnected.
         maybeDisableForwardRulesForDisconnectingNai(nai, false /* sendCallbacks */);
         updateIngressToVpnAddressFiltering(null, nai.linkProperties, nai);
-        updateLocalNetworkAddresses(null, nai.linkProperties, mHasGlobalProxy, mHasGlobalProxy);
+        updateLocalNetworkAddresses(null, nai.linkProperties, mHasGlobalProxy, mHasGlobalProxy,
+                nai);
         try {
             mNetd.networkDestroy(nai.network.getNetId());
         } catch (RemoteException | ServiceSpecificException e) {
@@ -8068,7 +8069,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
 
         forEachNetworkAgentInfo(nai -> {
             updateLocalNetworkAddresses(nai.linkProperties, nai.linkProperties,
-                    hasGlobalProxy, mHasGlobalProxy);
+                    hasGlobalProxy, mHasGlobalProxy, nai);
         });
         mHasGlobalProxy = hasGlobalProxy;
     }
@@ -10973,7 +10974,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
 
         // The local network addresses needs to be updated before interfaces are removed because
         // modifying bpf map local_net_access requires mapping interface name to index.
-        updateLocalNetworkAddresses(newLp, oldLp, mHasGlobalProxy, mHasGlobalProxy);
+        updateLocalNetworkAddresses(newLp, oldLp, mHasGlobalProxy, mHasGlobalProxy, nai);
 
         for (final String iface : interfaceDiff.removed) {
             try {
@@ -11017,10 +11018,13 @@ public class ConnectivityService extends IConnectivityManager.Stub
             @Nullable final LinkProperties newLp,
             @Nullable final LinkProperties oldLp,
             boolean newHasGlobalProxy,
-            boolean oldHasGlobalProxy) {
+            boolean oldHasGlobalProxy,
+            @NonNull final NetworkAgentInfo nai) {
 
         // The maps are available only after 25Q2 release
-        if (!mDeps.isAtLeastB()) {
+        // Skip this for restricted networks on automotive devices until we have a way to identify
+        // vehicle networks which should be exempt from LNP.
+        if (!mDeps.isAtLeastB() || shouldSkipLnpOnAutomotive(nai)) {
             return;
         }
 
@@ -15922,6 +15926,13 @@ public class ConnectivityService extends IConnectivityManager.Stub
     private void enforceAutomotiveDevice() {
         PermissionUtils.enforceSystemFeature(mContext, PackageManager.FEATURE_AUTOMOTIVE,
                 "setOemNetworkPreference() is only available on automotive devices.");
+    }
+
+    // Temporary workaround for automotive networks - limit to sdk37(C)
+    private boolean shouldSkipLnpOnAutomotive(@NonNull final NetworkAgentInfo nai) {
+        return mContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)
+                && !nai.networkCapabilities.hasCapability(NET_CAPABILITY_NOT_RESTRICTED)
+                &&  Build.VERSION.SDK_INT == Build.VERSION_CODES.CINNAMON_BUN;
     }
 
     /**
